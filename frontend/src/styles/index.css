@@ -17,13 +17,18 @@
     @apply bg-bg-900 text-text-primary font-sans antialiased;
   }
 
-  /* Caption / label style used for uppercase tracked labels. */
+  /* Terminal-style section label — monospace, small caps, tracked */
   .caption {
-    @apply text-xs font-medium uppercase tracking-wide text-text-muted;
+    @apply font-mono text-2xs font-medium uppercase tracking-widest text-text-muted;
   }
 
-  /* Tabular monospace numerics. */
+  /* Tabular monospace numerics */
   .mono-num {
     @apply font-mono tabular-nums;
+  }
+
+  /* Research terminal data label — used for field names in detail views */
+  .data-label {
+    @apply font-mono text-2xs uppercase tracking-widest text-text-muted;
   }
 }

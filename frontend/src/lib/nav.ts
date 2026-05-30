@@ -1,14 +1,16 @@
 import type { NavItem } from "@/types";
 
-// M1 placeholder navigation. Mirrors the product surface in UIDesignSystem.txt;
-// pages are static shells until later milestones wire real data.
 export const navItems: NavItem[] = [
-  { label: "Dashboard", path: "/" },
-  { label: "Strategies", path: "/strategies" },
-  { label: "Timeline", path: "/timeline" },
-  { label: "Data Health", path: "/data-health" },
-  { label: "Backtests", path: "/backtests" },
-  { label: "Live Drift", path: "/live-drift" },
-  { label: "Alerts", path: "/alerts" },
-  { label: "Settings", path: "/settings" },
+  // No section — top-level cockpit items
+  { label: "Dashboard",        path: "/" },
+  // Research
+  { label: "Strategy Lab",     path: "/strategies",  section: "Research" },
+  // Analysis
+  { label: "Audit Trail",      path: "/timeline",    section: "Analysis" },
+  { label: "Data Health",      path: "/data-health", section: "Analysis" },
+  { label: "Backtest Audit",   path: "/backtests",   section: "Analysis" },
+  { label: "Execution Drift",  path: "/live-drift",  section: "Analysis" },
+  // Config
+  { label: "Signals",          path: "/alerts",      section: "Config" },
+  { label: "Settings",         path: "/settings",    section: "Config" },
 ];

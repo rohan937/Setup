@@ -1,0 +1,197 @@
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import type { StrategyDetail as StrategyDetailType } from "@/types";
+import { getStrategy } from "@/lib/api";
+import Badge from "@/components/Badge";
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function StatCell({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <p className="caption mb-1">{label}</p>
+      <p className="mono-num text-sm font-medium text-text-primary">{value}</p>
+    </div>
+  );
+}
+
+function MetricChip({ label, value }: { label: string; value: unknown }) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5 rounded-chip border border-border px-2 py-1">
+      <span className="font-mono text-2xs text-text-muted">{label}</span>
+      <span className="mono-num text-sm font-semibold text-text-primary">{String(value)}</span>
+    </span>
+  );
+}
+
+const BackArrow = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <path d="M7.5 2L3.5 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export default function StrategyDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [strategy, setStrategy] = useState<StrategyDetailType | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    getStrategy(id)
+      .then(setStrategy)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load strategy."))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const backLink = (
+    <Link
+      to="/strategies"
+      className="mb-5 inline-flex items-center gap-1.5 font-mono text-2xs text-text-muted hover:text-text-secondary"
+    >
+      <BackArrow />
+      Strategy Lab
+    </Link>
+  );
+
+  if (loading) {
+    return (
+      <div>
+        {backLink}
+        <p className="font-mono text-2xs text-text-muted">Loading…</p>
+      </div>
+    );
+  }
+
+  if (error || !strategy) {
+    return (
+      <div>
+        {backLink}
+        <div className="rounded-card border border-fidelity-low/30 bg-fidelity-low/10 px-4 py-3">
+          <p className="font-mono text-xs text-fidelity-low">{error ?? "Strategy not found."}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {backLink}
+
+      {/* Strategy header */}
+      <div>
+        <p className="caption mb-1">{strategy.project_name}</p>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-xl font-semibold tracking-tight text-text-primary">
+            {strategy.name}
+          </h1>
+          <Badge value={strategy.asset_class} variant="asset_class" />
+          <Badge value={strategy.status} variant="status" />
+        </div>
+        {strategy.description && (
+          <p className="mt-1.5 max-w-2xl text-sm text-text-secondary">{strategy.description}</p>
+        )}
+      </div>
+
+      {/* Stat strip */}
+      <div className="flex flex-wrap gap-6 rounded-card border border-border bg-bg-700 px-5 py-3">
+        <StatCell label="Runs" value={strategy.run_count} />
+        <StatCell label="Last Run" value={fmtDate(strategy.latest_run_at)} />
+        <StatCell label="Registered" value={fmtDate(strategy.created_at)} />
+        <StatCell
+          label="Slug"
+          value={<span className="font-mono text-xs text-text-muted">{strategy.slug}</span>}
+        />
+      </div>
+
+      {/* Versions */}
+      <div className="rounded-card border border-border bg-bg-700">
+        <div className="border-b border-border px-4 py-2.5">
+          <p className="caption">Code Versions</p>
+        </div>
+        <div className="p-4">
+          {strategy.versions.length === 0 ? (
+            <p className="font-mono text-2xs text-text-muted">No versions recorded.</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {strategy.versions.map((v) => (
+                <div key={v.id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-center justify-between">
+                    <span className="mono-num text-sm font-semibold text-text-primary">
+                      {v.version_label}
+                    </span>
+                    <span className="font-mono text-2xs text-text-muted">{fmtDate(v.created_at)}</span>
+                  </div>
+                  {v.signal_name && (
+                    <p className="mt-1 font-mono text-xs text-text-secondary">
+                      signal: <span className="text-accent-300">{v.signal_name}</span>
+                    </p>
+                  )}
+                  {v.branch_name && (
+                    <p className="mt-0.5 font-mono text-2xs text-text-muted">
+                      {v.branch_name}
+                      {v.code_path && <span> · {v.code_path}</span>}
+                    </p>
+                  )}
+                  {v.signal_description && (
+                    <p className="mt-1.5 max-w-xl text-xs text-text-muted">{v.signal_description}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Run evidence */}
+      <div className="rounded-card border border-border bg-bg-700">
+        <div className="border-b border-border px-4 py-2.5">
+          <p className="caption">Run Evidence</p>
+        </div>
+        <div className="p-4">
+          {strategy.runs.length === 0 ? (
+            <p className="font-mono text-2xs text-text-muted">No runs logged yet.</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {strategy.runs.map((r) => (
+                <div key={r.id} className="py-4 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-text-primary">{r.run_name}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge value={r.run_type} variant="run_type" />
+                      <Badge value={r.status} variant="run_status" />
+                    </div>
+                  </div>
+
+                  {r.metrics_json && Object.keys(r.metrics_json).length > 0 && (
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      {Object.entries(r.metrics_json).map(([k, v]) => (
+                        <MetricChip key={k} label={k} value={v} />
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-2 flex flex-wrap gap-4 font-mono text-2xs text-text-muted">
+                    {r.universe_name && <span>universe: {r.universe_name}</span>}
+                    {r.dataset_version && <span>dataset: {r.dataset_version}</span>}
+                    <span>{fmtDate(r.started_at)}</span>
+                  </div>
+                  {r.notes && (
+                    <p className="mt-1.5 text-xs text-text-muted">{r.notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

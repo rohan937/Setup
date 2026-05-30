@@ -18,41 +18,34 @@ export default function Topbar() {
       .catch(() => {
         if (active) setState({ status: "offline" });
       });
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-bg-800 px-6">
-      <div className="flex items-center gap-3">
-        <span className="caption">Organization</span>
-        <span className="text-sm text-text-secondary">Local Workspace</span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <BackendBadge state={state} />
-      </div>
+    <header className="flex h-10 shrink-0 items-center justify-end border-b border-border bg-bg-800 px-5 gap-4">
+      <span className="font-mono text-2xs text-text-muted uppercase tracking-widest">
+        ENV:&nbsp;
+        <span className="text-text-secondary">
+          {state.status === "online" ? state.environment : "—"}
+        </span>
+      </span>
+      <ApiStatus state={state} />
     </header>
   );
 }
 
-function BackendBadge({ state }: { state: BackendState }) {
-  const map = {
-    loading: { dot: "bg-text-muted", label: "Connecting…", text: "text-text-muted" },
-    online: { dot: "bg-severity-success", label: "Backend online", text: "text-text-secondary" },
-    offline: { dot: "bg-severity-critical", label: "Backend offline", text: "text-severity-critical" },
-  } as const;
-
-  const key = state.status;
-  const cfg = map[key];
+function ApiStatus({ state }: { state: BackendState }) {
+  const cfg = {
+    loading: { dot: "bg-text-muted",         text: "text-text-muted",     label: "API connecting" },
+    online:  { dot: "bg-fidelity-high",       text: "text-fidelity-high",  label: "API online" },
+    offline: { dot: "bg-fidelity-low animate-pulse", text: "text-fidelity-low", label: "API offline" },
+  }[state.status];
 
   return (
-    <span className="flex items-center gap-2 rounded-control border border-border bg-bg-700 px-3 py-1.5">
-      <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
-      <span className={`text-xs ${cfg.text}`}>
+    <span className="flex items-center gap-1.5">
+      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+      <span className={`font-mono text-2xs uppercase tracking-widest ${cfg.text}`}>
         {cfg.label}
-        {state.status === "online" ? ` · ${state.environment}` : ""}
       </span>
     </span>
   );

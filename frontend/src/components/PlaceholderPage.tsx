@@ -4,6 +4,7 @@ import EmptyState from "./EmptyState";
 interface PlaceholderPageProps {
   title: string;
   subtitle: string;
+  tag?: string;
   emptyTitle: string;
   emptyDescription: string;
 }
@@ -11,12 +12,13 @@ interface PlaceholderPageProps {
 export default function PlaceholderPage({
   title,
   subtitle,
+  tag,
   emptyTitle,
   emptyDescription,
 }: PlaceholderPageProps) {
   return (
     <>
-      <PageHeader title={title} subtitle={subtitle} />
+      <PageHeader title={title} subtitle={subtitle} tag={tag} />
       <EmptyState title={emptyTitle} description={emptyDescription} />
     </>
   );

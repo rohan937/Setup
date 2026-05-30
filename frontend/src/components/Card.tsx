@@ -4,15 +4,27 @@ interface CardProps {
   label?: string;
   children: ReactNode;
   className?: string;
+  /** Draws a 2px top accent bar in the primary accent color */
+  accent?: boolean;
 }
 
-export default function Card({ label, children, className = "" }: CardProps) {
+export default function Card({ label, children, className = "", accent = false }: CardProps) {
   return (
     <div
-      className={`rounded-card border border-border bg-bg-700 p-5 ${className}`}
+      className={[
+        "rounded-card border border-border bg-bg-700",
+        accent ? "border-t-accent-500 border-t-2" : "",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
-      {label ? <p className="caption mb-2">{label}</p> : null}
-      {children}
+      {label ? (
+        <div className="border-b border-border px-4 py-2.5">
+          <p className="caption">{label}</p>
+        </div>
+      ) : null}
+      <div className="p-4">{children}</div>
     </div>
   );
 }
