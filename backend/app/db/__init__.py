@@ -1,5 +1,9 @@
-"""Database layer (PostgreSQL via SQLAlchemy). Reserved for later milestones.
+"""Database layer: engine, session, and declarative base.
 
-M1 ships PostgreSQL-ready configuration (QF_DATABASE_URL) but no engine,
-session, or models are wired yet.
+Public re-exports so callers can do ``from app.db import Base, get_db``.
 """
+
+from app.db.base import Base
+from app.db.session import SessionLocal, engine, get_db
+
+__all__ = ["Base", "engine", "SessionLocal", "get_db"]
