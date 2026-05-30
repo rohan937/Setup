@@ -1,0 +1,420 @@
+QuantFidelity — Database Schema (v1)
+====================================
+
+Engine: PostgreSQL (optional TimescaleDB extension later for time-series tables).
+Conventions:
+  - All IDs are UUID (gen_random_uuid()) unless noted.
+  - Every tenant-scoped table carries org_id (FK organizations) for isolation.
+  - created_at / updated_at timestamptz on all tables (default now()).
+  - Monetary/price values use numeric; bps and scores use numeric; timestamps timestamptz (UTC).
+  - JSONB used for flexible payloads (parameters, assumptions, evidence) with a documented shape.
+  - "Data minimization" notes indicate what should be stored as summary/hash vs raw.
+
+
+==============================================================================
+ENUMS
+==============================================================================
+
+event_type_enum:
+  'strategy','strategy_version','strategy_change','strategy_run',
+  'backtest_run','backtest_metric','backtest_assumption',
+  'dataset_snapshot','data_quality_check',
+  'universe_snapshot','signal_snapshot',
+  'intended_order','production_order','risk_block','borrow_block','liquidity_clip',
+  'execution_fill','partial_fill','rejected_order','canceled_order',
+  'live_pnl_snapshot','live_run',
+  'reliability_diagnosis','alert','audit_timeline_event'
+
+severity_enum:        'info','low','medium','high','critical'
+asset_class_enum:     'equity','etf','future','option','fx','crypto','rate','commodity','other'
+run_status_enum:      'pending','running','completed','failed','canceled'
+run_kind_enum:        'research','backtest','paper','live'
+order_side_enum:      'buy','sell','short','cover'
+order_status_enum:    'intended','sent','partial','filled','rejected','canceled','blocked'
+block_type_enum:      'risk','borrow','liquidity','compliance','other'
+alert_status_enum:    'open','acknowledged','resolved','muted'
+provider_enum:        'mock','lowcost_public','custom','institutional'
+score_type_enum:      'overall','data_health','backtest_trust','live_drift','execution_quality','lineage_health'
+issue_domain_enum:    'data','backtest','drift','execution','lineage'
+api_key_status_enum:  'active','revoked'
+batch_status_enum:    'received','processing','completed','failed'
+
+
+==============================================================================
+CORE / TENANT TABLES
+==============================================================================
+
+organizations
+  Purpose: top-level tenant; isolation boundary.
+  Columns: id PK, name, slug UNIQUE, plan, settings JSONB, created_at, updated_at.
+  Indexes: unique(slug).
+
+users
+  Purpose: people belonging to an organization.
+  Columns: id PK, org_id FK->organizations, email, name, role
+           (enum: 'owner','admin','member','viewer'), password_hash (null if SSO),
+           last_login_at, created_at, updated_at.
+  Indexes: unique(org_id, email); index(org_id).
+  FKs: org_id -> organizations.
+  Data minimization: store password_hash only; never plaintext.
+
+projects
+  Purpose: workspace grouping strategies, datasets, keys within an org.
+  Columns: id PK, org_id FK, name, slug, description, settings JSONB, created_at, updated_at.
+  Indexes: unique(org_id, slug); index(org_id).
+  FKs: org_id -> organizations.
+
+api_keys
+  Purpose: SDK/REST ingestion authentication, scoped to a project.
+  Columns: id PK, org_id FK, project_id FK, name, key_prefix, key_hash, status api_key_status_enum,
+           last_used_at, expires_at, created_by FK->users, created_at, updated_at.
+  Indexes: unique(key_hash); index(org_id, project_id); index(status).
+  FKs: org_id->organizations, project_id->projects, created_by->users.
+  Data minimization: store only a hash of the key plus a short non-secret prefix for display.
+
+sdk_ingestion_batches
+  Purpose: record each batch of events submitted by SDK/API.
+  Columns: id PK, org_id FK, project_id FK, api_key_id FK, source (enum sdk|api), event_count,
+           status batch_status_enum, error_summary, schema_version, received_at, processed_at.
+  Indexes: index(org_id, project_id, received_at); index(status).
+  FKs: org_id, project_id, api_key_id.
+
+
+==============================================================================
+STRATEGY LINEAGE TABLES
+==============================================================================
+
+strategies
+  Purpose: a named systematic strategy.
+  Columns: id PK, org_id FK, project_id FK, name, external_strategy_id, asset_class asset_class_enum,
+           description, owner_user_id FK->users, current_version_id (nullable FK->strategy_versions),
+           created_at, updated_at.
+  Indexes: unique(project_id, name); unique(project_id, external_strategy_id) where not null;
+           index(org_id).
+  FKs: org_id, project_id, owner_user_id, current_version_id.
+
+strategy_versions
+  Purpose: an immutable configuration snapshot of a strategy.
+  Columns: id PK, org_id FK, strategy_id FK, version_label, git_commit_hash, branch_name,
+           code_path, signal_name, signal_formula_desc, parameters JSONB, universe_ref,
+           dataset_version, rebalance_frequency, transaction_cost_assumption_bps numeric,
+           fill_model, borrow_assumption, risk_constraints JSONB, portfolio_construction_method,
+           optimizer_settings JSONB, deployment_environment, notes, config_fingerprint (hash),
+           created_at, updated_at.
+  Indexes: unique(strategy_id, version_label); index(strategy_id, created_at);
+           index(config_fingerprint).
+  FKs: org_id, strategy_id.
+  Data minimization: parameters/optimizer_settings as JSONB summaries; config_fingerprint lets us
+                     detect identical configs without storing duplicates.
+
+strategy_changes
+  Purpose: deterministic diff between two strategy_versions (what changed).
+  Columns: id PK, org_id FK, strategy_id FK, from_version_id FK->strategy_versions,
+           to_version_id FK->strategy_versions, change_fields JSONB (per-field old/new),
+           change_summary, detected_at.
+  Indexes: index(strategy_id, detected_at); unique(from_version_id, to_version_id).
+  FKs: org_id, strategy_id, from_version_id, to_version_id.
+
+strategy_runs
+  Purpose: an execution of a strategy in a given mode (research/paper/live; backtests are separate).
+  Columns: id PK, org_id FK, strategy_id FK, version_id FK->strategy_versions, run_kind run_kind_enum,
+           status run_status_enum, environment, started_at, ended_at, performance_metrics JSONB,
+           dataset_snapshot_id (nullable FK), universe_snapshot_id (nullable FK), notes,
+           created_at, updated_at.
+  Indexes: index(strategy_id, started_at); index(version_id); index(run_kind).
+  FKs: org_id, strategy_id, version_id, dataset_snapshot_id, universe_snapshot_id.
+
+
+==============================================================================
+DATA INTEGRITY TABLES
+==============================================================================
+
+datasets
+  Purpose: a logical dataset (e.g., "US equities OHLCV daily").
+  Columns: id PK, org_id FK, project_id FK, name, kind (enum: 'ohlcv','fundamental','signal',
+           'reference','other'), asset_class asset_class_enum, source_description,
+           created_at, updated_at.
+  Indexes: unique(project_id, name); index(org_id).
+  FKs: org_id, project_id.
+
+dataset_snapshots
+  Purpose: a point-in-time version of a dataset, used for revision detection.
+  Columns: id PK, org_id FK, dataset_id FK, snapshot_label, row_count, symbol_count,
+           start_date, end_date, columns JSONB (name/type), content_fingerprint (hash),
+           summary_stats JSONB, raw_storage_ref (nullable; only if raw retained), captured_at,
+           created_at.
+  Indexes: unique(dataset_id, snapshot_label); index(dataset_id, captured_at);
+           index(content_fingerprint).
+  FKs: org_id, dataset_id.
+  Data minimization: store columns, summary_stats, and content_fingerprint by default; raw rows
+                     only via raw_storage_ref when explicitly enabled.
+
+data_quality_issues
+  Purpose: a detected data problem on a snapshot (and comparisons between snapshots).
+  Columns: id PK, org_id FK, dataset_snapshot_id FK, compared_to_snapshot_id (nullable FK),
+           issue_type (enum: 'missing_timestamp','duplicate_timestamp','stale_price',
+           'nonpositive_price','return_jump','missing_ohlcv_field','ohlc_inconsistency',
+           'volume_anomaly','schema_drift','type_change','symbol_coverage_change',
+           'historical_revision','missing_delisted','timezone_issue','corporate_action_issue',
+           'fundamental_revision'),
+           severity severity_enum, affected_symbols JSONB, affected_columns JSONB,
+           affected_range_start, affected_range_end, evidence JSONB, detected_at.
+  Indexes: index(dataset_snapshot_id, severity); index(issue_type); index(org_id, detected_at).
+  FKs: org_id, dataset_snapshot_id, compared_to_snapshot_id.
+  Data minimization: evidence holds bounded sample rows/statistics, not full datasets.
+
+
+==============================================================================
+UNIVERSE & SIGNAL TABLES
+==============================================================================
+
+universes
+  Purpose: a named tradable universe.
+  Columns: id PK, org_id FK, project_id FK, name, description, created_at, updated_at.
+  Indexes: unique(project_id, name); index(org_id).
+  FKs: org_id, project_id.
+
+universe_snapshots
+  Purpose: point-in-time membership of a universe (for overlap/survivorship analysis).
+  Columns: id PK, org_id FK, universe_id FK, snapshot_label, symbol_count, members JSONB
+           (or members_fingerprint hash), as_of_date, captured_at, created_at.
+  Indexes: unique(universe_id, snapshot_label); index(universe_id, as_of_date).
+  FKs: org_id, universe_id.
+  Data minimization: large memberships may be stored as fingerprint + counts plus a bounded list.
+
+signals
+  Purpose: a named signal/feature within a strategy.
+  Columns: id PK, org_id FK, strategy_id FK, name, formula_desc, created_at, updated_at.
+  Indexes: unique(strategy_id, name); index(org_id).
+  FKs: org_id, strategy_id.
+
+signal_snapshots
+  Purpose: point-in-time summary of a signal's values/distribution (not raw proprietary values).
+  Columns: id PK, org_id FK, signal_id FK, run_id (nullable FK->strategy_runs), as_of_date,
+           summary_stats JSONB, values_fingerprint (hash), captured_at, created_at.
+  Indexes: index(signal_id, as_of_date); index(run_id).
+  FKs: org_id, signal_id, run_id.
+  Data minimization: store distribution summaries + fingerprint; raw signal values opt-in only.
+
+
+==============================================================================
+BACKTEST TABLES
+==============================================================================
+
+backtest_runs
+  Purpose: a backtest execution (separate from live strategy_runs but linkable).
+  Columns: id PK, org_id FK, strategy_id FK, version_id FK->strategy_versions,
+           dataset_snapshot_id (nullable FK), universe_snapshot_id (nullable FK),
+           status run_status_enum, period_start, period_end, trade_count, started_at, ended_at,
+           trust_score numeric (nullable, set by engine), notes, created_at, updated_at.
+  Indexes: index(strategy_id, started_at); index(version_id).
+  FKs: org_id, strategy_id, version_id, dataset_snapshot_id, universe_snapshot_id.
+
+backtest_assumptions
+  Purpose: the explicit assumptions a backtest was run under (audited by Reality Check).
+  Columns: id PK, org_id FK, backtest_run_id FK, transaction_cost_bps numeric, slippage_model,
+           fill_model, borrow_cost_bps numeric, includes_delisted boolean, lookback_periods int,
+           capacity_aum numeric, rebalance_frequency, other JSONB, created_at.
+  Indexes: index(backtest_run_id).
+  FKs: org_id, backtest_run_id.
+
+backtest_metrics
+  Purpose: reported performance metrics for a backtest.
+  Columns: id PK, org_id FK, backtest_run_id FK, sharpe numeric, sortino numeric, cagr numeric,
+           max_drawdown numeric, turnover numeric, win_rate numeric, avg_trade_bps numeric,
+           volatility numeric, exposure numeric, extra JSONB, created_at.
+  Indexes: index(backtest_run_id).
+  FKs: org_id, backtest_run_id.
+
+backtest_issues
+  Purpose: problems detected by the Backtest Reality Check.
+  Columns: id PK, org_id FK, backtest_run_id FK,
+           issue_type (enum: 'lookahead_bias','survivorship_bias','unrealistic_fill',
+           'same_close_exec','ignored_slippage','ignored_txn_cost','ignored_borrow_cost',
+           'overfitting','regime_concentration','high_sharpe_low_trades','untradeable_liquidity',
+           'capacity_issue'),
+           severity severity_enum, evidence JSONB, explanation, suggested_check,
+           adjusted_estimate JSONB (nullable), detected_at.
+  Indexes: index(backtest_run_id, severity); index(issue_type).
+  FKs: org_id, backtest_run_id.
+
+
+==============================================================================
+LIVE / EXECUTION TABLES
+==============================================================================
+
+live_runs
+  Purpose: a live or paper trading run being reconciled against research.
+  Columns: id PK, org_id FK, strategy_id FK, version_id FK->strategy_versions,
+           research_run_id (nullable FK->strategy_runs), backtest_run_id (nullable FK),
+           run_kind run_kind_enum (paper|live), status run_status_enum, started_at, ended_at,
+           provider provider_enum (nullable), notes, created_at, updated_at.
+  Indexes: index(strategy_id, started_at); index(version_id).
+  FKs: org_id, strategy_id, version_id, research_run_id, backtest_run_id.
+
+intended_orders
+  Purpose: orders research intended to place (pre-production).
+  Columns: id PK, org_id FK, live_run_id FK, symbol, asset_class asset_class_enum, side order_side_enum,
+           intended_qty numeric, intended_price numeric, intended_notional numeric, decision_at,
+           created_at.
+  Indexes: index(live_run_id, symbol); index(org_id, decision_at).
+  FKs: org_id, live_run_id.
+
+production_orders
+  Purpose: orders actually generated by the production system (post research, pre execution).
+  Columns: id PK, org_id FK, live_run_id FK, intended_order_id (nullable FK), symbol,
+           side order_side_enum, qty numeric, limit_price numeric, status order_status_enum,
+           sent_at, created_at.
+  Indexes: index(live_run_id, symbol); index(status).
+  FKs: org_id, live_run_id, intended_order_id.
+
+risk_blocks
+  Purpose: trades blocked or resized by risk limits.
+  Columns: id PK, org_id FK, live_run_id FK, intended_order_id (nullable FK), symbol,
+           block_type block_type_enum default 'risk', blocked_qty numeric, reason,
+           estimated_alpha_cost_bps numeric (nullable), blocked_at, created_at.
+  Indexes: index(live_run_id); index(symbol).
+  FKs: org_id, live_run_id, intended_order_id.
+
+borrow_blocks
+  Purpose: shorts that could not be sourced/were recalled.
+  Columns: id PK, org_id FK, live_run_id FK, intended_order_id (nullable FK), symbol,
+           requested_qty numeric, available_qty numeric, reason, borrow_rate_bps numeric (nullable),
+           estimated_alpha_cost_bps numeric (nullable), blocked_at, created_at.
+  Indexes: index(live_run_id); index(symbol).
+  FKs: org_id, live_run_id, intended_order_id.
+
+liquidity_clips
+  Purpose: orders reduced due to liquidity/volume constraints.
+  Columns: id PK, org_id FK, live_run_id FK, production_order_id (nullable FK), symbol,
+           requested_qty numeric, clipped_qty numeric, adv_pct numeric (order vs avg daily volume),
+           estimated_alpha_cost_bps numeric (nullable), clipped_at, created_at.
+  Indexes: index(live_run_id); index(symbol).
+  FKs: org_id, live_run_id, production_order_id.
+
+execution_fills
+  Purpose: actual fills (covers partial/rejected/canceled via status + qty fields).
+  Columns: id PK, org_id FK, live_run_id FK, production_order_id (nullable FK), symbol,
+           side order_side_enum, fill_qty numeric, fill_price numeric, fill_notional numeric,
+           status order_status_enum, is_partial boolean, expected_cost_bps numeric,
+           actual_cost_bps numeric, slippage_bps numeric, filled_at, created_at.
+  Indexes: index(live_run_id, symbol); index(production_order_id); index(status).
+  FKs: org_id, live_run_id, production_order_id.
+  Note: rejected_order and canceled_order event types map here via status = 'rejected'/'canceled'
+        with zero fill_qty; partial_fill maps via is_partial = true.
+
+live_pnl_snapshots
+  Purpose: point-in-time live/paper P&L.
+  Columns: id PK, org_id FK, live_run_id FK, as_of timestamptz, gross_pnl numeric, net_pnl numeric,
+           realized_pnl numeric, unrealized_pnl numeric, exposure numeric, position_count int,
+           extra JSONB, created_at.
+  Indexes: index(live_run_id, as_of).  (TimescaleDB hypertable candidate.)
+  FKs: org_id, live_run_id.
+
+
+==============================================================================
+RELIABILITY / DIAGNOSIS / ALERTING TABLES
+==============================================================================
+
+reliability_scores
+  Purpose: stored deterministic scores with their evidence and inputs.
+  Columns: id PK, org_id FK, strategy_id FK, subject_kind (enum: 'strategy','run','backtest_run',
+           'live_run','dataset_snapshot'), subject_id, score_type score_type_enum,
+           score numeric (0-100), inputs JSONB (weights + component values), computed_at, created_at.
+  Indexes: index(strategy_id, score_type, computed_at); index(subject_kind, subject_id).
+  FKs: org_id, strategy_id.
+
+reliability_diagnoses
+  Purpose: evidence-backed diagnosis (deterministic ranking + AI summary).
+  Columns: id PK, org_id FK, strategy_id FK, live_run_id (nullable FK), backtest_run_id (nullable FK),
+           candidate_causes JSONB (ranked, each with evidence refs + confidence),
+           evidence_bundle JSONB, ai_summary text, ai_model, generated_at, created_at.
+  Indexes: index(strategy_id, generated_at).
+  FKs: org_id, strategy_id, live_run_id, backtest_run_id.
+  Note: ai_summary must be reconstructable/justifiable from evidence_bundle (no orphan claims).
+
+alerts
+  Purpose: actionable notifications from threshold breaches/new issues.
+  Columns: id PK, org_id FK, strategy_id (nullable FK), domain issue_domain_enum, severity severity_enum,
+           title, message, status alert_status_enum default 'open', evidence_ref JSONB,
+           suggested_check, triggered_at, acknowledged_at, resolved_at, created_at, updated_at.
+  Indexes: index(org_id, status, severity); index(strategy_id, triggered_at).
+  FKs: org_id, strategy_id.
+
+audit_timeline_events
+  Purpose: unified chronological audit record generated FROM underlying objects.
+  Columns: id PK, org_id FK, strategy_id (nullable FK), event_type event_type_enum,
+           source_kind, source_id, summary, occurred_at, created_at.
+  Indexes: index(strategy_id, occurred_at); index(org_id, event_type).
+  FKs: org_id, strategy_id.
+  Note: derived/denormalized projection for fast timeline reads; not a source of truth.
+
+
+==============================================================================
+MARKET DATA PROVIDER TABLES
+==============================================================================
+
+market_data_providers
+  Purpose: registered provider adapters and their config.
+  Columns: id PK, org_id FK, provider provider_enum, name, config JSONB (no secrets in plaintext),
+           enabled boolean, created_at, updated_at.
+  Indexes: unique(org_id, name); index(provider).
+  FKs: org_id.
+  Data minimization: provider credentials stored via secret reference, not raw values.
+
+live_symbol_subscriptions
+  Purpose: which symbols/frequencies are tracked for feed health / live context.
+  Columns: id PK, org_id FK, project_id FK, provider_id FK->market_data_providers, symbol,
+           asset_class asset_class_enum, frequency, enabled boolean, created_at, updated_at.
+  Indexes: unique(provider_id, symbol, frequency); index(org_id, project_id).
+  FKs: org_id, project_id, provider_id.
+
+live_market_snapshots
+  Purpose: sampled market data for feed health and drift context (NOT a data product).
+  Columns: id PK, org_id FK, subscription_id FK->live_symbol_subscriptions, symbol, as_of timestamptz,
+           open numeric, high numeric, low numeric, close numeric, volume numeric,
+           source_provider provider_enum, created_at.
+  Indexes: index(subscription_id, as_of).  (TimescaleDB hypertable candidate.)
+  FKs: org_id, subscription_id.
+  Data minimization: bounded retention window; sampled, not full-tick.
+
+
+==============================================================================
+Schema Design Tradeoffs
+==============================================================================
+
+Why normalized events matter:
+  Every lifecycle artifact (run, change, order, fill, issue) shares a typed, append-only event
+  model. This makes ingestion uniform, lets the engine reason across stages with one vocabulary,
+  enables reproducible recomputation, and makes the audit timeline a simple projection rather
+  than a bespoke pipeline.
+
+Why raw data should be optional:
+  Customers' raw datasets and signals are proprietary and large. Storing summaries, fingerprints,
+  and bounded evidence samples by default reduces liability, cost, and breach surface while still
+  enabling revision detection (via fingerprints) and most checks. Raw retention is opt-in and
+  bounded (raw_storage_ref) for cases that genuinely need it.
+
+Why hash/fingerprint fields matter:
+  content_fingerprint, config_fingerprint, members_fingerprint, and values_fingerprint let us
+  detect change, duplication, and historical revisions without retaining or comparing full raw
+  content. They are the mechanism that makes "minimal storage" compatible with "detect what
+  changed."
+
+Why strategy_run and backtest_run should be separate but linked:
+  A backtest is a hypothetical run over historical data with explicit assumptions to audit; a
+  strategy_run (research/paper/live) is an actual execution. They have different fields, different
+  checks (Reality Check vs Drift/Execution), and different trust semantics. Keeping them separate
+  avoids overloading one table, while live_runs link back to the originating backtest_run and
+  research strategy_run so research-to-live comparison is first-class.
+
+Why intended orders and execution fills should be separate:
+  The entire product thesis is the gap between intent and reality. Modeling intended_orders,
+  production_orders, blocks/clips, and execution_fills as distinct stages is what makes execution
+  attribution (alpha lost to risk/borrow/liquidity/slippage/partial fills + residual) computable.
+  Collapsing them would erase exactly the signal we exist to measure.
+
+Why audit timeline events should be generated from underlying objects:
+  The audit trail must always reflect the real artifacts. Deriving audit_timeline_events from the
+  source tables (rather than asking writers to also write audit rows) guarantees the timeline
+  cannot drift from reality, keeps writers simple, and lets the projection be rebuilt at any time.

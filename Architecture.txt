@@ -1,0 +1,223 @@
+QuantFidelity — Technical Architecture
+======================================
+
+Assumptions / stack
+--------------------
+  Frontend:   React + TypeScript + Vite (Next.js acceptable if SSR/routing benefits emerge).
+  Backend:    FastAPI (Python).
+  Database:   PostgreSQL. Optional TimescaleDB extension later for time-series tables.
+  SDK:        Python SDK over the REST ingestion API.
+  Ingestion:  REST API first; background jobs/queue added later.
+  Market data: pluggable live market data provider abstraction (mock/low-cost first).
+  Deployment: local-first development; minimal-cost hosting initially; self-hostable direction.
+
+
+1. System Overview
+------------------
+QuantFidelity is a pipeline that turns lifecycle events from a systematic strategy into scored,
+diagnosable reliability evidence.
+
+  Customer Data / Market Data APIs
+    -> Ingestion Layer (REST API + SDK batches)
+    -> Normalized Event Schema (typed artifacts/events)
+    -> Time-Series + Metadata Store (PostgreSQL, optional TimescaleDB)
+    -> Reliability Engine (deterministic checks, diffs, scoring, attribution)
+    -> Diagnosis Layer (evidence bundling + AI summary)
+    -> Dashboard + Alerts (web app, alerts, reports, audit trail)
+
+Determinism boundary: everything up to and including the Reliability Engine is deterministic and
+reproducible. The Diagnosis Layer's AI step only summarizes already-computed evidence.
+
+
+2. Main Services
+----------------
+Logical services (can start as modules in one FastAPI app, split later):
+
+  - API / Ingestion Service
+      Authenticated REST endpoints; accepts SDK batches and direct event posts; validates and
+      normalizes events; writes artifacts; records sdk_ingestion_batches.
+
+  - Reliability Engine Service
+      Data Integrity checks, deterministic run diffing, Backtest Reality Check, Live Drift &
+      Execution Attribution, and scoring. Pure functions over stored artifacts; reproducible.
+
+  - Diagnosis Service
+      Assembles evidence bundles from engine outputs; calls the AI Diagnostic Layer under strict
+      constraints; persists reliability_diagnoses.
+
+  - Alert / Report Service
+      Evaluates thresholds, raises/updates alerts, generates reports and audit timelines.
+
+  - Provider / Market Data Service
+      Hosts provider adapters behind a common interface; manages subscriptions; samples live
+      snapshots for feed health.
+
+  - Web Application
+      React/TS frontend consuming the read APIs.
+
+
+3. Data Flow
+------------
+Ingest:   SDK/REST -> validate -> normalize to event schema -> persist artifact + audit event.
+Compute:  on ingest or on demand, Reliability Engine runs the relevant checks/diffs/scores and
+          persists data_quality_issues, backtest_issues, attribution results, reliability_scores.
+Diagnose: Diagnosis Service bundles evidence -> AI summary -> reliability_diagnosis persisted.
+Surface:  Alert/Report Service evaluates thresholds -> alerts/reports/audit_timeline_events.
+Read:     Web app reads scores, issues, diffs, diagnoses, timelines, alerts.
+
+Compute can be synchronous in early product; heavy checks move to background jobs later (see
+Deployment).
+
+
+4. Event Model
+--------------
+All ingested data is normalized into typed artifacts/events with a common envelope:
+
+  envelope: { event_id, event_type, org_id, project_id, strategy_id?, version_id?, run_id?,
+              source (sdk|api|provider), ingestion_batch_id?, occurred_at, received_at,
+              schema_version, payload }
+
+Event / artifact types:
+  strategy, strategy_version, strategy_change, strategy_run,
+  backtest_run, backtest_metric, backtest_assumption,
+  dataset_snapshot, data_quality_check,
+  universe_snapshot, signal_snapshot,
+  intended_order, production_order, risk_block, borrow_block, liquidity_clip,
+  execution_fill, partial_fill, rejected_order, canceled_order,
+  live_pnl_snapshot, live_run,
+  reliability_diagnosis, alert, audit_timeline_event.
+
+Event principles:
+  - Events are append-only and immutable once accepted; corrections are new events.
+  - event_type is a closed enum; unknown types are rejected at ingestion.
+  - Each event carries enough fingerprint/metadata to be reproducible without raw data.
+
+
+5. API Structure
+----------------
+Base: /api/v1. Auth: API key (ingestion) and session/JWT (web). All routes org-scoped.
+
+Ingestion (SDK/API):
+  POST /ingest/batch                 — submit an sdk_ingestion_batch of mixed events
+  POST /strategies                   — create/upsert strategy
+  POST /strategies/{id}/versions     — log strategy_version
+  POST /strategies/{id}/changes      — log strategy_change
+  POST /runs                         — log strategy_run / live_run
+  POST /backtests                    — log backtest_run (+ assumptions, metrics)
+  POST /datasets/snapshots           — log dataset_snapshot (upload or reference)
+  POST /universes/snapshots          — log universe_snapshot
+  POST /signals/snapshots            — log signal_snapshot
+  POST /orders/intended              — log intended_orders
+  POST /orders/production            — log production_orders
+  POST /blocks/risk | /blocks/borrow — log risk_blocks / borrow_blocks
+  POST /execution/fills              — log execution_fills (incl. partial/rejected/canceled)
+  POST /pnl/snapshots                — log live_pnl_snapshots
+
+Read / compute:
+  GET  /strategies, /strategies/{id}
+  GET  /strategies/{id}/lineage
+  GET  /runs/{id}, GET /compare?run_a=&run_b=    — deterministic run diff
+  GET  /datasets/{id}/snapshots/{sid}/issues
+  GET  /backtests/{id}/audit                     — issues + trust score + adjusted estimate
+  GET  /strategies/{id}/drift                    — execution attribution + drift score
+  GET  /strategies/{id}/scores                   — all reliability_scores
+  GET  /strategies/{id}/diagnosis                — latest reliability_diagnosis
+  GET  /alerts, PATCH /alerts/{id}               — alert status transitions
+  GET  /reports/...                              — report generation/export
+
+Admin:
+  /orgs, /users, /projects, /api-keys, /providers, /subscriptions.
+
+
+6. SDK Architecture
+-------------------
+  - qf.init(api_key, project, base_url) -> configures a singleton client.
+  - Logging functions build normalized events and append to an in-memory buffer.
+  - flush() (and an atexit hook) POSTs buffered events as a single sdk_ingestion_batch.
+  - compare_runs(run_a, run_b) calls GET /compare and returns a typed comparison object.
+  - Local hashing/summarization of datasets/signals so raw proprietary data need not leave the
+    firm; controlled by client config (send_raw=False by default).
+  - Resilient and non-blocking: network/ingestion failures are logged, retried with backoff, and
+    never raise into the host research/production process.
+  - Versioned schema_version on every event for forward compatibility.
+
+
+7. Provider Abstraction
+-----------------------
+  - A MarketDataProvider interface: get_quote(symbol), get_ohlcv(symbol, range, freq), health().
+  - Adapters implement the interface: MockProvider (deterministic synthetic data), a low-cost
+    public-API adapter, and customer/institutional adapters added later.
+  - Providers are registered in market_data_providers and selected per subscription.
+  - Adapters are replaceable and isolated; no engine logic depends on a specific provider.
+
+
+8. Live Market Data Architecture
+--------------------------------
+  - live_symbol_subscriptions declare which symbols/frequencies are tracked.
+  - The Provider Service samples data into live_market_snapshots on a schedule.
+  - Snapshots feed (a) feed-health checks in the Data Integrity Engine and (b) optional live
+    context for drift, NOT a market-data product.
+  - Storage is minimal and bounded; snapshots are for reliability context, not redistribution.
+
+
+9. AI Diagnostic Architecture
+-----------------------------
+  - The Diagnosis Service builds a structured EvidenceBundle: scores, ranked candidate causes,
+    issues, attribution buckets, lineage diffs — all already computed deterministically.
+  - The AI step receives only the EvidenceBundle and a constrained prompt; it returns a summary
+    plus per-claim evidence references.
+  - A validation pass enforces the hard rules: no invented causes, no advice, no unevidenced
+    accusations, hedged language when uncertain. Claims without a matching evidence reference are
+    dropped.
+  - If the bundle lacks sufficient evidence, the layer emits "insufficient evidence — requires
+    review" rather than a guess.
+  - The AI provider is abstracted; the deterministic evidence is the system of record, the AI
+    summary is a presentation layer.
+
+
+10. Security Architecture
+-------------------------
+  - Org-scoped multi-tenancy: every row carries org_id; queries are org-filtered.
+  - API-key auth for ingestion (scoped to project, hashed at rest, revocable); session/JWT for
+    web users with roles.
+  - Data minimization by default: metadata/summaries/hashes/fingerprints; raw data opt-in.
+  - Client-side hashing/summarization supported so proprietary data can stay in the firm.
+  - No broker credentials, no order placement, no market write actions.
+  - TLS in transit; encryption at rest in managed deployment; secrets via env/secret manager.
+  - Full audit trail (audit_timeline_events + ingestion batches) of what entered the system.
+
+
+11. Deployment Architecture
+---------------------------
+  Local-first development:
+    - docker-compose: PostgreSQL + FastAPI + frontend dev server; mock provider; no paid
+      services required to run the full loop.
+  Minimal-cost initial hosting:
+    - single small backend instance + managed Postgres + static frontend hosting.
+    - synchronous compute acceptable at low volume.
+  Scaling path:
+    - add a task queue/worker for background checks and report generation.
+    - add TimescaleDB for high-volume time-series tables.
+    - split services (ingestion, engine, diagnosis) behind the API gateway as load grows.
+
+
+12. Future Enterprise / Self-Hosted Architecture
+------------------------------------------------
+  - Single-tenant self-hosted deployment so proprietary data never leaves the firm's network.
+  - Customer-owned data adapters for institutional market data and internal feeds.
+  - Bring-your-own AI endpoint (self-hosted or private model) for the diagnostic layer.
+  - SSO/SAML, fine-grained RBAC, configurable data retention, and exportable audit logs.
+  - Optional air-gapped mode with no external provider or AI calls (deterministic engine only).
+
+
+Architecture Principles
+------------------------
+  - Store metadata and summaries by default.
+  - Avoid unnecessary raw data storage.
+  - Allow hashing/summarization of sensitive data.
+  - Support customer-provided data.
+  - Provider adapters should be replaceable.
+  - No broker write actions in the early product.
+  - No trading execution.
+  - No investment advice.
+  - Deterministic evidence is the system of record; AI is a summary layer on top.

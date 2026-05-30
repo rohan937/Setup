@@ -1,0 +1,293 @@
+QuantFidelity — UI Design System
+================================
+
+Identity: institutional, dark, technical, calm, sharp, premium.
+Not childish. Not crypto-casino. Not generic startup pastel. No gradients-for-decoration,
+no playful illustrations, no emoji, no hype copy.
+
+
+1. Design Principles
+--------------------
+  - Evidence-first surface. The UI presents facts and scores; it never editorializes. Every score
+    and diagnosis links to its underlying evidence.
+  - Calm density. Quant users want information density without noise. Use whitespace and hierarchy
+    to keep dense data legible, not decoration.
+  - Deterministic before generated. Deterministic numbers (scores, deltas, attribution) are the
+    primary content; AI summaries are visually secondary and clearly labeled.
+  - Monospace for numbers and code. Numeric/tabular and code content uses a monospace face for
+    precise alignment and an engineering feel.
+  - Restraint with color. Color carries meaning (severity, score health) only — never used purely
+    for decoration. Default surface is neutral and dark.
+  - Honest states. Empty, loading, and degraded states are explicit and informative, never cute.
+  - Auditable. Anything shown can be traced to a source object (run, snapshot, fill, issue).
+
+
+2. Color Palette
+----------------
+Base (dark, neutral, slightly blue-cool):
+  --bg-900   #0B0E14   app background
+  --bg-800   #11161F   panel background
+  --bg-700   #161C27   raised card
+  --bg-600   #1E2633   hover / input
+  --border   #28303D   hairline borders
+  --border-strong #36404F
+
+Text:
+  --text-primary   #E6EAF0
+  --text-secondary #A4AEBE
+  --text-muted     #6B7686
+  --text-inverse   #0B0E14
+
+Accent (primary brand — deliberate, cool teal-blue, used sparingly):
+  --accent-500 #2D9CDB  (primary actions, active nav, links)
+  --accent-600 #2280BA  (hover)
+  --accent-300 #6FC2EE  (focus rings, subtle highlights)
+
+Severity / status (semantic, the only "loud" colors):
+  critical  #E5484D   (red)
+  high      #F2994A   (orange)
+  medium    #F2C94C   (amber)
+  low       #56CCF2   (cyan-info)
+  info      #7E8AA0   (neutral gray-blue)
+  success   #27AE60   (green — healthy / passing)
+  neutral   #6B7686
+
+Score gradient (for score dials/bars; discrete bands, not rainbow):
+  0-39   critical red    #E5484D
+  40-59  high orange     #F2994A
+  60-74  amber           #F2C94C
+  75-89  success green   #27AE60
+  90-100 strong green    #1E9E57
+
+Rule: never use accent-blue to indicate health/severity; severity always uses the semantic scale.
+
+
+3. Typography
+-------------
+  UI sans:    Inter (fallback: system-ui, -apple-system, Segoe UI, sans-serif).
+  Monospace:  JetBrains Mono (fallback: ui-monospace, SFMono-Regular, Menlo, monospace).
+              Used for: all numbers in tables, scores, bps, code/SDK snippets, IDs, hashes.
+
+Type scale (rem):
+  display  2.0   / 700 / -0.02em   page hero score
+  h1       1.5   / 600
+  h2       1.25  / 600
+  h3       1.0625/ 600
+  body     0.9375/ 400 / 1.55 line-height
+  small    0.8125/ 400
+  mono-num 0.875 / 500 (tabular-nums)
+  caption  0.75  / 500 / uppercase / 0.04em tracking  (labels, badges)
+
+
+4. Spacing
+----------
+  4px base grid. Tokens: 0,4,8,12,16,20,24,32,40,48,64.
+  Card padding: 20-24. Section gap: 24-32. Inline gap: 8-12.
+  Page max content width: 1440; dashboard uses a 12-column grid, 24px gutters.
+  Border radius: 8 (cards), 6 (inputs/badges), 4 (chips). Hairline borders, no heavy shadows.
+  Elevation: subtle 1px border + very low-opacity shadow only on raised/hover surfaces.
+
+
+5. Cards
+--------
+  Surface --bg-700, 1px --border, radius 8, padding 20-24.
+  Structure: caption label (uppercase, --text-muted) -> primary value (mono, large) -> sub-line
+  (delta or context, --text-secondary). Optional top-right status badge.
+  Score cards add a thin score bar / mini-dial colored by the score band.
+  Cards are clickable when they drill into evidence; show a subtle hover (--bg-600) + accent edge.
+
+
+6. Tables
+---------
+  Dense, monospace numerics, right-aligned numbers, left-aligned labels.
+  Row height 36-40; zebra via very subtle row tint, not lines. Sticky header (--bg-800, caption
+  style). Column sort indicators. Severity shown as a leading colored dot + badge.
+  Numeric deltas colored by direction with sign (+/−) and neutral when zero.
+  Hover highlights the full row; click opens the row's source object.
+
+
+7. Charts
+---------
+  Minimal, technical, dark-theme. Thin lines (1.5px), no drop shadows, no 3D, no area fills unless
+  meaningful. Gridlines at very low opacity. Axis labels in caption style.
+  Line color: accent for primary series; secondary series in --text-secondary; semantic colors for
+  thresholds/breaches. Tooltips are compact mono cards.
+  Common charts: equity/PnL curve, score-over-time, attribution waterfall (research->live buckets),
+  slippage distribution, fill-rate bars, parameter-vs-metric scatter for overfitting.
+
+
+8. Badges
+---------
+  Pill, radius 6, caption type, 2-8px padding. Filled-subtle: tinted background (~12% of semantic
+  color) + solid text in the semantic color + 1px border at ~30%.
+  Used for: severity, run kind (research/paper/live), order status, alert status, score band.
+
+
+9. Severity Colors (mapping)
+----------------------------
+  critical -> #E5484D    high -> #F2994A    medium -> #F2C94C
+  low      -> #56CCF2    info -> #7E8AA0
+  Always pair color with a text label and an icon/dot — never color alone (accessibility).
+
+
+10. Score Components
+--------------------
+  ScoreDial: circular gauge 0-100, band-colored arc, mono center number, caption label below.
+  ScoreBar: horizontal bar with band color and threshold tick; used in dense lists.
+  ScoreChip: compact band-colored chip with number; used inline in tables.
+  ScoreTrend: small sparkline of score over time with last value highlighted.
+  Each score component links to the reliability_score record and its inputs/weights.
+
+
+11. Timeline Design
+-------------------
+  Vertical timeline, newest at top. Each node: a colored dot (by event domain/severity),
+  timestamp (mono, --text-muted), a one-line summary, and a type badge.
+  Node types map to audit_timeline_events: strategy_change, backtest_run, dataset_snapshot,
+  data issue, risk/borrow block, drift recompute, diagnosis, alert.
+  Clicking a node opens the underlying object. Changes that moved metrics show an inline delta.
+  Grouping by day with subtle date dividers.
+
+
+12. Dashboard Layout
+--------------------
+  Left rail nav (collapsible) + top bar (org/project switcher, search, alerts bell, user menu).
+  Main: 12-col grid.
+    Row 1: Hero — Overall Reliability ScoreDial + four score cards (Data Health, Backtest Trust,
+           Live Drift, Execution Quality).
+    Row 2: Strategy status cards grid (per-strategy mini reliability).
+    Row 3: two columns — left: recent timeline + latest diagnosis; right: active alerts +
+           suggested checks.
+  Everything above the fold is deterministic; the AI diagnosis panel is clearly labeled and
+  visually secondary.
+
+
+13. Navigation Structure
+------------------------
+  Org / Project switcher (top).
+  Primary nav:
+    Dashboard
+    Strategies            (-> Strategy Reliability Dashboard -> Timeline / Run Comparison)
+    Data Health           (-> Dataset Snapshot Detail)
+    Backtests             (-> Backtest Audit)
+    Live & Drift          (-> Execution Attribution)
+    Alerts
+    Reports
+    Settings              (-> API Keys, SDK Setup, Providers, Members)
+
+
+14. Product Screens
+-------------------
+  Login
+  Organization Dashboard
+  Strategy List
+  Strategy Reliability Dashboard
+  Strategy Timeline
+  Run Comparison
+  Data Health
+  Dataset Snapshot Detail
+  Backtest Audit
+  Live Drift
+  Execution Attribution
+  Alerts
+  Reports
+  Settings
+  API Keys
+  SDK Setup
+
+
+15. Empty States
+----------------
+  Centered, restrained: a thin-line icon, a one-line explanation, and a single primary action.
+  No mascots, no jokes. Explain what the screen will show once data arrives and how to send it
+  (usually "Connect the SDK" or "Upload a dataset snapshot").
+
+
+16. Loading States
+------------------
+  Skeleton blocks matching final layout (cards/rows), --bg-600 shimmer at low contrast.
+  Scores show a muted dial placeholder. Never a spinner-only screen for primary content.
+
+
+17. Alert States
+----------------
+  Inline alert banners use the severity color as a left border + tinted background; title in
+  semantic color, body in --text-secondary, with "View evidence" and status actions
+  (Acknowledge / Resolve). Alert list groups by status then severity.
+
+
+18. AI Diagnosis Presentation
+-----------------------------
+  A distinct panel labeled "AI Diagnosis — summary of evidence" with a small "AI" badge.
+  Visually secondary to the deterministic scores. Each claim shows linked evidence chips
+  ("Backtest issue: lookahead", "Slippage 18 bps vs 5 bps"). Hedged language preserved verbatim.
+  A persistent footnote: "Summarizes detected evidence. Not investment advice. Review evidence
+  before acting." If evidence is insufficient, the panel says so instead of a verdict.
+
+
+19. Code / SDK Snippet Styling
+------------------------------
+  Monospace, --bg-800 surface, 1px --border, radius 8, 16px padding. Subtle syntax highlighting
+  (keywords in accent-300, strings in success, comments in --text-muted). Copy button top-right.
+  Inline code uses --bg-600 chips. Keep snippets minimal and runnable.
+
+
+==============================================================================
+Sample UI Copy
+==============================================================================
+
+Dashboard hero
+  Title:    "Strategy Reliability"
+  Subtitle: "Where alpha breaks between data, backtests, production, and execution."
+  Under score dial: "Overall Reliability — computed from data health, backtest trust, live drift,
+                     and execution quality."
+
+Empty strategy state
+  "No strategies yet."
+  "Once you log a strategy run from the SDK or API, its lineage, scores, and diagnosis appear here."
+  Action: "Connect the SDK"
+
+Backtest warning
+  "Backtest Trust: 48 / 100 — Medium concern."
+  "This backtest may overstate performance. Detected: same-close signal/execution, ignored
+   slippage, and a high Sharpe driven by 19 trades. Review the flagged assumptions before
+   deploying capital."
+
+Live drift warning
+  "Live Drift detected — research and live diverged."
+  "Target/executed portfolio overlap is 64%. A material share of intended exposure did not reach
+   the market. See execution attribution for the breakdown."
+
+Data integrity alert
+  "Data integrity issue — historical revision detected."
+  "142 historical values in 'US equities OHLCV daily' changed between the 05-12 and 05-28
+   snapshots. Strategies using this dataset may need re-validation."
+
+Execution slippage alert
+  "Execution slippage exceeded assumption."
+  "Observed cost 18 bps vs assumed 5 bps (3.6x). Fill rate 72%. This likely contributed to the
+   live shortfall — review before attributing the gap to signal decay."
+
+AI diagnostic box
+  "AI Diagnosis — summary of evidence
+   Performance degradation appears linked to a shorter lookback, higher turnover, and
+   higher-than-assumed execution costs. Live/paper execution filled only 72% of intended quantity,
+   and observed costs were 3.6x the research assumption. This appears more like implementation
+   drift and cost-realism failure than pure signal decay.
+   Summarizes detected evidence. Not investment advice. Review evidence before acting."
+
+SDK setup instructions
+  "Connect QuantFidelity
+   1. Install:  pip install quantfidelity
+   2. Initialize in your research or production code:
+
+        import quantfidelity as qf
+        qf.init(api_key='qf_live_...', project='alpha-research')
+
+   3. Log a run:
+
+        qf.log_strategy_run(strategy='AAPL Mean Reversion', version='v1',
+                            metrics={'sharpe': 1.6}, run_kind='backtest')
+        qf.flush()
+
+   Your strategy's lineage, scores, and diagnosis will appear on the dashboard within seconds."

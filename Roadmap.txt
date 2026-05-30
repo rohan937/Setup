@@ -1,0 +1,196 @@
+QuantFidelity — Product Roadmap (strategy-level)
+================================================
+
+Scope note: This is a high-level, strategy-level roadmap. It intentionally does NOT define
+coding milestones (no M1/M2/M3) and does NOT prescribe implementation tasks. It frames phases,
+objectives, what "done" means, what NOT to build yet, cost control, and risks.
+
+Guiding constraints across all phases:
+  - Local-first, minimal-cost early architecture; institutional-grade direction.
+  - Deterministic evidence before AI; no broker write actions; no investment advice.
+  - Minimal data storage by default; bring-your-own-data compatible.
+
+
+Phase 0 — Planning and Foundation
+---------------------------------
+  Objective: Establish the product thesis, specs, schema, and design language (this document set).
+  Core deliverables: Vision, ProductSpec, Architecture, DatabaseSchema, UIDesignSystem, Roadmap,
+    MVPBuildPlan.
+  Done when: the seven planning documents are coherent, consistent, and aligned on the
+    "where alpha breaks" thesis and the non-negotiable principles.
+  Not yet: any code, scaffolding, dependencies, or milestones.
+  Cost control: documentation only; no services.
+  Risks: scope creep into trading/advice territory; over-designing before validation.
+
+
+Phase 1 — Local Product Foundation
+----------------------------------
+  Objective: A runnable local skeleton: FastAPI backend, PostgreSQL, React/TS frontend, the
+    normalized event schema, org/project/auth basics, and the ingestion endpoint shape.
+  Core deliverables: local dev environment; event model + core tables; API-key auth; a single
+    org/project; health-check ingestion path.
+  Done when: an event can be posted to the API, normalized, stored, and read back in the UI.
+  Not yet: real checks, scoring, AI, or providers.
+  Cost control: docker-compose locally; no paid hosting or services.
+  Risks: premature service splitting; schema churn — keep the event model stable early.
+
+
+Phase 2 — Strategy Lineage MVP
+------------------------------
+  Objective: Capture strategies, versions, and changes; show a lineage timeline with metric deltas.
+  Core deliverables: strategy/version/change ingestion; deterministic version diffing; lineage
+    timeline UI; "what changed and how performance moved" view.
+  Done when: a user can see, for a strategy, an ordered list of changes and the metric movement
+    after each.
+  Not yet: data checks, backtest audit, drift.
+  Cost control: deterministic, local; no external calls.
+  Risks: under-capturing config fields (must match the lineage field list in ProductSpec).
+
+
+Phase 3 — Data Integrity MVP
+----------------------------
+  Objective: Ingest dataset snapshots and run the core data quality checks with severities and
+    evidence.
+  Core deliverables: CSV/JSON snapshot upload; the priority checks (missing/duplicate timestamps,
+    nonpositive/stale prices, OHLC inconsistency, schema drift, return jumps, revision detection
+    via fingerprints); Data Health Score; Data Health + Snapshot Detail screens.
+  Done when: uploading two snapshots of a dataset surfaces issues (including a historical revision)
+    with evidence and a score.
+  Not yet: Parquet, fundamentals revisions, live feed health at scale.
+  Cost control: in-process checks; bounded evidence samples; fingerprints over raw retention.
+  Risks: false positives eroding trust — tune thresholds and always attach evidence.
+
+
+Phase 4 — Backtest Reality Check MVP
+------------------------------------
+  Objective: Audit a backtest's assumptions and metrics; produce a Backtest Trust Score.
+  Core deliverables: backtest run + assumptions + metrics ingestion; the priority detectors
+    (same-close exec, ignored slippage/txn/borrow cost, high-Sharpe-low-trades, regime
+    concentration, untradeable liquidity); Trust Score; Backtest Audit screen; adjusted estimate
+    where computable.
+  Done when: a believable vs misleading backtest receive clearly different, evidenced Trust Scores.
+  Not yet: deep statistical overfitting suites, capacity modeling at scale.
+  Cost control: deterministic rules over provided metrics/assumptions; no heavy compute.
+  Risks: overclaiming bias detection — be conservative and evidence-bound.
+
+
+Phase 5 — Live Drift MVP
+------------------------
+  Objective: Reconcile intended vs executed; produce execution attribution and a Live Drift Score.
+  Core deliverables: intended/production orders, risk/borrow blocks, liquidity clips, fills, live
+    P&L ingestion; the attribution decomposition (risk/borrow/liquidity/slippage/partial-fill +
+    residual); fill rate, slippage bps, implementation shortfall, overlaps; Live Drift +
+    Execution Attribution screens.
+  Done when: a research-to-live gap is decomposed into named buckets with a residual, not a guess.
+  Not yet: multi-venue microstructure modeling; real broker connectivity (never write actions).
+  Cost control: deterministic reconciliation; paper/mock data acceptable.
+  Risks: attribution that doesn't sum/close — the residual must be explicit and honest.
+
+
+Phase 6 — Unified Reliability Dashboard
+---------------------------------------
+  Objective: Roll the four scores + lineage health into an Overall Reliability Score and one
+    dashboard.
+  Core deliverables: Overall score (transparent weights); hero + score cards; strategy status
+    grid; recent timeline; suggested checks; latest-diagnosis placeholder.
+  Done when: a single screen communicates a strategy's reliability and where it is weakest.
+  Not yet: AI diagnosis text (placeholder until Phase 9), full reporting.
+  Cost control: read-only over stored scores; no new compute.
+  Risks: opaque scoring — expose inputs and weights for every score.
+
+
+Phase 7 — Python SDK
+--------------------
+  Objective: Ship the SDK that instruments research/production code over the REST API.
+  Core deliverables: qf.init + the full logging surface (runs, changes, backtests, datasets,
+    universes, signals, orders, blocks, fills, pnl, live runs), compare_runs, flush; local
+    hashing/summarization; non-blocking, retrying client; batch ingestion.
+  Done when: the demo strategy can be fully logged from Python with no raw proprietary data leaving
+    the firm (summaries/fingerprints by default).
+  Not yet: language SDKs beyond Python; streaming ingestion.
+  Cost control: thin client over existing API; no new infra.
+  Risks: SDK errors disrupting host trading/research code — must fail safe and silent.
+
+
+Phase 8 — Live Market Data Provider Layer
+-----------------------------------------
+  Objective: Replaceable provider abstraction for optional low-cost live/paper tracking + feed
+    health.
+  Core deliverables: provider interface; mock provider + one low-cost public adapter; subscriptions;
+    sampled live snapshots feeding feed-health checks.
+  Done when: a symbol (e.g., AAPL) can be tracked via mock or low-cost provider and feed health is
+    visible, with adapters swappable.
+  Not yet: institutional feeds (customer-supplied later); tick data; redistribution.
+  Cost control: mock first; low-cost public API only; bounded retention; no paid institutional data.
+  Risks: dependence on a single external API — keep the adapter boundary strict.
+
+
+Phase 9 — AI Diagnostics
+------------------------
+  Objective: Summarize deterministic evidence into a plain-language reliability diagnosis under
+    strict constraints.
+  Core deliverables: evidence bundle assembly; constrained AI summary with per-claim evidence
+    refs; validation pass enforcing the hard rules (no invented causes, no advice, no unevidenced
+    accusations, hedged language); diagnosis panel in the dashboard.
+  Done when: the demo scenario yields a diagnosis matching the expected wording, every claim
+    traceable to evidence.
+  Not yet: autonomous actions; root-cause claims beyond evidence; fine-tuned models.
+  Cost control: provider-abstracted AI; summaries only; bring-your-own endpoint supported.
+  Risks: hallucinated causes — the validation pass and evidence-binding are mandatory gates.
+
+
+Phase 10 — Reports / Alerts / Audit Trail
+-----------------------------------------
+  Objective: Operationalize monitoring and produce defensible records.
+  Core deliverables: threshold-based alerts with statuses + suggested checks; audit_timeline_events
+    projection; per-strategy/project reports with export.
+  Done when: a score breach raises an actionable alert and a strategy's audit trail/report is
+    exportable.
+  Not yet: complex routing/integrations (email/Slack/webhook) beyond a minimal channel.
+  Cost control: in-app first; defer external integrations.
+  Risks: alert fatigue — sensible defaults, dedup, and severity gating.
+
+
+Phase 11 — Security and Enterprise Readiness
+--------------------------------------------
+  Objective: Make the product safe for institutional and self-hosted use.
+  Core deliverables: RBAC, SSO/SAML direction, configurable retention, encryption at rest, secret
+    management, self-hosted deployment path, air-gapped (deterministic-only) option.
+  Done when: a firm can run QuantFidelity with their proprietary data staying inside their network.
+  Not yet: formal certifications (pursue when customers require).
+  Cost control: build on standard managed primitives; avoid bespoke security infra.
+  Risks: security debt accruing if deferred too long — bake in org isolation and minimal storage
+    from Phase 1.
+
+
+Phase 12 — Early Customer Pilot Readiness
+-----------------------------------------
+  Objective: Be ready to run a real pilot with a small/mid quant fund.
+  Core deliverables: onboarding flow, SDK quickstart, stable ingestion, dependable scores and
+    diagnoses, basic support/observability of the product itself.
+  Done when: a design-partner team can instrument a real strategy and get a useful, defensible
+    diagnosis without hand-holding.
+  Not yet: scale features beyond pilot needs; broad GA marketing.
+  Cost control: one or two design partners; tight scope; no premature scaling spend.
+  Risks: pilot expectations exceeding deterministic evidence — set honest scope up front.
+
+
+Directional Horizons
+--------------------
+30-day direction:
+  Land the foundation and lineage: runnable local stack, stable event schema, Strategy Lineage MVP,
+  and the first deterministic run comparison. Prove "what changed and how performance moved."
+
+90-day direction:
+  Deterministic core complete: Data Integrity, Backtest Reality Check, and Live Drift MVPs feeding
+  a Unified Reliability Dashboard, with the Python SDK able to log the full lifecycle. The product
+  can show where alpha breaks using deterministic evidence — without AI.
+
+6-month direction:
+  Provider layer + AI Diagnostics + Alerts/Reports/Audit trail. The product produces evidence-backed
+  plain-language diagnoses and operational monitoring. Begin security/enterprise hardening.
+
+12-month direction:
+  Enterprise/self-hosted readiness and an early customer pilot with a design-partner quant fund.
+  Establish QuantFidelity as the emerging Quant Strategy Observability layer, with bring-your-own
+  data and bring-your-own AI endpoint.

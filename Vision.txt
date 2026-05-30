@@ -1,0 +1,181 @@
+QuantFidelity — Vision
+=======================
+
+One-line pitch
+--------------
+QuantFidelity shows where alpha breaks between data, backtests, production, and execution.
+
+
+What QuantFidelity Is
+---------------------
+QuantFidelity is quant strategy reliability and observability infrastructure for systematic
+trading teams. It is a single reliability layer that tracks the full lifecycle of a strategy:
+from raw data, through research and backtesting, into production, through execution, and out
+to live P&L.
+
+It records what a strategy was, what changed, what data it consumed, what the backtest assumed,
+what was intended in production, what was actually executed, and what finally happened in live
+trading. It then deterministically compares these stages and explains where the alpha leaked.
+
+QuantFidelity is the control plane that answers one question with evidence:
+"Why did this strategy stop behaving the way research said it would?"
+
+
+What QuantFidelity Is NOT
+-------------------------
+- It is NOT a stock tracker or market dashboard.
+- It is NOT a trading bot or execution engine.
+- It is NOT a backtesting toy or a "build-a-strategy" sandbox.
+- It is NOT a generic AI stock-picking product.
+- It does NOT place orders, route trades, or take broker write actions.
+- It does NOT give buy/sell/hold advice.
+
+QuantFidelity is reliability infrastructure for systematic trading — closer to an observability
+and audit platform than to anything that touches markets directly.
+
+
+Why The Problem Matters
+-----------------------
+Quant firms spend enormous effort finding alpha. The hard, expensive, prestigious work is in
+research: signal discovery, feature engineering, portfolio construction, and backtesting. But
+alpha routinely breaks on the path from research to live trading, and when it breaks the cause
+is rarely obvious.
+
+A strategy that showed Sharpe 1.6 in research can deliver 0.4 live. The team is then left
+asking: did the signal decay? Was the backtest overfit? Was the data revised underneath us?
+Did production drift away from the research portfolio? Did risk limits block the best trades?
+Was the borrow unavailable? Did execution slippage eat the edge? Did the market regime change?
+
+Today this post-mortem is manual, slow, political, and inconclusive. It is done in notebooks,
+spreadsheets, and Slack threads, weeks after capital was already lost. The cost is not just the
+drawdown — it is the inability to distinguish a dead strategy from a fixable implementation
+problem, which leads firms to kill good alpha and keep deploying broken alpha.
+
+
+Why Quant Firms Need This Now
+-----------------------------
+- Strategy counts are rising. Teams run dozens to hundreds of strategies; manual forensics do
+  not scale.
+- Data dependencies are exploding. Alternative data, vendor revisions, and corporate actions
+  create silent failure modes that backtests never see.
+- The research-to-production gap is widening. Research runs in clean notebooks; production runs
+  under risk limits, borrow constraints, and real execution. Nobody owns the reconciliation.
+- Capital is less patient. Allocators and risk committees demand defensible explanations for
+  performance, not narratives.
+- The tooling does not exist. Software engineering solved this a decade ago with observability,
+  error tracking, and version control. Systematic trading has no equivalent reliability layer.
+
+
+Why Existing Tools Are Not Enough
+---------------------------------
+- Backtesting frameworks prove a strategy works in theory; they do not audit whether the
+  backtest itself is believable, and they go silent the moment the strategy leaves research.
+- Trade-cost analysis (TCA) tools measure execution in isolation; they do not connect slippage
+  back to research assumptions or strategy changes.
+- Risk systems enforce limits; they do not attribute lost alpha to the blocks they imposed.
+- Data quality tools validate pipelines; they do not tie a data revision to a strategy's P&L
+  swing.
+- BI dashboards visualize P&L; they do not explain it.
+- Generic ML/experiment trackers version models; they do not understand orders, fills, borrow,
+  or market microstructure.
+
+Each tool sees one stage. No tool sees the whole lifecycle and reconciles the stages against
+each other. QuantFidelity is built specifically to be that connective, reconciling layer.
+
+
+The Core Thesis: Where Alpha Breaks
+-----------------------------------
+Alpha breaks somewhere between data, backtests, production, and execution. The breakage falls
+into a bounded set of causes:
+
+  1. Signal decay        — the edge genuinely weakened in the market.
+  2. Data issues         — bad, stale, revised, missing, or duplicated data.
+  3. Backtest flaws      — lookahead, survivorship, unrealistic fills, overfitting.
+  4. Production drift     — the live portfolio diverged from the research intent.
+  5. Risk constraints    — risk limits blocked or resized the intended trades.
+  6. Borrow unavailability — shorts could not be sourced or were recalled.
+  7. Execution slippage  — fills were worse than assumed; costs higher than modeled.
+  8. Market regime change — the environment the strategy was fit to no longer holds.
+
+QuantFidelity's job is to deterministically gather evidence for each candidate cause, score it,
+and tell the team which one (or which combination) most likely explains the performance change —
+with the underlying evidence attached, not a guess.
+
+
+The Long-Term Category: Quant Strategy Observability
+----------------------------------------------------
+QuantFidelity is defining a new category: Quant Strategy Observability. Just as software teams
+adopted application observability and error tracking as non-optional infrastructure, systematic
+trading teams will adopt strategy observability as the standard layer between research and
+capital.
+
+The category is not "analytics" and not "trading." It is reliability: continuous, evidence-based
+assurance that a strategy in production still matches the strategy that was researched, and clear
+attribution when it does not.
+
+
+End-State Vision
+----------------
+In its mature form, QuantFidelity is the reliability backbone of a systematic trading firm:
+
+- Every strategy run, backtest, dataset, intended order, fill, and P&L snapshot flows through a
+  normalized event schema via a lightweight Python SDK and REST ingestion.
+- Every strategy has a living lineage: what changed, when, and how performance moved afterward.
+- Every backtest carries a Trust Score with the specific biases and unrealistic assumptions it
+  contains.
+- Every live strategy carries a Drift Score and full execution attribution: how much alpha was
+  lost to risk blocks, borrow, liquidity clipping, slippage, and partial fills, versus genuine
+  signal decay.
+- A single Reliability Dashboard rolls these into one Overall Reliability Score per strategy,
+  with a plain-language diagnosis backed by evidence.
+- Firms bring their own institutional data; QuantFidelity never requires owning the market data.
+- Risk and allocator teams use the same audit trail to perform manager and strategy diligence.
+
+The end state is institutional-grade, self-hostable, and trusted enough that a risk committee
+will accept a QuantFidelity diagnosis as the system of record for "what happened to this strategy."
+
+
+What QuantFidelity Should Never Become
+--------------------------------------
+- A trading system, order router, or anything that takes broker write actions.
+- An investment advisor or signal vendor that tells anyone what to buy or sell.
+- A black-box "AI says your strategy is bad" oracle with no traceable evidence.
+- A market-data reseller whose value depends on owning proprietary feeds.
+- A hype-driven "AI-powered insights" dashboard with generic, unfalsifiable claims.
+- A heavy data lake that hoards every client's raw proprietary signals and returns by default.
+
+
+Non-negotiable Product Principles
+---------------------------------
+1. Evidence before AI.
+   No diagnosis is presented without underlying, inspectable evidence. AI summarizes evidence;
+   it never substitutes for it.
+
+2. Deterministic lineage before generated explanations.
+   Diffing, scoring, and lineage are computed deterministically and reproducibly first. AI
+   explanation is a presentation layer on top of facts that already exist.
+
+3. No broker write actions.
+   QuantFidelity never places, modifies, routes, or cancels real orders. It observes and
+   reconciles; it does not trade.
+
+4. No investment advice.
+   QuantFidelity never recommends buying, selling, or holding any instrument. It explains
+   reliability, not opportunity.
+
+5. Minimal data storage by default.
+   Store metadata, summaries, hashes, and fingerprints by default. Raw data ingestion is opt-in
+   and bounded. Sensitive content can be hashed or summarized rather than retained.
+
+6. Bring-your-own-data compatible.
+   The product must work with customer-provided datasets and feeds. Provider adapters are
+   replaceable. Value never depends on QuantFidelity owning institutional market data.
+
+7. Built for serious quant workflows.
+   Objects, language, and UX speak the real vocabulary of systematic trading: lineage,
+   assumptions, intended vs executed, implementation shortfall, borrow, slippage, regime.
+   No childish SaaS framing.
+
+8. Low-cost early architecture, institutional-grade direction.
+   Start local-first and cheap (FastAPI, PostgreSQL, mock/low-cost data providers). Architect
+   from day one for self-hosting, enterprise security, and institutional scale.

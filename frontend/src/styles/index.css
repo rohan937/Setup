@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg-900 text-text-primary font-sans antialiased;
+  }
+
+  /* Caption / label style used for uppercase tracked labels. */
+  .caption {
+    @apply text-xs font-medium uppercase tracking-wide text-text-muted;
+  }
+
+  /* Tabular monospace numerics. */
+  .mono-num {
+    @apply font-mono tabular-nums;
+  }
+}

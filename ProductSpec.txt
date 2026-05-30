@@ -1,0 +1,402 @@
+QuantFidelity — Product Specification
+=====================================
+
+Pitch: QuantFidelity shows where alpha breaks between data, backtests, production, and execution.
+
+
+1. Product Overview
+-------------------
+QuantFidelity is quant strategy reliability and observability infrastructure. It ingests the
+full lifecycle of a systematic strategy — data, research, backtests, assumptions, intended
+orders, risk and borrow blocks, execution fills, and live P&L — into a normalized event schema.
+It then deterministically diffs runs, scores reliability across four dimensions (data, backtest,
+drift, execution), and produces an evidence-backed diagnosis of why performance changed.
+
+The product is delivered as:
+  - A Python SDK that instruments existing research and production code.
+  - A REST ingestion API.
+  - A web application (Reliability Dashboard, lineage, audits, drift, alerts, reports).
+  - A replaceable live market data provider layer (mock/low-cost first, institutional later).
+  - An AI diagnostic layer that summarizes deterministic evidence into plain language.
+
+
+2. Primary Users
+----------------
+- Quant researchers — track strategy lineage, validate backtests, understand why a live result
+  diverged from research.
+- Systematic PMs / strategy owners — monitor reliability of deployed strategies, triage decay
+  vs implementation problems.
+- Execution / trading desk quants — attribute slippage and implementation shortfall back to
+  strategy and assumptions.
+- Risk and portfolio teams — see how much alpha their constraints cost, audit strategy behavior.
+- Quant infrastructure / platform engineers — operate the SDK, ingestion, and self-hosted
+  deployment.
+- (Later) Allocators / fund-of-funds — perform quant manager and strategy diligence using the
+  audit trail.
+
+Target firms: small and mid-sized quant funds, systematic hedge funds, crypto quant funds, prop
+trading firms, systematic asset managers, and quant research and risk teams at investment firms.
+
+
+3. Core User Problems
+---------------------
+- "Research showed Sharpe 1.6, live is 0.4, and I cannot prove why."
+- "I cannot tell signal decay apart from an implementation or cost problem."
+- "A data vendor revised history and I do not know which strategies were affected."
+- "My backtest looks great but I suspect it is overfit or has lookahead — I cannot quantify it."
+- "Production drifted from the research portfolio and nobody noticed for weeks."
+- "Risk and borrow blocked trades; I cannot quantify the alpha those blocks cost."
+- "Performance post-mortems take weeks of manual notebook forensics and end inconclusively."
+- "I have no defensible, auditable record to give the risk committee or an allocator."
+
+
+4. Core Workflows
+-----------------
+W1. Instrument and ingest.
+    Developer calls qf.init() and logs strategy runs, changes, backtests, datasets, orders,
+    fills, and live P&L from research and production code, or posts events to the REST API.
+
+W2. Track lineage.
+    Every strategy/code/config/parameter/dataset/universe/assumption change is recorded as a
+    versioned event. The user sees a timeline of what changed and how metrics moved afterward.
+
+W3. Compare runs.
+    The user selects two runs (research vs research, or research vs live) and receives a
+    deterministic diff: parameter deltas, assumption deltas, universe overlap, metric deltas.
+
+W4. Validate data.
+    A dataset snapshot is uploaded or ingested; the Data Integrity Engine runs checks and
+    surfaces issues with severity and evidence.
+
+W5. Audit a backtest.
+    A backtest run plus its assumptions are evaluated; the Backtest Reality Check produces a
+    Trust Score, flagged biases, and (where possible) a realistic adjusted performance estimate.
+
+W6. Reconcile live vs research.
+    Intended orders, risk/borrow blocks, liquidity clips, fills, and live P&L are reconciled to
+    produce execution attribution and a Drift Score.
+
+W7. Diagnose.
+    The Reliability Engine combines the four scores plus lineage into an Overall Reliability
+    Score and a candidate-cause ranking. The AI Diagnostic Layer renders this as plain language.
+
+W8. Alert and report.
+    Threshold breaches and new high-severity issues raise alerts; periodic reports and an audit
+    trail are exportable.
+
+
+5. Main Objects / Entities
+--------------------------
+Organization, User, Project, API Key, SDK Ingestion Batch.
+
+Strategy, Strategy Version, Strategy Run, Strategy Change.
+Dataset, Dataset Snapshot, Data Quality Issue.
+Universe, Universe Snapshot, Signal, Signal Snapshot.
+Backtest Run, Backtest Assumption, Backtest Metric, Backtest Issue.
+Intended Order, Production Order, Risk Block, Borrow Block, Liquidity Clip,
+Execution Fill, Partial Fill, Rejected Order, Canceled Order.
+Live Run, Live P&L Snapshot.
+Reliability Score, Reliability Diagnosis, Alert, Audit Timeline Event.
+Market Data Provider, Live Symbol Subscription, Live Market Snapshot.
+
+(Full field and relationship detail is in DatabaseSchema.txt.)
+
+
+6. Core Modules
+---------------
+A. Strategy Lineage
+B. Data Integrity Engine
+C. Backtest Reality Check
+D. Live Drift and Execution Attribution
+E. Unified Strategy Reliability Dashboard
+F. Python SDK
+G. AI Diagnostic Layer
+H. Live Market Data Provider Layer
+I. Alerts, Reports, and Audit Trail
+J. Security, Privacy, and Enterprise Readiness
+
+
+7. Feature Details
+==================
+
+A. STRATEGY LINEAGE
+-------------------
+Purpose: Track every strategy/code/config/parameter/dataset/universe/assumption change and tie
+each change to the performance that followed it.
+
+Tracked fields per version/run:
+  strategy name, strategy ID, strategy version, Git commit hash, branch name, code path/module,
+  signal name, signal formula description, parameters, universe, dataset version, rebalance
+  frequency, transaction cost assumption, fill model, borrow assumption, risk constraints,
+  portfolio construction method, optimizer settings, deployment environment, notes, run
+  timestamp, performance metrics.
+
+Behavior:
+  - Each ingested run captures the full configuration fingerprint above.
+  - Changes are derived deterministically by diffing consecutive versions (no AI required).
+  - A lineage timeline shows: change -> new metrics -> metric delta.
+  - Lineage health flags risky patterns (e.g., many parameter changes with no out-of-sample
+    validation; dataset version changed without re-audit).
+
+Must answer: "What changed in the strategy, and how did performance move afterward?"
+
+Inputs:  strategy_change, strategy_version, strategy_run events (SDK or API).
+Outputs: lineage timeline, per-change metric deltas, lineage health flags.
+
+
+B. DATA INTEGRITY ENGINE
+------------------------
+Purpose: Detect bad, stale, revised, missing, duplicated, or suspicious market/research data
+before it silently corrupts a strategy.
+
+Supported inputs:
+  CSV upload, JSON upload, Parquet (later), API-ingested OHLCV data, customer-provided datasets,
+  live feed health monitoring where feeds are used.
+
+Checks:
+  - missing timestamps
+  - duplicate timestamps
+  - stale prices (unchanged across periods that should move)
+  - zero or negative prices
+  - suspicious return jumps (statistical outliers vs history)
+  - missing OHLCV fields
+  - inconsistent OHLC relationships (e.g., high < low, close outside [low, high])
+  - volume anomalies (spikes, zeros where volume expected)
+  - schema drift (added/removed columns)
+  - column type changes
+  - symbol coverage changes (symbols appearing/disappearing between snapshots)
+  - historical value revisions (a prior value changed between snapshots)
+  - missing delisted symbols when delisting metadata exists
+  - timezone issues (inconsistent or shifted timestamps)
+  - split / dividend / corporate-action issues when those fields exist
+  - fundamental field revisions when fundamentals are provided
+
+Outputs:
+  Per-snapshot list of data_quality_issues, each with type, severity, affected symbols/columns,
+  affected time range, and evidence (sample rows, counts, statistics). Feeds the Data Health
+  Score. Revisions are detected by comparing snapshot fingerprints over time.
+
+Data minimization: store check results, summary statistics, and fingerprints by default; raw
+rows retained only as bounded evidence samples or hashes when configured.
+
+
+C. BACKTEST REALITY CHECK
+-------------------------
+Purpose: Audit whether a backtest is believable or misleading.
+
+Must detect:
+  - lookahead bias (signal uses information not available at decision time)
+  - survivorship bias (universe excludes delisted/dead names)
+  - unrealistic fills
+  - same-close signal/execution risk (signal and fill on the same close)
+  - ignored slippage
+  - ignored transaction costs
+  - ignored borrow costs
+  - parameter overfitting (excessive tuning, fragile parameter surface)
+  - regime concentration (returns driven by a narrow time window/regime)
+  - high Sharpe with too few trades (statistically unreliable)
+  - untradeable liquidity assumptions (orders large vs available volume)
+  - capacity issues (strategy does not scale to stated AUM)
+
+Outputs:
+  - Backtest Trust Score (0-100).
+  - Per-issue severity (info / low / medium / high / critical).
+  - Evidence for each issue (the assumption, metric, or pattern that triggered it).
+  - Plain-language explanation.
+  - Suggested checks (e.g., "re-run with delistings included", "add 10 bps slippage").
+  - Adjusted / realistic performance estimate where the data supports a recomputation.
+
+Inputs:  backtest_run, backtest_assumption, backtest_metric, linked dataset/universe snapshots.
+Outputs: backtest_issues, Backtest Trust Score, adjusted estimate.
+
+
+D. LIVE DRIFT AND EXECUTION ATTRIBUTION
+---------------------------------------
+Purpose: Compare research expectation with live trading reality, and attribute every basis point
+of difference to a specific, evidenced cause.
+
+Must compare portfolios across stages:
+  research-intended portfolio -> production-target portfolio -> risk-approved portfolio ->
+  actual executed portfolio -> final live P&L.
+
+Must track:
+  intended orders, production orders, risk blocks, borrow blocks, liquidity clips, execution
+  fills, partial fills, rejected orders, canceled orders, live P&L snapshots.
+
+Must calculate:
+  - fill rate
+  - intended notional
+  - executed notional
+  - slippage (bps)
+  - expected transaction cost (bps)
+  - actual transaction cost (bps)
+  - implementation shortfall
+  - alpha lost to risk blocks
+  - alpha lost to borrow unavailability
+  - alpha lost to liquidity clipping
+  - alpha lost to slippage
+  - alpha lost to partial fills
+  - residual unexplained drift
+  - research/live universe overlap
+  - target/executed portfolio overlap
+
+Attribution model (deterministic):
+  Total research-to-live performance gap is decomposed into named buckets (risk blocks, borrow,
+  liquidity clipping, slippage, partial fills) plus a residual "unexplained" bucket. The residual
+  is the candidate for genuine signal decay or regime change, and is never silently attributed.
+
+Outputs: execution attribution breakdown, Live Drift Score, Execution Quality Score.
+
+
+E. UNIFIED STRATEGY RELIABILITY DASHBOARD
+-----------------------------------------
+Must show:
+  - Overall Reliability Score
+  - Data Health Score
+  - Backtest Trust Score
+  - Live Drift Score
+  - Execution Quality Score
+  - Strategy Lineage health
+  - latest diagnosis
+  - timeline
+  - alerts
+  - suggested checks
+
+Behavior:
+  Scores are computed deterministically by the Reliability Engine. The dashboard is read-only
+  over the scored evidence. The latest diagnosis is the AI summary of that evidence.
+
+
+F. PYTHON SDK
+-------------
+Must support:
+  qf.init()
+  log_strategy_run()
+  log_strategy_change()
+  log_backtest_run()
+  log_backtest_metrics()
+  log_backtest_assumptions()
+  log_dataset_snapshot()
+  log_universe_snapshot()
+  log_signal_snapshot()
+  log_intended_orders()
+  log_risk_blocks()
+  log_borrow_blocks()
+  log_execution_fills()
+  log_live_pnl()
+  log_live_run()
+  compare_runs()
+  flush()
+
+Behavior:
+  - qf.init(api_key, project, base_url) configures the client; auth via API key.
+  - Logging calls construct normalized events and buffer them; flush() (and process exit) sends
+    batches to the REST ingestion API as sdk_ingestion_batches.
+  - compare_runs(run_a, run_b) calls the deterministic diff endpoint and returns a structured
+    comparison.
+  - Data minimization: SDK can hash/fingerprint datasets locally and send summaries rather than
+    raw rows, controlled by config.
+  - Failures are non-fatal to the host process; the SDK never blocks trading or research code.
+
+
+G. AI DIAGNOSTIC LAYER
+----------------------
+Purpose: Turn deterministic evidence and scores into a concise, plain-language diagnosis.
+
+Rules (hard constraints):
+  - AI can summarize evidence only.
+  - AI cannot invent unseen causes.
+  - AI cannot give buy/sell/hold recommendations.
+  - AI cannot claim manipulation, compromise, fraud, or data leakage without evidence.
+  - AI must use hedged language when uncertain: "may indicate," "appears linked," "likely
+    contributed," "requires review."
+
+Behavior:
+  - Input is the structured evidence bundle (scores, issues, attribution buckets, lineage diffs).
+  - Output is a reliability_diagnosis: a ranked set of candidate causes, each citing the specific
+    evidence items, plus a human-readable summary.
+  - Every sentence in the summary must be traceable to an evidence item; unsupported claims are
+    suppressed. If evidence is insufficient, the diagnosis says so rather than guessing.
+
+
+H. LIVE MARKET DATA PROVIDER LAYER
+----------------------------------
+Purpose: Optional, replaceable source of low-cost live/paper market data for tracking and feed
+health, without QuantFidelity owning institutional data.
+
+Behavior:
+  - A provider abstraction defines a common interface (get_quote, get_ohlcv, health).
+  - A mock provider and a low-cost provider are the first adapters; institutional feeds are
+    adapters added later by the customer.
+  - live_symbol_subscriptions define what is tracked; live_market_snapshots store sampled data
+    used for feed health and drift context, not as a market-data product.
+
+
+8. Inputs and Outputs
+---------------------
+Inputs (via SDK or REST):
+  strategy/version/change/run events; backtest run + assumptions + metrics; dataset and universe
+  snapshots; signal snapshots; intended/production orders; risk/borrow blocks; liquidity clips;
+  execution fills (incl. partial/rejected/canceled); live P&L snapshots; optional live market
+  snapshots.
+
+Outputs:
+  deterministic run comparisons; data_quality_issues + Data Health Score; backtest_issues +
+  Backtest Trust Score + adjusted estimate; execution attribution + Live Drift Score + Execution
+  Quality Score; Overall Reliability Score; reliability_diagnosis; alerts; reports; audit trail.
+
+
+9. Reliability Scoring
+----------------------
+Five scores, each 0-100, higher is better:
+  - Data Health Score        — derived from data_quality_issues weighted by severity/coverage.
+  - Backtest Trust Score     — derived from backtest_issues weighted by severity.
+  - Live Drift Score         — derived from research/live overlap and residual unexplained drift.
+  - Execution Quality Score  — derived from fill rate, slippage vs assumption, shortfall.
+  - Overall Reliability Score — a transparent, weighted, deterministic combination of the above
+                                plus lineage health.
+
+Scoring rules:
+  - All scores are deterministic and reproducible from stored evidence.
+  - Each score exposes its inputs and weights; no opaque scoring.
+  - Scores are stored as reliability_scores with score_type and the evidence that produced them.
+
+
+10. Alerts and Reports
+----------------------
+Alerts:
+  - Triggered by threshold breaches (score drops below threshold), new high/critical issues, or
+    significant drift.
+  - Each alert has a status (open / acknowledged / resolved), severity, linked evidence, and a
+    suggested check.
+Reports:
+  - Per-strategy and per-project reliability reports, exportable (PDF/CSV/JSON later).
+  - Reports are generated from the same scored evidence; they are a presentation, not a
+    re-computation.
+Audit trail:
+  - audit_timeline_events are generated from underlying objects (runs, changes, issues, blocks,
+    fills, diagnoses) to provide a single chronological, exportable record per strategy.
+
+
+11. Security / Privacy Rules
+----------------------------
+  - Minimal data storage by default: metadata, summaries, hashes, fingerprints. Raw data is
+    opt-in and bounded.
+  - Sensitive content (proprietary signals, returns) can be hashed or summarized client-side.
+  - Org-scoped isolation: all data is partitioned by organization; users belong to organizations.
+  - API-key authentication for ingestion; keys are scoped to a project and revocable.
+  - No broker credentials, no order placement, no market write actions ever.
+  - Bring-your-own-data and (later) self-hosting so proprietary data can stay inside the firm.
+  - Full audit trail of what was ingested and when.
+  (Expanded in Architecture.txt and DatabaseSchema.txt.)
+
+
+12. Non-Goals
+-------------
+  - No order placement, routing, or any broker write action.
+  - No investment advice or buy/sell/hold signals.
+  - No proprietary market-data resale; value never depends on owning institutional data.
+  - No strategy generation or auto-optimization of the customer's alpha.
+  - No black-box AI verdicts without traceable evidence.
+  - No unbounded raw-data lake by default.
+  - No real-money execution simulation presented as live trading.

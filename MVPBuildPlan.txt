@@ -1,0 +1,256 @@
+QuantFidelity — MVP Build Plan
+==============================
+
+This is more concrete than Roadmap.txt but is NOT broken into final implementation milestones.
+It defines the first MVP scope, the demo it must prove, and the build/mock decisions behind it.
+
+The MVP must be serious. It can use mock/paper data, but the architecture must be real:
+real event schema, real deterministic engine, real scoring, real API/SDK shapes. No shallow
+placeholder logic dressed up as analysis.
+
+
+MVP Objective
+-------------
+Prove the core promise:
+
+  "QuantFidelity can explain why strategy performance changed between research, backtest, and
+   live/paper execution."
+
+Concretely, for one strategy in one local org/project, the MVP must:
+  - capture strategy lineage and two backtest runs,
+  - deterministically diff the runs,
+  - run basic data quality checks on an uploaded dataset snapshot,
+  - compute a Backtest Trust Score,
+  - reconcile intended vs executed orders for a paper run,
+  - produce execution attribution and a Live Drift Score,
+  - roll everything into a Reliability Dashboard,
+  - and only then render an AI diagnostic summary built strictly from that evidence.
+
+
+MVP Scope (in)
+--------------
+  - one local app (FastAPI + PostgreSQL + React/TS), docker-compose.
+  - one organization / one project (seeded).
+  - strategy creation.
+  - strategy run logging.
+  - backtest run logging (with assumptions + metrics).
+  - dataset snapshot upload (CSV/JSON).
+  - deterministic run comparison.
+  - simple data quality checks.
+  - Backtest Trust Score.
+  - intended vs executed orders.
+  - live/paper execution comparison.
+  - reliability dashboard (overall + four scores).
+  - Python SDK skeleton (init + core logging + flush + compare_runs).
+  - optional low-cost live AAPL tracking via provider abstraction (mock provider is sufficient).
+  - AI diagnostic summary ONLY after deterministic evidence exists.
+
+MVP Scope (out / later)
+-----------------------
+  - Parquet, fundamentals revisions, full corporate-action handling.
+  - background job queue / TimescaleDB.
+  - alerts routing (email/Slack/webhook), full reporting/export.
+  - RBAC/SSO, self-hosting, air-gapped mode.
+  - institutional data providers, real broker connectivity (never write actions).
+  - deep statistical overfitting and capacity modeling.
+
+
+MVP User Journey
+----------------
+  1. User opens the local app; a seeded org/project exists.
+  2. User (or the SDK) logs strategy "AAPL Mean Reversion v1" and its first backtest run.
+  3. User uploads a dataset snapshot (AAPL OHLCV CSV); data quality checks run and a Data Health
+     Score appears.
+  4. User logs a second backtest run with changed parameters (shorter lookback, higher cost);
+     lineage records the change; run comparison shows parameter and metric deltas.
+  5. Backtest Reality Check assigns a Trust Score to each backtest with evidenced issues.
+  6. User logs a paper run: intended orders, a liquidity/risk clip, partial fills, and live P&L.
+  7. Live Drift reconciles intended vs executed -> execution attribution + Live Drift +
+     Execution Quality scores.
+  8. The Reliability Dashboard shows the overall score and the four component scores.
+  9. The AI Diagnosis panel summarizes the assembled evidence in plain, hedged language.
+
+
+MVP Input Data
+--------------
+  - strategy + two strategy_versions (v1, v1.1) with the lineage fields.
+  - two backtest_runs with assumptions (txn cost, fill model, lookback) and metrics (Sharpe,
+    turnover, trade count).
+  - one dataset (AAPL OHLCV daily) with at least two snapshots (one clean, one with a seeded
+    issue/revision) as CSV/JSON.
+  - one paper live_run with intended_orders, a risk/liquidity clip, execution_fills (incl.
+    partial), and live_pnl_snapshots.
+  - optional: live AAPL snapshots from the mock (or low-cost) provider for feed-health context.
+
+
+MVP Outputs
+-----------
+  - lineage timeline with the v1 -> v1.1 change and metric movement.
+  - deterministic run comparison (parameter deltas, assumption deltas, metric deltas).
+  - data_quality_issues + Data Health Score.
+  - backtest_issues + Backtest Trust Score (per run) + adjusted estimate where computable.
+  - execution attribution (fill rate, slippage bps, shortfall, alpha-loss buckets, residual) +
+    Live Drift Score + Execution Quality Score.
+  - Overall Reliability Score on the dashboard.
+  - one reliability_diagnosis (AI summary bound to the above evidence).
+
+
+Required Backend Pieces
+-----------------------
+  - FastAPI app with org/project seed and API-key auth.
+  - normalized event ingestion endpoint (+ per-type endpoints used by the SDK).
+  - persistence for: strategies, strategy_versions, strategy_changes, strategy_runs,
+    datasets, dataset_snapshots, data_quality_issues, backtest_runs, backtest_assumptions,
+    backtest_metrics, backtest_issues, live_runs, intended_orders, liquidity_clips/risk_blocks,
+    execution_fills, live_pnl_snapshots, reliability_scores, reliability_diagnoses.
+  - deterministic engine functions: version diff, data quality checks, backtest reality checks,
+    execution attribution, and the five scoring functions.
+  - evidence bundle builder + constrained AI summary call + validation pass.
+
+Required Frontend Pieces
+------------------------
+  - Reliability Dashboard (hero overall score + four score cards + strategy status).
+  - Strategy Timeline.
+  - Run Comparison.
+  - Data Health + Dataset Snapshot Detail.
+  - Backtest Audit.
+  - Live Drift + Execution Attribution.
+  - AI Diagnosis panel (clearly labeled, evidence-linked, secondary to scores).
+  - SDK Setup screen with copyable snippet.
+
+Required SDK Pieces (skeleton)
+------------------------------
+  - qf.init(api_key, project, base_url).
+  - log_strategy_run, log_strategy_change, log_backtest_run, log_backtest_metrics,
+    log_backtest_assumptions, log_dataset_snapshot, log_intended_orders, log_execution_fills,
+    log_live_pnl, log_live_run.
+  - compare_runs(run_a, run_b) and flush().
+  - local hashing/summarization (send_raw=False default); non-blocking, retrying batch sender.
+  (Remaining logging functions stubbed to the same event shape; can be completed post-MVP.)
+
+Required Database Pieces
+------------------------
+  - the core enums and the tables listed under "Required Backend Pieces."
+  - fingerprint columns (config_fingerprint, content_fingerprint) used by diffing and revision
+    detection.
+  - org_id on every table; API-key hash storage.
+
+Required Tests
+--------------
+  - deterministic engine unit tests: version diff, each data quality check, each backtest detector,
+    attribution decomposition (buckets + residual must reconcile to the total gap), scoring.
+  - ingestion/API tests: event normalization, auth, org scoping.
+  - SDK tests: event construction, batching, fail-safe behavior, compare_runs.
+  - a golden end-to-end test that runs the demo scenario and asserts the expected scores and that
+    the diagnosis cites the expected evidence.
+
+
+Demo Scenario
+-------------
+Strategy: AAPL Mean Reversion v1
+
+  Backtest (v1):
+    expected Sharpe 1.6
+    transaction cost assumption 5 bps
+    fill model: mid + 5 bps
+    lookback 20 days
+
+  Second run (v1.1):
+    lookback changed 20 -> 5 days
+    transaction cost assumption changed 5 -> 12 bps
+    Sharpe drops to 0.9
+    turnover increases
+
+  Live / paper run:
+    intended order quantity 1000
+    filled quantity 720  (fill rate 72%)
+    expected cost 5 bps
+    actual observed cost 18 bps  (3.6x assumption)
+    risk / liquidity clip explains part of the drift
+
+  Expected QuantFidelity diagnosis (wording target):
+    "Performance degradation appears linked to a shorter lookback, higher turnover, and
+     higher-than-assumed execution costs. Live/paper execution filled only 72% of intended
+     quantity, and observed costs were 3.6x higher than the research assumption. This appears
+     more like implementation drift and cost realism failure than pure signal decay."
+
+
+What To Build First
+-------------------
+  1. Event schema + core tables + ingestion API + seeded org/project (the real backbone).
+  2. Strategy lineage + deterministic run comparison (the v1 -> v1.1 diff).
+  3. Backtest Reality Check + Trust Score on the two runs.
+  4. Live Drift + execution attribution on the paper run.
+  5. Reliability Dashboard wiring the five scores.
+  6. SDK skeleton to log the demo end-to-end.
+  7. AI diagnosis bound to the assembled evidence (last).
+
+What To Fake / Mock Safely
+--------------------------
+  - market data: mock provider generating deterministic AAPL OHLCV; low-cost public adapter
+    optional.
+  - the paper run's orders/fills/blocks/clips: seeded fixtures matching the demo numbers.
+  - the AI endpoint: abstracted; can use a deterministic stub that formats the evidence bundle if
+    no model is wired, so the demo never depends on a paid call.
+
+What Must Be Real
+-----------------
+  - the normalized event schema and persistence.
+  - deterministic version diffing, data checks, backtest detectors, and attribution math
+    (buckets + residual reconcile to the total gap).
+  - the five scoring functions with exposed inputs/weights.
+  - org scoping, API-key auth, and minimal-storage handling (fingerprints/summaries by default).
+  - the evidence -> diagnosis binding and the validation pass (no claim without evidence).
+
+What Can Wait
+-------------
+  - real institutional providers, broker connectivity, Parquet, fundamentals.
+  - background jobs, TimescaleDB, alert routing, reporting/export, RBAC/SSO, self-hosting.
+  - the full set of data-quality and backtest detectors beyond the demo-critical ones.
+
+
+Cost-Minimizing Decisions
+-------------------------
+  - run everything locally via docker-compose; no paid hosting in MVP.
+  - mock provider first; only optional low-cost public market-data API, never institutional feeds.
+  - AI step abstracted with a deterministic stub fallback so no paid AI call is required to demo.
+  - store summaries/fingerprints/bounded evidence by default; minimal raw retention.
+
+
+Technical Risks
+---------------
+  - attribution that doesn't reconcile: the alpha-loss buckets + residual must sum to the measured
+    research-to-live gap, or the diagnosis is untrustworthy.
+  - false positives in data/backtest checks eroding user trust: keep checks conservative and always
+    attach evidence.
+  - AI overreach: the validation pass must drop any claim not backed by an evidence item, and use
+    hedged language when uncertain.
+  - schema churn: stabilize the event model early; downstream engine and SDK depend on it.
+  - SDK disrupting host code: must fail safe, non-blocking, and silent on ingestion errors.
+
+
+Validation Checklist
+--------------------
+  [ ] An event can be posted, normalized, stored, and read back (org-scoped).
+  [ ] v1 -> v1.1 lineage change is recorded with correct parameter/metric deltas.
+  [ ] Run comparison shows lookback 20->5 and cost 5->12 bps and Sharpe 1.6->0.9.
+  [ ] Dataset snapshot upload surfaces seeded data issues with evidence + Data Health Score.
+  [ ] Each backtest receives a distinct, evidenced Backtest Trust Score.
+  [ ] Execution attribution: fill rate 72%, slippage ~18 vs 5 bps, alpha-loss buckets + residual
+      reconcile to the total gap.
+  [ ] Five scores compute with exposed inputs/weights; overall reflects the weak dimensions.
+  [ ] AI diagnosis matches the wording target and every claim links to an evidence item.
+  [ ] No broker actions, no advice language, hedged uncertainty preserved.
+
+
+First Demo Checklist
+--------------------
+  [ ] docker-compose up brings the full local stack online.
+  [ ] Seeded org/project visible; SDK snippet from the SDK Setup screen runs.
+  [ ] SDK logs the demo strategy, both backtests, dataset snapshot, and the paper run end-to-end.
+  [ ] Dashboard shows overall + four scores and the strategy status card.
+  [ ] Timeline shows the v1 -> v1.1 change; Run Comparison shows the deltas.
+  [ ] Backtest Audit shows Trust Scores + evidenced issues.
+  [ ] Live Drift shows attribution buckets + residual + Drift/Execution scores.
+  [ ] AI Diagnosis panel renders the expected, evidence-bound summary with the footnote.
+  [ ] Entire demo runs with mock data and no paid services.
