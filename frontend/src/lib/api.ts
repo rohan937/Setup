@@ -8,6 +8,7 @@ import type {
   ApiError,
   BacktestAudit,
   BacktestAuditListItem,
+  ConfigComparisonResponse,
   DashboardSummary,
   Dataset,
   DatasetSnapshotComparisonResponse,
@@ -23,10 +24,15 @@ import type {
   ReportFilters,
   ReportListResponse,
   Strategy,
+  StrategyConfigSnapshotCreateRequest,
+  StrategyConfigSnapshotDetail,
+  StrategyConfigSnapshotRead,
   StrategyDetail,
   StrategyRun,
   StrategyCreateRequest,
   StrategyRunCreateRequest,
+  StrategyVersion,
+  StrategyVersionCreateRequest,
   RunComparisonResponse,
 } from "@/types";
 
@@ -295,4 +301,64 @@ export async function getReports(
 
 export async function getReport(reportId: string): Promise<ReportDetail> {
   return request<ReportDetail>(`/api/reports/${reportId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Strategy versions (M15)
+// ---------------------------------------------------------------------------
+
+export async function createStrategyVersion(
+  strategyId: string,
+  data: StrategyVersionCreateRequest,
+): Promise<StrategyVersion> {
+  return request<StrategyVersion>(`/api/strategies/${strategyId}/versions`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getStrategyVersions(
+  strategyId: string,
+): Promise<StrategyVersion[]> {
+  return request<StrategyVersion[]>(`/api/strategies/${strategyId}/versions`);
+}
+
+// ---------------------------------------------------------------------------
+// Config snapshots (M15)
+// ---------------------------------------------------------------------------
+
+export async function createConfigSnapshot(
+  strategyId: string,
+  data: StrategyConfigSnapshotCreateRequest,
+): Promise<StrategyConfigSnapshotRead> {
+  return request<StrategyConfigSnapshotRead>(
+    `/api/strategies/${strategyId}/config-snapshots`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export async function getConfigSnapshots(
+  strategyId: string,
+  versionId?: string,
+): Promise<StrategyConfigSnapshotRead[]> {
+  const qs = versionId ? `?version_id=${versionId}` : "";
+  return request<StrategyConfigSnapshotRead[]>(
+    `/api/strategies/${strategyId}/config-snapshots${qs}`,
+  );
+}
+
+export async function compareConfigSnapshots(
+  strategyId: string,
+  snapshotAId: string,
+  snapshotBId: string,
+): Promise<ConfigComparisonResponse> {
+  return request<ConfigComparisonResponse>(
+    `/api/strategies/${strategyId}/config-snapshots/compare?snapshot_a_id=${snapshotAId}&snapshot_b_id=${snapshotBId}`,
+  );
+}
+
+export async function getConfigSnapshot(
+  snapshotId: string,
+): Promise<StrategyConfigSnapshotDetail> {
+  return request<StrategyConfigSnapshotDetail>(`/api/config-snapshots/${snapshotId}`);
 }

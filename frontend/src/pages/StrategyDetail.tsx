@@ -7,14 +7,18 @@ import type {
   CostSensitivityScenario,
   DataEvidenceSummary,
   ReportDetail,
+  StrategyConfigSnapshotRead,
   StrategyDetail as StrategyDetailType,
   StrategyRun,
+  StrategyVersion,
   TimelineEvent,
 } from "@/types";
 import { generateStrategyReport, getStrategy, getStrategyTimeline, runBacktestAudit } from "@/lib/api";
 import Badge from "@/components/Badge";
+import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
+import VersionCreateDrawer from "@/components/VersionCreateDrawer";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -666,6 +670,177 @@ function BacktestAuditPanel({ audit }: { audit: BacktestAudit }) {
 }
 
 // ---------------------------------------------------------------------------
+// M15: Version & Config Evidence section
+// ---------------------------------------------------------------------------
+
+function VersionRow({ version, snapshots }: {
+  version: StrategyVersion;
+  snapshots: StrategyConfigSnapshotRead[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const versionSnaps = snapshots.filter((s) => s.strategy_version_id === version.id);
+  const count = versionSnaps.length;
+
+  return (
+    <div className="py-3 first:pt-0 last:pb-0">
+      {/* Version header row */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="mono-num text-sm font-semibold text-text-primary">
+              {version.version_label}
+            </span>
+            {count > 0 && (
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="rounded-chip border border-border px-1.5 py-0.5 font-mono text-2xs text-text-muted hover:border-accent-500/40 hover:text-accent-300"
+              >
+                {count} config{count !== 1 ? "s" : ""} {expanded ? "▲" : "▼"}
+              </button>
+            )}
+          </div>
+          {version.signal_name && (
+            <p className="mt-0.5 font-mono text-xs text-text-secondary">
+              signal: <span className="text-accent-300">{version.signal_name}</span>
+            </p>
+          )}
+          {version.branch_name && (
+            <p className="mt-0.5 font-mono text-2xs text-text-muted">
+              {version.branch_name}
+              {version.code_path && <span> · {version.code_path}</span>}
+              {version.git_commit && <span> · <span className="text-accent-300/70">{version.git_commit.slice(0, 7)}</span></span>}
+            </p>
+          )}
+          {version.signal_description && (
+            <p className="mt-1 max-w-xl text-xs text-text-muted leading-relaxed">
+              {version.signal_description}
+            </p>
+          )}
+        </div>
+        <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
+          {fmtDateShort(version.created_at)}
+        </span>
+      </div>
+
+      {/* Inline config snapshots */}
+      {expanded && count > 0 && (
+        <div className="mt-2 ml-3 space-y-1.5 border-l border-border/50 pl-3">
+          {versionSnaps.map((s) => (
+            <div key={s.id} className="rounded-control border border-border/60 bg-bg-800 px-2.5 py-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs text-text-secondary">{s.label}</span>
+                <span className="font-mono text-2xs text-text-muted">{s.source_type}</span>
+              </div>
+              <div className="mt-0.5 flex flex-wrap gap-3 font-mono text-2xs text-text-muted">
+                {s.param_count > 0 && <span>{s.param_count} param{s.param_count !== 1 ? "s" : ""}</span>}
+                {s.assumption_count > 0 && <span>{s.assumption_count} assumption{s.assumption_count !== 1 ? "s" : ""}</span>}
+                <span title={s.config_hash} className="text-text-muted/60 truncate max-w-24">
+                  {s.config_hash.slice(0, 8)}…
+                </span>
+                <span>{fmtDateShort(s.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfigSnapshotRow({ snapshot }: { snapshot: StrategyConfigSnapshotRead }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+      <div className="min-w-0 flex-1">
+        <p className="font-mono text-xs text-text-secondary">{snapshot.label}</p>
+        <div className="mt-0.5 flex flex-wrap gap-3 font-mono text-2xs text-text-muted">
+          <span>{snapshot.source_type}</span>
+          {snapshot.param_count > 0 && (
+            <span>{snapshot.param_count} param{snapshot.param_count !== 1 ? "s" : ""}</span>
+          )}
+          {snapshot.assumption_count > 0 && (
+            <span>{snapshot.assumption_count} assumption{snapshot.assumption_count !== 1 ? "s" : ""}</span>
+          )}
+          {snapshot.source_filename && <span>{snapshot.source_filename}</span>}
+          <span title={snapshot.config_hash} className="text-text-muted/50">
+            hash: {snapshot.config_hash.slice(0, 8)}…
+          </span>
+        </div>
+      </div>
+      <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
+        {fmtDateShort(snapshot.created_at)}
+      </span>
+    </div>
+  );
+}
+
+function VersionConfigSection({
+  versions,
+  configSnapshots,
+  onCreateVersion,
+  onLogConfig,
+}: {
+  versions: StrategyVersion[];
+  configSnapshots: StrategyConfigSnapshotRead[];
+  onCreateVersion: () => void;
+  onLogConfig: () => void;
+}) {
+  // Unlinked snapshots — those with no strategy_version_id
+  const unlinked = configSnapshots.filter((s) => s.strategy_version_id === null);
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <p className="caption">Version &amp; Config Evidence</p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onLogConfig}
+            className="rounded-control border border-border px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Log Config
+          </button>
+          <button
+            onClick={onCreateVersion}
+            className="rounded-control border border-border px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Create Version
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Versions */}
+        {versions.length === 0 ? (
+          <p className="font-mono text-2xs text-text-muted">No versions recorded.</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {versions.map((v) => (
+              <VersionRow key={v.id} version={v} snapshots={configSnapshots} />
+            ))}
+          </div>
+        )}
+
+        {/* Unlinked config snapshots — shown when any exist */}
+        {unlinked.length > 0 && (
+          <div>
+            <p className="caption mb-2 text-text-muted">Unlinked Config Snapshots</p>
+            <div className="divide-y divide-border/50">
+              {unlinked.map((s) => (
+                <ConfigSnapshotRow key={s.id} snapshot={s} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {versions.length === 0 && unlinked.length === 0 && configSnapshots.length === 0 && (
+          <p className="font-mono text-2xs text-text-muted">No version or config evidence yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -683,6 +858,9 @@ export default function StrategyDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
+  // M15: version and config snapshot drawer state
+  const [versionDrawerOpen, setVersionDrawerOpen] = useState(false);
+  const [configSnapshotDrawerOpen, setConfigSnapshotDrawerOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // M8: backtest audit state — keyed by run id.
@@ -783,13 +961,25 @@ export default function StrategyDetail() {
             <p className="mt-1.5 max-w-2xl text-sm text-text-secondary">{strategy.description}</p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button
             onClick={handleGenerateReport}
             disabled={generatingReport}
             className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             {generatingReport ? "Generating…" : "Generate Report"}
+          </button>
+          <button
+            onClick={() => setVersionDrawerOpen(true)}
+            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Create Version
+          </button>
+          <button
+            onClick={() => setConfigSnapshotDrawerOpen(true)}
+            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Log Config
           </button>
           <button
             onClick={() => setRunDrawerOpen(true)}
@@ -803,11 +993,27 @@ export default function StrategyDetail() {
       <RunLogDrawer
         open={runDrawerOpen}
         strategyId={id!}
+        versions={strategy.versions}
         onClose={() => setRunDrawerOpen(false)}
         onLogged={() => {
           setRunDrawerOpen(false);
           setRefreshKey((k) => k + 1);
         }}
+      />
+
+      {/* M15: Version and Config Snapshot drawers */}
+      <VersionCreateDrawer
+        open={versionDrawerOpen}
+        strategyId={id!}
+        onClose={() => setVersionDrawerOpen(false)}
+        onCreated={() => setRefreshKey((k) => k + 1)}
+      />
+      <ConfigSnapshotDrawer
+        open={configSnapshotDrawerOpen}
+        strategyId={id!}
+        versions={strategy.versions}
+        onClose={() => setConfigSnapshotDrawerOpen(false)}
+        onCreated={() => setRefreshKey((k) => k + 1)}
       />
 
       {/* Stat strip */}
@@ -876,44 +1082,13 @@ export default function StrategyDetail() {
       {/* M7: Data Evidence panel — shown when any run has a linked snapshot */}
       <DataEvidencePanel runs={strategy.runs} />
 
-      {/* Versions */}
-      <div className="rounded-card border border-border bg-bg-700">
-        <div className="border-b border-border px-4 py-2.5">
-          <p className="caption">Code Versions</p>
-        </div>
-        <div className="p-4">
-          {strategy.versions.length === 0 ? (
-            <p className="font-mono text-2xs text-text-muted">No versions recorded.</p>
-          ) : (
-            <div className="divide-y divide-border">
-              {strategy.versions.map((v) => (
-                <div key={v.id} className="py-3 first:pt-0 last:pb-0">
-                  <div className="flex items-center justify-between">
-                    <span className="mono-num text-sm font-semibold text-text-primary">
-                      {v.version_label}
-                    </span>
-                    <span className="font-mono text-2xs text-text-muted">{fmtDate(v.created_at)}</span>
-                  </div>
-                  {v.signal_name && (
-                    <p className="mt-1 font-mono text-xs text-text-secondary">
-                      signal: <span className="text-accent-300">{v.signal_name}</span>
-                    </p>
-                  )}
-                  {v.branch_name && (
-                    <p className="mt-0.5 font-mono text-2xs text-text-muted">
-                      {v.branch_name}
-                      {v.code_path && <span> · {v.code_path}</span>}
-                    </p>
-                  )}
-                  {v.signal_description && (
-                    <p className="mt-1.5 max-w-xl text-xs text-text-muted">{v.signal_description}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* M15: Version & Config Evidence */}
+      <VersionConfigSection
+        versions={strategy.versions}
+        configSnapshots={strategy.config_snapshots}
+        onCreateVersion={() => setVersionDrawerOpen(true)}
+        onLogConfig={() => setConfigSnapshotDrawerOpen(true)}
+      />
 
       {/* Run evidence */}
       <div className="rounded-card border border-border bg-bg-700">

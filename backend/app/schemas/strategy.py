@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -22,6 +22,28 @@ class StrategyCreate(BaseModel):
     asset_class: str = "equity"
     # See constants.StrategyStatus for valid values.  Defaults to active.
     status: str = "active"
+
+
+class StrategyVersionCreate(BaseModel):
+    """Request body for POST /api/strategies/{strategy_id}/versions (M15)."""
+
+    version_label: Annotated[str, StringConstraints(min_length=1, max_length=100, strip_whitespace=True)]
+    git_commit: str | None = Field(default=None, max_length=255)
+    branch_name: str | None = Field(default=None, max_length=255)
+    code_path: str | None = Field(default=None, max_length=512)
+    signal_name: str | None = Field(default=None, max_length=255)
+    signal_description: str | None = None
+
+
+class StrategyConfigSnapshotCreate(BaseModel):
+    """Request body for POST /api/strategies/{strategy_id}/config-snapshots (M15)."""
+
+    strategy_version_id: uuid.UUID | None = None
+    label: Annotated[str, StringConstraints(min_length=1, max_length=255, strip_whitespace=True)]
+    source_type: str = "manual_json"
+    source_filename: str | None = Field(default=None, max_length=512)
+    # Must be a JSON object (not array/scalar); validated in route.
+    config_json: dict[str, Any]
 
 
 class StrategyRunCreate(BaseModel):
@@ -85,6 +107,59 @@ class StrategyVersionOut(BaseModel):
     signal_description: str | None
     created_at: datetime
     updated_at: datetime
+    # M15: config snapshot count for this version (populated by route if requested)
+    config_snapshot_count: int = 0
+
+
+class StrategyConfigSnapshotRead(BaseModel):
+    """Config snapshot summary — no config_json blob (used in list responses)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    strategy_id: uuid.UUID
+    strategy_version_id: uuid.UUID | None
+    label: str
+    source_type: str
+    source_filename: str | None
+    config_hash: str
+    param_count: int
+    assumption_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class StrategyConfigSnapshotDetail(StrategyConfigSnapshotRead):
+    """Full config snapshot including the config_json payload."""
+
+    config_json: dict[str, Any]
+
+
+class ConfigKeyChangeOut(BaseModel):
+    key: str
+    old_value: Any = None
+    new_value: Any = None
+    change_type: str  # "added" | "removed" | "changed"
+
+
+class ConfigComparisonSectionOut(BaseModel):
+    added: list[ConfigKeyChangeOut] = []
+    removed: list[ConfigKeyChangeOut] = []
+    changed: list[ConfigKeyChangeOut] = []
+    total_changes: int = 0
+
+
+class ConfigComparisonResponse(BaseModel):
+    snapshot_a_id: uuid.UUID
+    snapshot_b_id: uuid.UUID
+    snapshot_a_label: str
+    snapshot_b_label: str
+    is_same_config: bool
+    top_level: ConfigComparisonSectionOut
+    params: ConfigComparisonSectionOut
+    assumptions: ConfigComparisonSectionOut
+    highlighted_changes: list[str]
+    total_changes: int
 
 
 class StrategyRunOut(BaseModel):
@@ -134,10 +209,11 @@ class StrategyListItemOut(BaseModel):
 
 
 class StrategyDetailOut(StrategyListItemOut):
-    """Full strategy detail with versions and recent runs."""
+    """Full strategy detail with versions, runs, and recent config snapshots (M15)."""
 
     versions: list[StrategyVersionOut] = []
     runs: list[StrategyRunOut] = []
+    config_snapshots: list[StrategyConfigSnapshotRead] = []
 
 
 # Keep the plain StrategyOut for any internal callers that still use it.

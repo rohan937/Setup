@@ -67,6 +67,7 @@ class EventType(StrEnum):
     alert_generated = "alert_generated"
     alert_status_changed = "alert_status_changed"
     report_generated = "report_generated"
+    strategy_config_snapshot_logged = "strategy_config_snapshot_logged"
 
 
 class Severity(StrEnum):

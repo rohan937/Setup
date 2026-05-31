@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Dataset, DatasetSnapshotRead, StrategyRunCreateRequest } from "@/types";
+import type { Dataset, DatasetSnapshotRead, StrategyRunCreateRequest, StrategyVersion } from "@/types";
 import { createStrategyRun, getDatasets, getDatasetSnapshots } from "@/lib/api";
 
 const RUN_TYPES = ["backtest", "research", "paper", "live"] as const;
@@ -17,6 +17,8 @@ const textareaCls =
 interface Props {
   open: boolean;
   strategyId: string;
+  /** M15: available strategy versions for the version selector. */
+  versions?: StrategyVersion[];
   onClose: () => void;
   onLogged: () => void;
 }
@@ -54,8 +56,10 @@ function healthColor(score: number): string {
   return "text-fidelity-low";
 }
 
-export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Props) {
+export default function RunLogDrawer({ open, strategyId, versions = [], onClose, onLogged }: Props) {
   const [runName, setRunName] = useState("");
+  // M15: version selector
+  const [selectedVersionId, setSelectedVersionId] = useState("");
   const [runType, setRunType] = useState<string>("backtest");
   const [status, setStatus] = useState<string>("completed");
   const [universeName, setUniverseName] = useState("");
@@ -101,6 +105,7 @@ export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Pr
 
   function reset() {
     setRunName("");
+    setSelectedVersionId("");
     setRunType("backtest");
     setStatus("completed");
     setUniverseName("");
@@ -156,6 +161,8 @@ export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Pr
       ...(assumptionsJson !== null && { assumptions_json: assumptionsJson }),
       // M7: include linked snapshot id when selected
       ...(selectedSnapshotId && { dataset_snapshot_id: selectedSnapshotId }),
+      // M15: include strategy version id when selected
+      ...(selectedVersionId && { strategy_version_id: selectedVersionId }),
     };
 
     try {
@@ -225,6 +232,26 @@ export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Pr
               className={inputCls}
             />
           </div>
+
+          {/* M15: Strategy Version selector */}
+          {versions.length > 0 && (
+            <div>
+              <label className="caption mb-1.5 block">Strategy Version (optional)</label>
+              <select
+                value={selectedVersionId}
+                onChange={(e) => setSelectedVersionId(e.target.value)}
+                className={selectCls}
+              >
+                <option value="">— not linked to a version —</option>
+                {versions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.version_label}
+                    {v.branch_name ? ` (${v.branch_name})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Run Type + Status */}
           <div className="grid grid-cols-2 gap-3">

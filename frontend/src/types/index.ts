@@ -48,6 +48,75 @@ export interface StrategyVersion {
   signal_description: string | null;
   created_at: string;
   updated_at: string;
+  /** M15: number of config snapshots linked to this version. */
+  config_snapshot_count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Config snapshots (M15)
+// ---------------------------------------------------------------------------
+
+export interface StrategyConfigSnapshotRead {
+  id: string;
+  strategy_id: string;
+  strategy_version_id: string | null;
+  label: string;
+  source_type: string;
+  source_filename: string | null;
+  config_hash: string;
+  param_count: number;
+  assumption_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrategyConfigSnapshotDetail extends StrategyConfigSnapshotRead {
+  config_json: Record<string, unknown>;
+}
+
+export interface StrategyVersionCreateRequest {
+  version_label: string;
+  git_commit?: string;
+  branch_name?: string;
+  code_path?: string;
+  signal_name?: string;
+  signal_description?: string;
+}
+
+export interface StrategyConfigSnapshotCreateRequest {
+  strategy_version_id?: string;
+  label: string;
+  source_type?: string;
+  source_filename?: string;
+  config_json: Record<string, unknown>;
+}
+
+export interface ConfigKeyChange {
+  key: string;
+  old_value: unknown;
+  new_value: unknown;
+  /** "added" | "removed" | "changed" */
+  change_type: string;
+}
+
+export interface ConfigComparisonSection {
+  added: ConfigKeyChange[];
+  removed: ConfigKeyChange[];
+  changed: ConfigKeyChange[];
+  total_changes: number;
+}
+
+export interface ConfigComparisonResponse {
+  snapshot_a_id: string;
+  snapshot_b_id: string;
+  snapshot_a_label: string;
+  snapshot_b_label: string;
+  is_same_config: boolean;
+  top_level: ConfigComparisonSection;
+  params: ConfigComparisonSection;
+  assumptions: ConfigComparisonSection;
+  highlighted_changes: string[];
+  total_changes: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +164,8 @@ export interface StrategyRun {
 export interface StrategyDetail extends Strategy {
   versions: StrategyVersion[];
   runs: StrategyRun[];
+  /** M15: config snapshots linked to this strategy, newest-first. */
+  config_snapshots: StrategyConfigSnapshotRead[];
 }
 
 export interface StrategyCreateRequest {

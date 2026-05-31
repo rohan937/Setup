@@ -161,7 +161,174 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M14: Reliability Reports v1
+## Current milestone — M15: Strategy Versions + Config Snapshotting
+
+**Status: complete.**
+
+### M15 deliverables
+
+- **Migration `0008_m15_config_snapshots.py`** — adds `strategy_config_snapshots` table.
+  Columns: `id` (UUID PK), `strategy_id` (FK strategies CASCADE), `strategy_version_id`
+  (FK strategy_versions SET NULL, nullable), `label` (String 255), `source_type` (String 100,
+  default `manual_json`), `source_filename` (String 512, nullable), `config_json` (JSON),
+  `config_hash` (String 64, SHA-256 of normalized JSON), `param_count` (Integer),
+  `assumption_count` (Integer), `created_at`, `updated_at`. Indexes: strategy_id, version_id,
+  config_hash, created_at. 17 total ORM tables.
+- **`EventType.strategy_config_snapshot_logged`** added to `constants.py`.
+- **`app/models/strategy_config_snapshot.py`** — new ORM model. `StrategyConfigSnapshot` linked
+  back to `Strategy` (cascade delete) and `StrategyVersion` (SET NULL). Both parent models
+  updated with `config_snapshots` relationship.
+- **`app/services/config_snapshots.py`** — deterministic hash + comparison service:
+  - `compute_config_hash(config_json)` — SHA-256 hex of `sort_keys=True` JSON (64-char string).
+    Two configs with identical keys/values in any order produce the same hash.
+  - `count_params(config_json)` / `count_assumptions(config_json)` — count keys under `params`
+    / `assumptions` if the value is a dict; else 0.
+  - `compare_config_snapshots(snap_a_id, snap_b_id, snap_a_label, snap_b_label, config_a, config_b)`
+    — flat structural diff at three levels: top-level keys (excluding `params`/`assumptions`),
+    params sub-keys, assumptions sub-keys. Returns `ConfigComparisonResult` dataclass with
+    `is_same_config`, per-section `added/removed/changed`, `highlighted_changes` (≤10 bullets),
+    and `total_changes`. No recursive diffing. Language is hedged.
+- **Schemas** (`app/schemas/strategy.py`) extended:
+  - `StrategyVersionCreate` — new input schema (version_label, git_commit, branch_name,
+    code_path, signal_name, signal_description).
+  - `StrategyConfigSnapshotCreate` — new input schema (strategy_version_id nullable,
+    label, source_type, source_filename, config_json dict).
+  - `StrategyVersionOut` — extended with `config_snapshot_count: int = 0`.
+  - `StrategyConfigSnapshotRead` — summary output (no config_json blob).
+  - `StrategyConfigSnapshotDetail` — extends Read with `config_json`.
+  - `ConfigKeyChangeOut`, `ConfigComparisonSectionOut`, `ConfigComparisonResponse` — comparison output.
+  - `StrategyDetailOut` — extended with `config_snapshots: list[StrategyConfigSnapshotRead]`.
+- **6 new API endpoints** (`app/api/routes/strategies.py`):
+  - `POST /api/strategies/{strategy_id}/versions` — validates strategy exists, prevents duplicate
+    `version_label` within same strategy (409), creates version, emits `strategy_version_created`
+    timeline event → 201 `StrategyVersionOut`.
+  - `GET  /api/strategies/{strategy_id}/versions` — list newest-first with `config_snapshot_count`
+    per version (aggregated in one grouped query).
+  - `POST /api/strategies/{strategy_id}/config-snapshots` — validates strategy, validates
+    `strategy_version_id` belongs to this strategy if provided, validates `config_json` is dict,
+    computes `config_hash` / `param_count` / `assumption_count`, emits
+    `strategy_config_snapshot_logged` timeline event → 201 `StrategyConfigSnapshotRead`.
+  - `GET  /api/strategies/{strategy_id}/config-snapshots` — list newest-first; optional
+    `version_id` query param to filter by linked version.
+  - `GET  /api/strategies/{strategy_id}/config-snapshots/compare?snapshot_a_id=…&snapshot_b_id=…`
+    — read-only structural comparison of two snapshots belonging to this strategy → 200
+    `ConfigComparisonResponse`. No timeline event.
+  - `GET  /api/config-snapshots/{snapshot_id}` — full detail with `config_json` payload.
+  - `GET /api/strategies/{strategy_id}` updated — eagerly loads `config_snapshots`, includes
+    them in `StrategyDetailOut`, computes per-version `config_snapshot_count` from loaded
+    snapshots without an extra query.
+  - Route registration order: `compare` registered before list endpoint; literal "versions"
+    before config-snapshot sub-paths. No routing conflicts.
+- **53 new backend tests** — `tests/test_versions_m15.py` across 6 test classes:
+  - `TestCreateStrategyVersion` — 201, field values, optional fields null, 404 unknown strategy,
+    409 duplicate label within strategy, same label allowed in different strategies, empty label
+    422, timeline event created.
+  - `TestListStrategyVersions` — empty list, returns created, newest-first, config_snapshot_count,
+    404 unknown strategy, isolation between strategies.
+  - `TestCreateConfigSnapshot` — 201, field values, hash determinism (key order invariant),
+    different configs produce different hashes, param/assumption counting (zero when missing or
+    non-dict), default source_type, version link, version from wrong strategy → 404, 404 strategy,
+    timeline event.
+  - `TestListConfigSnapshots` — empty, returns created, newest-first, no config_json blob in list,
+    filter by version_id, 404, isolation.
+  - `TestCompareConfigSnapshots` — identical → is_same_config true, diff params, metadata fields,
+    snapshot A/B not found → 404, cross-strategy snapshot → 404, strategy not found → 404,
+    assumptions diff, top-level diff.
+  - `TestGetConfigSnapshotDetail` — 200, config_json present, all fields, 404.
+  - `TestStrategyDetailM15` — config_snapshots field present, populated, no blob, per-version
+    count, newest-first versions.
+- **Frontend types** (`frontend/src/types/index.ts`):
+  - `StrategyVersion` extended with `config_snapshot_count: number`.
+  - `StrategyConfigSnapshotRead`, `StrategyConfigSnapshotDetail` interfaces.
+  - `StrategyVersionCreateRequest`, `StrategyConfigSnapshotCreateRequest` request types.
+  - `ConfigKeyChange`, `ConfigComparisonSection`, `ConfigComparisonResponse` interfaces.
+  - `StrategyDetail.config_snapshots` field added.
+- **API client** (`frontend/src/lib/api.ts`):
+  - `createStrategyVersion()`, `getStrategyVersions()`.
+  - `createConfigSnapshot()`, `getConfigSnapshots()`, `compareConfigSnapshots()`,
+    `getConfigSnapshot()`.
+- **`VersionCreateDrawer.tsx`** — right-panel drawer for creating a strategy version.
+  Fields: version_label (required), git_commit, branch_name, code_path, signal_name,
+  signal_description. 409 duplicate label surfaced as error. Calls `onCreated(version)`.
+- **`ConfigSnapshotDrawer.tsx`** — right-panel drawer for logging a config snapshot.
+  Fields: label (required), strategy_version_id (optional dropdown), source_type (select),
+  source_filename, config_json (textarea). Validates JSON client-side before submit. Calls
+  `onCreated(snapshot)`.
+- **`RunLogDrawer.tsx` updated** — accepts optional `versions: StrategyVersion[]` prop.
+  When versions are provided, shows a "Strategy Version (optional)" selector above Run Type.
+  Selected version_id is included in the run payload.
+- **`StrategyDetail.tsx` updated** — "Version & Config Evidence" section replaces the old
+  "Code Versions" card:
+  - Per-version rows show label, signal name, branch/path, git commit (7-char), created date.
+  - Each version row has a collapsible chip showing linked config snapshot count; click expands
+    an inline list of those snapshots (label, source_type, param/assumption counts, hash prefix).
+  - Unlinked config snapshots (no version link) shown in a separate subsection.
+  - Section header has "+ Create Version" and "+ Log Config" inline buttons.
+  - Header action bar adds "+ Create Version" and "+ Log Config" buttons beside "Generate Report"
+    and "+ Log Run".
+  - `VersionCreateDrawer` and `ConfigSnapshotDrawer` wired up; both call
+    `setRefreshKey((k) => k + 1)` on creation to refresh strategy detail.
+  - `RunLogDrawer` receives `versions={strategy.versions}` for the version selector.
+- **483 total passing tests** (1 skipped), zero TypeScript errors, clean production build.
+
+### What M15 does NOT build (by design)
+
+- Recursive config diffing beyond one level of nesting.
+- GitHub integration, automatic version detection from commits.
+- SDK ingestion hooks or automated config snapshot creation.
+- Deployment evidence or live drift attribution.
+- AI explanations of config differences.
+- Full strategy timeline beyond the existing audit trail.
+
+### Verify with curl
+
+```bash
+# Create a strategy version
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/versions \
+  -H "Content-Type: application/json" \
+  -d '{"version_label": "v1.0.0", "branch_name": "main", "signal_name": "50/200 SMA"}' \
+  | python3 -m json.tool
+# Response: id, strategy_id, version_label, config_snapshot_count=0, created_at, ...
+
+# List versions with snapshot counts
+curl "http://localhost:8000/api/strategies/<strategy_id>/versions" | python3 -m json.tool
+
+# Log a config snapshot linked to the version
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/config-snapshots \
+  -H "Content-Type: application/json" \
+  -d '{
+    "label": "prod-config-2024-Q1",
+    "strategy_version_id": "<version_id>",
+    "config_json": {
+      "params": {"lookback": 20, "threshold": 0.5},
+      "assumptions": {"slippage": 0.001}
+    }
+  }' | python3 -m json.tool
+# Response: id, config_hash (64-char SHA-256), param_count=2, assumption_count=1, ...
+
+# List config snapshots (newest first)
+curl "http://localhost:8000/api/strategies/<strategy_id>/config-snapshots" | python3 -m json.tool
+
+# Filter by version
+curl "http://localhost:8000/api/strategies/<strategy_id>/config-snapshots?version_id=<version_id>" \
+  | python3 -m json.tool
+
+# Compare two snapshots
+curl "http://localhost:8000/api/strategies/<strategy_id>/config-snapshots/compare?snapshot_a_id=<a>&snapshot_b_id=<b>" \
+  | python3 -m json.tool
+# Response: is_same_config, top_level/params/assumptions diffs, highlighted_changes, total_changes
+
+# Full snapshot detail (with config_json)
+curl "http://localhost:8000/api/config-snapshots/<snapshot_id>" | python3 -m json.tool
+```
+
+> **M15 note:** Config hash is SHA-256 of `sort_keys=True` JSON — insertion order is irrelevant.
+> Two configs with the same keys/values always produce the same hash. Comparison is flat (one
+> level) and structural only — values compared with `==`, no recursive diff. Language is hedged.
+
+---
+
+## Previously completed — M14: Reliability Reports v1
 
 **Status: complete.**
 
@@ -923,7 +1090,7 @@ The following are deferred to later milestones:
 - Live Drift / Execution Attribution
 - Python SDK and ingestion endpoints
 - Live market data providers (no external/paid data)
-- AI diagnostic layer (bounded to deterministic evidence) — M15+
+- AI diagnostic layer (bounded to deterministic evidence) — M16+
 - Full overfit / parameter sensitivity engine (walk-forward, parameter sweeps)
 - Regime analysis and market condition attribution
 - PDF export, scheduled report delivery, AI-generated report text

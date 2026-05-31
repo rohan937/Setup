@@ -56,6 +56,12 @@ class Strategy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     reports: Mapped[list["Report"]] = relationship(  # noqa: F821
         "Report", back_populates="strategy"
     )
+    config_snapshots: Mapped[list["StrategyConfigSnapshot"]] = relationship(  # noqa: F821
+        "StrategyConfigSnapshot",
+        back_populates="strategy",
+        cascade="all, delete-orphan",
+        order_by="StrategyConfigSnapshot.created_at.desc()",
+    )
 
     def __repr__(self) -> str:
         return f"<Strategy slug={self.slug!r} status={self.status!r}>"

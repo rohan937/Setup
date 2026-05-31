@@ -5,6 +5,14 @@
   POST /api/strategies/{strategy_id}/runs
   GET  /api/strategies/{strategy_id}/runs/compare  ← M5
   GET  /api/strategies/{strategy_id}/runs
+
+  M15 version + config-snapshot endpoints:
+  POST /api/strategies/{strategy_id}/versions
+  GET  /api/strategies/{strategy_id}/versions
+  POST /api/strategies/{strategy_id}/config-snapshots
+  GET  /api/strategies/{strategy_id}/config-snapshots
+  GET  /api/strategies/{strategy_id}/config-snapshots/compare
+  GET  /api/config-snapshots/{snapshot_id}
 """
 
 from __future__ import annotations
@@ -25,19 +33,33 @@ from app.models.dataset import Dataset
 from app.models.dataset_snapshot import DatasetSnapshot
 from app.models.project import Project
 from app.models.strategy import Strategy
+from app.models.strategy_config_snapshot import StrategyConfigSnapshot
 from app.models.strategy_run import StrategyRun
 from app.models.strategy_version import StrategyVersion
 from app.schemas.comparison import RunComparisonResponse
 from app.schemas.strategy import (
+    ConfigComparisonResponse,
+    ConfigComparisonSectionOut,
+    ConfigKeyChangeOut,
     DataEvidenceSummary,
+    StrategyConfigSnapshotCreate,
+    StrategyConfigSnapshotDetail,
+    StrategyConfigSnapshotRead,
     StrategyCreate,
     StrategyDetailOut,
     StrategyListItemOut,
     StrategyRunCreate,
     StrategyRunOut,
+    StrategyVersionCreate,
     StrategyVersionOut,
 )
 from app.schemas.timeline import TimelineEventOut, TimelineListResponse
+from app.services.config_snapshots import (
+    compare_config_snapshots,
+    compute_config_hash,
+    count_assumptions,
+    count_params,
+)
 from app.services.run_comparison import compare_runs
 
 router = APIRouter(tags=["strategies"])
@@ -323,6 +345,7 @@ def get_strategy(
             selectinload(Strategy.runs)
             .selectinload(StrategyRun.snapshot)
             .selectinload(DatasetSnapshot.issues),
+            selectinload(Strategy.config_snapshots),
         )
         .filter(Strategy.id == strategy_id)
         .first()
@@ -344,6 +367,22 @@ def get_strategy(
 
     sorted_runs = sorted(strategy.runs, key=lambda x: x.created_at, reverse=True)
 
+    # Compute per-version config_snapshot_count from the eagerly loaded snapshots.
+    version_snapshot_counts: dict[uuid.UUID, int] = {}
+    for cs in (strategy.config_snapshots or []):
+        if cs.strategy_version_id is not None:
+            version_snapshot_counts[cs.strategy_version_id] = (
+                version_snapshot_counts.get(cs.strategy_version_id, 0) + 1
+            )
+
+    # Build version list with counts, newest-first.
+    sorted_versions = sorted(strategy.versions, key=lambda v: v.created_at, reverse=True)
+    version_outs: list[StrategyVersionOut] = []
+    for v in sorted_versions:
+        vout = StrategyVersionOut.model_validate(v)
+        vout.config_snapshot_count = version_snapshot_counts.get(v.id, 0)
+        version_outs.append(vout)
+
     return StrategyDetailOut(
         id=strategy.id,
         project_id=strategy.project_id,
@@ -357,8 +396,12 @@ def get_strategy(
         latest_run_at=latest_run_at,
         created_at=strategy.created_at,
         updated_at=strategy.updated_at,
-        versions=[StrategyVersionOut.model_validate(v) for v in strategy.versions],
+        versions=version_outs,
         runs=[_build_run_out(r) for r in sorted_runs],
+        config_snapshots=[
+            StrategyConfigSnapshotRead.model_validate(cs)
+            for cs in strategy.config_snapshots
+        ],
     )
 
 
@@ -597,3 +640,368 @@ def list_strategy_runs(
     )
 
     return [_build_run_out(r) for r in runs]
+
+
+# ---------------------------------------------------------------------------
+# M15: POST /api/strategies/{strategy_id}/versions
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/strategies/{strategy_id}/versions",
+    response_model=StrategyVersionOut,
+    status_code=201,
+)
+def create_strategy_version(
+    strategy_id: uuid.UUID,
+    body: StrategyVersionCreate,
+    db: Session = Depends(get_db),
+) -> StrategyVersionOut:
+    """Create a new strategy version.
+
+    Validates that the strategy exists and that version_label is unique within
+    the strategy.  Emits an audit timeline event on success.
+    """
+    strategy = (
+        db.query(Strategy)
+        .options(selectinload(Strategy.project))
+        .filter(Strategy.id == strategy_id)
+        .first()
+    )
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    # Prevent duplicate version_label within the same strategy.
+    existing = (
+        db.query(StrategyVersion)
+        .filter(
+            StrategyVersion.strategy_id == strategy_id,
+            StrategyVersion.version_label == body.version_label,
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Version label '{body.version_label}' already exists for this strategy",
+        )
+
+    version = StrategyVersion(
+        strategy_id=strategy_id,
+        version_label=body.version_label,
+        git_commit=body.git_commit,
+        branch_name=body.branch_name,
+        code_path=body.code_path,
+        signal_name=body.signal_name,
+        signal_description=body.signal_description,
+    )
+    db.add(version)
+    db.flush()
+
+    event = AuditTimelineEvent(
+        organization_id=strategy.project.organization_id,
+        project_id=strategy.project_id,
+        strategy_id=strategy_id,
+        event_type=EventType.strategy_version_created,
+        title=f"Version created: {version.version_label}",
+        description=(
+            f"Strategy version '{version.version_label}' created for strategy '{strategy.name}'."
+            + (f" Branch: {version.branch_name}." if version.branch_name else "")
+            + (f" Signal: {version.signal_name}." if version.signal_name else "")
+        ),
+        source_type="strategy_version",
+        source_id=str(version.id),
+        severity=Severity.info,
+        metadata_json={
+            "version_label": version.version_label,
+            "git_commit": version.git_commit,
+            "branch_name": version.branch_name,
+            "signal_name": version.signal_name,
+            "strategy_name": strategy.name,
+        },
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(version)
+
+    vout = StrategyVersionOut.model_validate(version)
+    vout.config_snapshot_count = 0
+    return vout
+
+
+# ---------------------------------------------------------------------------
+# M15: GET /api/strategies/{strategy_id}/versions
+# NOTE: registered BEFORE the config-snapshots routes so literal "versions"
+# is matched before any path-param sub-routes below it.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/versions",
+    response_model=list[StrategyVersionOut],
+)
+def list_strategy_versions(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> list[StrategyVersionOut]:
+    """List all versions for a strategy, newest-first, with config_snapshot_count."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    versions = (
+        db.query(StrategyVersion)
+        .filter(StrategyVersion.strategy_id == strategy_id)
+        .order_by(StrategyVersion.created_at.desc())
+        .all()
+    )
+
+    if not versions:
+        return []
+
+    version_ids = [v.id for v in versions]
+    counts: dict = dict(
+        db.query(
+            StrategyConfigSnapshot.strategy_version_id,
+            func.count(StrategyConfigSnapshot.id),
+        )
+        .filter(StrategyConfigSnapshot.strategy_version_id.in_(version_ids))
+        .group_by(StrategyConfigSnapshot.strategy_version_id)
+        .all()
+    )
+
+    results: list[StrategyVersionOut] = []
+    for v in versions:
+        vout = StrategyVersionOut.model_validate(v)
+        vout.config_snapshot_count = counts.get(v.id, 0)
+        results.append(vout)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# M15: GET /api/strategies/{strategy_id}/config-snapshots/compare
+# NOTE: registered BEFORE the list route (/config-snapshots) so the literal
+# "/compare" segment is matched before any query-only /config-snapshots handler.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/config-snapshots/compare",
+    response_model=ConfigComparisonResponse,
+)
+def compare_strategy_config_snapshots(
+    strategy_id: uuid.UUID,
+    snapshot_a_id: uuid.UUID = Query(..., description="ID of the baseline config snapshot (A)"),
+    snapshot_b_id: uuid.UUID = Query(..., description="ID of the comparison config snapshot (B)"),
+    db: Session = Depends(get_db),
+) -> ConfigComparisonResponse:
+    """Deterministically compare two config snapshots belonging to this strategy.
+
+    Read-only — no audit event is emitted.
+    Returns structured diffs for top-level keys, params, and assumptions,
+    plus highlighted change bullets.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    snap_a = (
+        db.query(StrategyConfigSnapshot)
+        .filter(
+            StrategyConfigSnapshot.id == snapshot_a_id,
+            StrategyConfigSnapshot.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if snap_a is None:
+        raise HTTPException(status_code=404, detail="Config snapshot A not found")
+
+    snap_b = (
+        db.query(StrategyConfigSnapshot)
+        .filter(
+            StrategyConfigSnapshot.id == snapshot_b_id,
+            StrategyConfigSnapshot.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if snap_b is None:
+        raise HTTPException(status_code=404, detail="Config snapshot B not found")
+
+    result = compare_config_snapshots(
+        snap_a_id=str(snap_a.id),
+        snap_b_id=str(snap_b.id),
+        snap_a_label=snap_a.label,
+        snap_b_label=snap_b.label,
+        config_a=snap_a.config_json,
+        config_b=snap_b.config_json,
+    )
+
+    def _section_out(section):  # type: ignore[no-untyped-def]
+        return ConfigComparisonSectionOut(
+            added=[ConfigKeyChangeOut(key=c.key, old_value=c.old_value, new_value=c.new_value, change_type=c.change_type) for c in section.added],
+            removed=[ConfigKeyChangeOut(key=c.key, old_value=c.old_value, new_value=c.new_value, change_type=c.change_type) for c in section.removed],
+            changed=[ConfigKeyChangeOut(key=c.key, old_value=c.old_value, new_value=c.new_value, change_type=c.change_type) for c in section.changed],
+            total_changes=section.total_changes,
+        )
+
+    return ConfigComparisonResponse(
+        snapshot_a_id=snap_a.id,
+        snapshot_b_id=snap_b.id,
+        snapshot_a_label=result.snapshot_a_label,
+        snapshot_b_label=result.snapshot_b_label,
+        is_same_config=result.is_same_config,
+        top_level=_section_out(result.top_level),
+        params=_section_out(result.params),
+        assumptions=_section_out(result.assumptions),
+        highlighted_changes=result.highlighted_changes,
+        total_changes=result.total_changes,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M15: POST /api/strategies/{strategy_id}/config-snapshots
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/strategies/{strategy_id}/config-snapshots",
+    response_model=StrategyConfigSnapshotRead,
+    status_code=201,
+)
+def create_config_snapshot(
+    strategy_id: uuid.UUID,
+    body: StrategyConfigSnapshotCreate,
+    db: Session = Depends(get_db),
+) -> StrategyConfigSnapshotRead:
+    """Create a config snapshot for a strategy.
+
+    config_json must be a JSON object (dict); arrays and scalars are rejected.
+    If strategy_version_id is provided it must belong to this strategy.
+    Computes deterministic config_hash, param_count, and assumption_count.
+    Emits an audit timeline event on success.
+    """
+    strategy = (
+        db.query(Strategy)
+        .options(selectinload(Strategy.project))
+        .filter(Strategy.id == strategy_id)
+        .first()
+    )
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    if not isinstance(body.config_json, dict):
+        raise HTTPException(
+            status_code=422,
+            detail="config_json must be a JSON object (dict), not an array or scalar",
+        )
+
+    # Validate strategy_version_id belongs to this strategy when provided.
+    if body.strategy_version_id is not None:
+        version = (
+            db.query(StrategyVersion)
+            .filter(
+                StrategyVersion.id == body.strategy_version_id,
+                StrategyVersion.strategy_id == strategy_id,
+            )
+            .first()
+        )
+        if version is None:
+            raise HTTPException(status_code=404, detail="Strategy version not found")
+
+    config_hash = compute_config_hash(body.config_json)
+    param_count = count_params(body.config_json)
+    assumption_count = count_assumptions(body.config_json)
+
+    snapshot = StrategyConfigSnapshot(
+        strategy_id=strategy_id,
+        strategy_version_id=body.strategy_version_id,
+        label=body.label,
+        source_type=body.source_type,
+        source_filename=body.source_filename,
+        config_json=body.config_json,
+        config_hash=config_hash,
+        param_count=param_count,
+        assumption_count=assumption_count,
+    )
+    db.add(snapshot)
+    db.flush()
+
+    event = AuditTimelineEvent(
+        organization_id=strategy.project.organization_id,
+        project_id=strategy.project_id,
+        strategy_id=strategy_id,
+        event_type=EventType.strategy_config_snapshot_logged,
+        title=f"Config snapshot logged: {snapshot.label}",
+        description=(
+            f"Config snapshot '{snapshot.label}' logged for strategy '{strategy.name}'. "
+            f"Source: {snapshot.source_type}. "
+            f"Params: {param_count}. Assumptions: {assumption_count}."
+        ),
+        source_type="strategy_config_snapshot",
+        source_id=str(snapshot.id),
+        severity=Severity.info,
+        metadata_json={
+            "snapshot_label": snapshot.label,
+            "source_type": snapshot.source_type,
+            "config_hash": config_hash,
+            "param_count": param_count,
+            "assumption_count": assumption_count,
+            "strategy_name": strategy.name,
+        },
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(snapshot)
+
+    return StrategyConfigSnapshotRead.model_validate(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# M15: GET /api/strategies/{strategy_id}/config-snapshots
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/config-snapshots",
+    response_model=list[StrategyConfigSnapshotRead],
+)
+def list_config_snapshots(
+    strategy_id: uuid.UUID,
+    version_id: uuid.UUID | None = Query(default=None, description="Filter by strategy_version_id"),
+    db: Session = Depends(get_db),
+) -> list[StrategyConfigSnapshotRead]:
+    """List config snapshots for a strategy, newest-first.
+
+    Pass ``version_id`` to filter by a specific strategy version.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    q = db.query(StrategyConfigSnapshot).filter(
+        StrategyConfigSnapshot.strategy_id == strategy_id
+    )
+    if version_id is not None:
+        q = q.filter(StrategyConfigSnapshot.strategy_version_id == version_id)
+
+    snapshots = q.order_by(StrategyConfigSnapshot.created_at.desc()).all()
+    return [StrategyConfigSnapshotRead.model_validate(s) for s in snapshots]
+
+
+# ---------------------------------------------------------------------------
+# M15: GET /api/config-snapshots/{snapshot_id}
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/config-snapshots/{snapshot_id}",
+    response_model=StrategyConfigSnapshotDetail,
+)
+def get_config_snapshot(
+    snapshot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyConfigSnapshotDetail:
+    """Return full config snapshot detail including the config_json payload."""
+    snapshot = (
+        db.query(StrategyConfigSnapshot)
+        .filter(StrategyConfigSnapshot.id == snapshot_id)
+        .first()
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Config snapshot not found")
+
+    return StrategyConfigSnapshotDetail.model_validate(snapshot)
