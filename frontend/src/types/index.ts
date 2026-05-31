@@ -263,6 +263,43 @@ export interface BacktestAudit {
 }
 
 // ---------------------------------------------------------------------------
+// Audit Timeline (M10)
+// ---------------------------------------------------------------------------
+
+export interface TimelineEvent {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  strategy_id: string | null;
+  event_type: string;
+  title: string;
+  description: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  severity: string;
+  event_time: string;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface TimelineListResponse {
+  items: TimelineEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface TimelineFilters {
+  project_id?: string;
+  strategy_id?: string;
+  event_type?: string;
+  severity?: string;
+  source_type?: string;
+  limit?: number;
+  offset?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Reliability Dashboard (M9)
 // ---------------------------------------------------------------------------
 

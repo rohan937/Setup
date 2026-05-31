@@ -340,15 +340,13 @@ class TestComparisonEngine:
 
     def test_comparison_does_not_create_audit_event(self, client):
         """Comparisons are read-only — they must not pollute the audit timeline."""
-        # Snapshot event count before
-        before = client.get("/api/timeline?limit=500").json()
-        before_count = len(before)
+        # M10: timeline now returns a paginated envelope; use "total" for counts.
+        before_count = client.get("/api/timeline?limit=200").json()["total"]
 
         sid, ra, rb = _create_demo_runs(client)
         # Creating the strategy and runs above already added events, so
         # snapshot AGAIN after setup but before comparison.
-        after_setup = client.get("/api/timeline?limit=500").json()
-        count_after_setup = len(after_setup)
+        count_after_setup = client.get("/api/timeline?limit=200").json()["total"]
 
         # Perform the comparison
         resp = client.get(
@@ -357,8 +355,8 @@ class TestComparisonEngine:
         assert resp.status_code == 200
 
         # Verify no new events were added
-        after_compare = client.get("/api/timeline?limit=500").json()
-        assert len(after_compare) == count_after_setup
+        count_after_compare = client.get("/api/timeline?limit=200").json()["total"]
+        assert count_after_compare == count_after_setup
 
     def test_total_changes_is_sum_of_all_sections(self, client):
         sid, ra, rb = _create_demo_runs(client)

@@ -37,6 +37,7 @@ from app.schemas.strategy import (
     StrategyRunOut,
     StrategyVersionOut,
 )
+from app.schemas.timeline import TimelineEventOut, TimelineListResponse
 from app.services.run_comparison import compare_runs
 
 router = APIRouter(tags=["strategies"])
@@ -218,9 +219,19 @@ def create_strategy(body: StrategyCreate, db: Session = Depends(get_db)) -> Stra
         strategy_id=strategy.id,
         event_type=EventType.strategy_created,
         title=f"Strategy created: {strategy.name}",
+        description=(
+            f"Strategy '{strategy.name}' registered in project '{project.name}'. "
+            f"Asset class: {strategy.asset_class}. Status: {strategy.status}."
+        ),
         source_type="strategy",
         source_id=str(strategy.id),
         severity=Severity.info,
+        metadata_json={
+            "strategy_name": strategy.name,
+            "asset_class": strategy.asset_class,
+            "status": strategy.status,
+            "project_name": project.name,
+        },
     )
     db.add(event)
     db.commit()
@@ -451,6 +462,11 @@ def create_strategy_run(
         strategy_id=strategy_id,
         event_type=EventType.strategy_run_logged,
         title=f"Run logged: {run.run_name}",
+        description=(
+            f"{run.run_type.capitalize()} run '{run.run_name}' logged for strategy "
+            f"'{strategy.name}'. Status: {run.status}."
+            + (f" Universe: {run.universe_name}." if run.universe_name else "")
+        ),
         source_type="strategy_run",
         source_id=str(run.id),
         severity=Severity.info,
@@ -459,6 +475,7 @@ def create_strategy_run(
             "status": run.status,
             "universe_name": run.universe_name,
             "dataset_snapshot_id": str(body.dataset_snapshot_id) if body.dataset_snapshot_id else None,
+            "strategy_name": strategy.name,
         },
     )
     db.add(event)
@@ -512,6 +529,48 @@ def compare_strategy_runs(
         )
 
     return compare_runs(run_a, run_b)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/strategies/{strategy_id}/timeline  (M10)
+# NOTE: registered BEFORE the bare /runs route so the literal "/timeline"
+# segment is matched before the run-list handler.
+# ---------------------------------------------------------------------------
+
+@router.get("/strategies/{strategy_id}/timeline", response_model=TimelineListResponse)
+def get_strategy_timeline(
+    strategy_id: uuid.UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> TimelineListResponse:
+    """Return audit timeline events for a single strategy, newest-first.
+
+    Only events whose ``strategy_id`` matches are returned.  Use the global
+    ``GET /api/timeline?strategy_id=...`` endpoint if you also need events
+    from sub-resources that may not carry a strategy_id (e.g. dataset snapshots).
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    q = db.query(AuditTimelineEvent).filter(
+        AuditTimelineEvent.strategy_id == strategy_id
+    )
+    total: int = q.count()
+    items = (
+        q.order_by(AuditTimelineEvent.event_time.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return TimelineListResponse(
+        items=[TimelineEventOut.model_validate(e) for e in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ---------------------------------------------------------------------------

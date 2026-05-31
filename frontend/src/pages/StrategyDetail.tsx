@@ -7,8 +7,9 @@ import type {
   DataEvidenceSummary,
   StrategyDetail as StrategyDetailType,
   StrategyRun,
+  TimelineEvent,
 } from "@/types";
-import { getStrategy, runBacktestAudit } from "@/lib/api";
+import { getStrategy, getStrategyTimeline, runBacktestAudit } from "@/lib/api";
 import Badge from "@/components/Badge";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
@@ -292,6 +293,83 @@ function AuditIssueRow({ issue }: { issue: BacktestIssue }) {
               ↳ {issue.suggested_check}
             </p>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Audit Trail panel (M10) — compact 5-event preview for this strategy
+// ---------------------------------------------------------------------------
+
+function auditEventTypeBadgeClass(type: string): string {
+  const palette: Record<string, string> = {
+    strategy_created:
+      "bg-teal-900/30 text-teal-400 border-teal-700/30",
+    strategy_run_logged:
+      "bg-blue-900/30 text-blue-400 border-blue-700/30",
+    dataset_snapshot_uploaded:
+      "bg-violet-900/30 text-violet-400 border-violet-700/30",
+    backtest_audited:
+      "bg-orange-900/30 text-orange-400 border-orange-700/30",
+  };
+  return palette[type] ?? "bg-bg-600 text-text-muted border-border";
+}
+
+function AuditTrailPanel({ strategyId }: { strategyId: string }) {
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    getStrategyTimeline(strategyId, { limit: 5 })
+      .then((resp) => {
+        setEvents(resp.items);
+        setTotal(resp.total);
+      })
+      .catch(() => {}); // non-critical — don't surface timeline errors on strategy page
+  }, [strategyId]);
+
+  if (events.length === 0) return null;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+        <p className="caption">Audit Trail</p>
+        <Link
+          to="/timeline"
+          className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+        >
+          full trail →
+        </Link>
+      </div>
+      <div className="divide-y divide-border px-4">
+        {events.map((ev) => (
+          <div key={ev.id} className="flex items-start gap-2.5 py-2.5">
+            <span
+              className={`mt-0.5 inline-block rounded border px-1.5 py-0.5 font-mono text-2xs leading-none shrink-0 ${auditEventTypeBadgeClass(ev.event_type)}`}
+            >
+              {ev.event_type.replace(/_/g, " ")}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-text-secondary leading-snug truncate">
+                {ev.title}
+              </p>
+            </div>
+            <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
+              {new Date(ev.event_time).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })}
+            </span>
+          </div>
+        ))}
+      </div>
+      {total > 5 && (
+        <div className="border-t border-border px-4 py-2 text-center">
+          <span className="font-mono text-2xs text-text-muted">
+            {total - 5} more event{total - 6 !== 0 ? "s" : ""} — see full trail
+          </span>
         </div>
       )}
     </div>
@@ -605,6 +683,9 @@ export default function StrategyDetail() {
           )}
         </div>
       </div>
+
+      {/* M10: Strategy audit trail preview */}
+      <AuditTrailPanel strategyId={id!} />
 
       {/* Run comparison (M5) */}
       <RunComparisonPanel strategyId={id!} runs={strategy.runs} />

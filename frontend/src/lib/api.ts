@@ -5,6 +5,8 @@ import type {
   BacktestAuditListItem,
   DashboardSummary,
   Dataset,
+  TimelineListResponse,
+  TimelineFilters,
   DatasetCreateRequest,
   DatasetDetail,
   DatasetSnapshotCreateRequest,
@@ -152,4 +154,37 @@ export async function getBacktestAudits(): Promise<BacktestAuditListItem[]> {
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   return request<DashboardSummary>("/api/dashboard/summary");
+}
+
+// ---------------------------------------------------------------------------
+// Audit timeline (M10)
+// ---------------------------------------------------------------------------
+
+function _buildTimelineQS(filters: TimelineFilters): string {
+  const params = new URLSearchParams();
+  if (filters.project_id) params.set("project_id", filters.project_id);
+  if (filters.strategy_id) params.set("strategy_id", filters.strategy_id);
+  if (filters.event_type) params.set("event_type", filters.event_type);
+  if (filters.severity) params.set("severity", filters.severity);
+  if (filters.source_type) params.set("source_type", filters.source_type);
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.offset != null) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export async function getTimeline(
+  filters: TimelineFilters = {},
+): Promise<TimelineListResponse> {
+  return request<TimelineListResponse>(`/api/timeline${_buildTimelineQS(filters)}`);
+}
+
+export async function getStrategyTimeline(
+  strategyId: string,
+  params: { limit?: number; offset?: number } = {},
+): Promise<TimelineListResponse> {
+  const qs = _buildTimelineQS(params);
+  return request<TimelineListResponse>(
+    `/api/strategies/${strategyId}/timeline${qs}`,
+  );
 }

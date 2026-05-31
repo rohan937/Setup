@@ -1,3 +1,5 @@
+"""Pydantic schemas for the audit timeline (M2 / M10)."""
+
 from __future__ import annotations
 
 import uuid
@@ -7,6 +9,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class TimelineEventOut(BaseModel):
+    """One audit timeline event — read-only."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -22,3 +26,12 @@ class TimelineEventOut(BaseModel):
     event_time: datetime
     metadata_json: dict | None
     created_at: datetime
+
+
+class TimelineListResponse(BaseModel):
+    """Paginated list of timeline events."""
+
+    items: list[TimelineEventOut]
+    total: int
+    limit: int
+    offset: int

@@ -252,13 +252,18 @@ class TestApiTimeline:
         resp = client.get("/api/timeline")
         assert resp.status_code == 200
 
-    def test_get_timeline_returns_list(self, client):
+    def test_get_timeline_returns_paginated_response(self, client):
         data = client.get("/api/timeline").json()
-        assert isinstance(data, list)
-        assert len(data) >= 2
+        # M10: response is now a paginated envelope, not a bare list.
+        assert "items" in data
+        assert "total" in data
+        assert "limit" in data
+        assert "offset" in data
+        assert isinstance(data["items"], list)
+        assert len(data["items"]) >= 2
 
     def test_timeline_event_has_expected_fields(self, client):
-        events = client.get("/api/timeline").json()
+        events = client.get("/api/timeline").json()["items"]
         e = events[0]
         assert "event_type" in e
         assert "title" in e
@@ -268,4 +273,4 @@ class TestApiTimeline:
     def test_timeline_limit_param(self, client):
         resp = client.get("/api/timeline?limit=1")
         assert resp.status_code == 200
-        assert len(resp.json()) <= 1
+        assert len(resp.json()["items"]) <= 1

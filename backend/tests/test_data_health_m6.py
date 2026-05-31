@@ -382,8 +382,10 @@ def test_snapshot_upload_creates_audit_event(client):
 
     # Record the most-recent event ID before the upload so we can verify a new
     # event was created (not just that the latest happens to be the right type).
+    # M10: timeline now returns a paginated envelope; index via ["items"].
     before_resp = client.get("/api/timeline?limit=1")
-    before_latest_id = before_resp.json()[0]["id"] if before_resp.json() else None
+    before_items = before_resp.json()["items"]
+    before_latest_id = before_items[0]["id"] if before_items else None
 
     resp = client.post(
         f"/api/datasets/{d['id']}/snapshots",
@@ -392,8 +394,9 @@ def test_snapshot_upload_creates_audit_event(client):
     assert resp.status_code == 201, resp.text
 
     after_resp = client.get("/api/timeline?limit=1")
-    assert after_resp.json(), "Timeline returned no events after snapshot upload"
-    latest_event = after_resp.json()[0]
+    after_items = after_resp.json()["items"]
+    assert after_items, "Timeline returned no events after snapshot upload"
+    latest_event = after_items[0]
 
     # The newest event must be different from the pre-upload latest event.
     assert latest_event["id"] != before_latest_id

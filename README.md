@@ -161,7 +161,83 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M9: Unified Reliability Dashboard v1
+## Current milestone — M10: Audit Timeline v1
+
+**Status: complete.**
+
+### M10 deliverables
+
+- **Improved `GET /api/timeline`** — now returns a paginated envelope (`items`, `total`,
+  `limit`, `offset`) instead of a bare list. Supports five optional AND-combined filters:
+  `project_id`, `strategy_id`, `event_type`, `severity`, `source_type`. Max limit 200.
+  Newest-first ordering on `event_time`.
+- **New `GET /api/strategies/{strategy_id}/timeline`** — scoped event stream for one strategy.
+  Supports `limit` and `offset`. Returns 404 for unknown strategies.
+- **Richer event data for all four source types:**
+  - `strategy_created` — adds `description` (asset class, project, status) + `metadata_json`
+    (strategy_name, asset_class, status, project_name).
+  - `strategy_run_logged` — adds `description` (run type, strategy name, status, universe) +
+    `metadata_json` (run_type, status, universe_name, strategy_name).
+  - `dataset_snapshot_uploaded` — already had description + metadata; unchanged.
+  - `backtest_audited` — adds `description` (trust score, status, issue count) + enriched
+    `metadata_json` (run_name, trust_score, overall_status, issue_count, strategy_name).
+    Severity now escalates: trust <25 → high, <50 → medium, <75 → low, ≥75 → info.
+- **Timeline page rewrite** — real evidence stream with:
+  - **Filter bar** — source type, severity, event type dropdowns (reset to page 1 on change).
+  - **Event rows** — severity dot, event-type badge (colour-coded by type), title, expandable
+    description, metadata score if available (trust/health/Sharpe), source type label, timestamp.
+  - **Load more** button — appends next page without scroll-to-top, shows remaining count.
+  - **Total counter** — shows matching event count in filter bar.
+  - Evidence language throughout: "Evidence Stream", "Audit Trail", "Run Evidence", etc.
+- **Strategy Detail audit trail panel** — compact 5-event preview at the bottom of each
+  strategy page, loaded from `GET /api/strategies/{id}/timeline`. Shows event-type badge,
+  title, date. Overflow footer if total > 5. Links to `/timeline`.
+- **`TimelineEvent`, `TimelineListResponse`, `TimelineFilters`** added to
+  `frontend/src/types/index.ts`.
+- **`getTimeline()`, `getStrategyTimeline()`** added to `frontend/src/lib/api.ts`.
+- **40 new tests** — `tests/test_timeline_m10.py`: shape, pagination, all filters, AND-combining,
+  strategy-scoped endpoint, event quality (descriptions + metadata), severity escalation,
+  count increments for all four event sources.
+- **3 existing tests patched** — `test_db.py` (list → paginated envelope), `test_comparison_m5.py`
+  (limit 500→200, total count via `.json()["total"]`), `test_data_health_m6.py` (items[0] index).
+- **234 total passing tests**, clean TypeScript typecheck, clean production build.
+
+> **Note:** The timeline is an evidence/audit trail, not an alert system. It records facts
+> (what happened and when) without raising notifications, scoring urgency, or creating tasks.
+> No AI summaries, no alert engine, no incident queue.
+
+### Verify with curl
+
+```bash
+# Paginated event stream — default 50, newest first
+curl "http://localhost:8000/api/timeline" | python3 -m json.tool
+# Response: { "items": [...], "total": N, "limit": 50, "offset": 0 }
+
+# Filter by source type (strategy / strategy_run / dataset_snapshot / backtest_audit)
+curl "http://localhost:8000/api/timeline?source_type=backtest_audit" | python3 -m json.tool
+
+# Filter by severity escalation
+curl "http://localhost:8000/api/timeline?severity=high" | python3 -m json.tool
+
+# AND-combine filters
+curl "http://localhost:8000/api/timeline?event_type=strategy_run_logged&severity=info" \
+  | python3 -m json.tool
+
+# Paginate
+curl "http://localhost:8000/api/timeline?limit=10&offset=10" | python3 -m json.tool
+
+# Strategy-scoped timeline (newest first for that strategy only)
+curl "http://localhost:8000/api/strategies/<strategy_id>/timeline" | python3 -m json.tool
+```
+
+### Previously completed
+
+- **M9: Unified Reliability Dashboard v1** — aggregated endpoint, score strip, evidence counters,
+  data health + backtest trust panels, recent activity panels, 27 tests, 194 total tests.
+
+---
+
+## Previously completed — M9: Unified Reliability Dashboard v1
 
 **Status: complete.**
 
@@ -428,11 +504,11 @@ curl http://localhost:8000/api/datasets
 The following are deferred to later milestones:
 
 - Authentication / API keys (M-later)
-- Live Drift / Execution Attribution — M10
-- Python SDK and ingestion endpoints — M10
-- Live market data providers (no external/paid data) — M11
-- AI diagnostic layer (bounded to deterministic evidence) — M12
-- Alerts engine — M13
-- Reports and scheduled audit trail — M14
+- Alerts engine and notifications — M11
+- Live Drift / Execution Attribution — M11
+- Python SDK and ingestion endpoints — M11
+- Live market data providers (no external/paid data) — M12
+- AI diagnostic layer (bounded to deterministic evidence) — M13
+- Reports and scheduled summaries — M14
 
 No paid services, no live market data, and no broker/trading actions are part of this project.

@@ -228,20 +228,35 @@ def create_backtest_audit(
     # Audit timeline event.
     project = run.strategy.project if run.strategy else None
     if project is not None:
+        # Severity escalates for weak/unreliable audits so they stand out in the timeline.
+        audit_severity = Severity.info
+        if result.trust_score < 25:
+            audit_severity = Severity.high
+        elif result.trust_score < 50:
+            audit_severity = Severity.medium
+        elif result.trust_score < 75:
+            audit_severity = Severity.low
         db.add(AuditTimelineEvent(
             organization_id=project.organization_id,
             project_id=project.id,
             strategy_id=run.strategy_id,
             event_type=EventType.backtest_audited,
-            title=f"Backtest audited: {run.run_name} — trust score {result.trust_score}",
+            title=f"Backtest audited: {run.run_name} — trust score {result.trust_score}/100",
+            description=(
+                f"Deterministic backtest reality check completed. "
+                f"Trust score {result.trust_score}/100, status '{result.overall_status}'. "
+                f"{len(result.issues)} issue(s) detected."
+            ),
             source_type="backtest_audit",
             source_id=str(audit.id),
-            severity=Severity.info,
+            severity=audit_severity,
             metadata_json={
                 "run_id": str(run_id),
+                "run_name": run.run_name,
                 "trust_score": result.trust_score,
                 "overall_status": result.overall_status,
                 "issue_count": len(result.issues),
+                "strategy_name": run.strategy.name if run.strategy else None,
             },
         ))
 
