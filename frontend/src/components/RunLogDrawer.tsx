@@ -1,6 +1,6 @@
-import { useState } from "react";
-import type { StrategyRunCreateRequest } from "@/types";
-import { createStrategyRun } from "@/lib/api";
+import { useEffect, useState } from "react";
+import type { Dataset, DatasetSnapshotRead, StrategyRunCreateRequest } from "@/types";
+import { createStrategyRun, getDatasets, getDatasetSnapshots } from "@/lib/api";
 
 const RUN_TYPES = ["backtest", "research", "paper", "live"] as const;
 const RUN_STATUSES = ["completed", "running", "failed", "pending", "canceled"] as const;
@@ -48,6 +48,12 @@ function parseJsonField(
   return parsed as Record<string, unknown>;
 }
 
+function healthColor(score: number): string {
+  if (score >= 90) return "text-fidelity-high";
+  if (score >= 60) return "text-fidelity-medium";
+  return "text-fidelity-low";
+}
+
 export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Props) {
   const [runName, setRunName] = useState("");
   const [runType, setRunType] = useState<string>("backtest");
@@ -61,6 +67,38 @@ export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Pr
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // M7: dataset snapshot selector state
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
+  const [snapshots, setSnapshots] = useState<DatasetSnapshotRead[]>([]);
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
+  const [loadingDatasets, setLoadingDatasets] = useState(false);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+
+  // Load datasets when drawer opens.
+  useEffect(() => {
+    if (!open) return;
+    setLoadingDatasets(true);
+    getDatasets()
+      .then(setDatasets)
+      .catch(() => setDatasets([]))
+      .finally(() => setLoadingDatasets(false));
+  }, [open]);
+
+  // Load snapshots when a dataset is selected.
+  useEffect(() => {
+    if (!selectedDatasetId) {
+      setSnapshots([]);
+      setSelectedSnapshotId("");
+      return;
+    }
+    setLoadingSnapshots(true);
+    getDatasetSnapshots(selectedDatasetId)
+      .then(setSnapshots)
+      .catch(() => setSnapshots([]))
+      .finally(() => setLoadingSnapshots(false));
+  }, [selectedDatasetId]);
+
   function reset() {
     setRunName("");
     setRunType("backtest");
@@ -71,6 +109,9 @@ export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Pr
     setMetricsText("");
     setParamsText("");
     setAssumptionsText("");
+    setSelectedDatasetId("");
+    setSelectedSnapshotId("");
+    setSnapshots([]);
     setError(null);
     setSubmitting(false);
   }
@@ -113,6 +154,8 @@ export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Pr
       ...(metricsJson !== null && { metrics_json: metricsJson }),
       ...(paramsJson !== null && { params_json: paramsJson }),
       ...(assumptionsJson !== null && { assumptions_json: assumptionsJson }),
+      // M7: include linked snapshot id when selected
+      ...(selectedSnapshotId && { dataset_snapshot_id: selectedSnapshotId }),
     };
 
     try {
@@ -126,6 +169,8 @@ export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Pr
   }
 
   if (!open) return null;
+
+  const selectedSnap = snapshots.find((s) => s.id === selectedSnapshotId);
 
   return (
     <div className="fixed inset-0 z-50">
@@ -213,6 +258,74 @@ export default function RunLogDrawer({ open, strategyId, onClose, onLogged }: Pr
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* M7: Dataset Snapshot selector */}
+          <div className="space-y-2 rounded-control border border-border/60 bg-bg-700 p-3">
+            <p className="caption text-text-secondary">Data Evidence (optional)</p>
+
+            {/* Dataset select */}
+            <div>
+              <label className="caption mb-1 block">Dataset</label>
+              <select
+                value={selectedDatasetId}
+                onChange={(e) => {
+                  setSelectedDatasetId(e.target.value);
+                  setSelectedSnapshotId("");
+                }}
+                className={selectCls}
+                disabled={loadingDatasets}
+              >
+                <option value="">
+                  {loadingDatasets ? "Loading…" : "— no dataset linked —"}
+                </option>
+                {datasets.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.dataset_type})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Snapshot select — shown once a dataset is chosen */}
+            {selectedDatasetId && (
+              <div>
+                <label className="caption mb-1 block">Snapshot</label>
+                <select
+                  value={selectedSnapshotId}
+                  onChange={(e) => setSelectedSnapshotId(e.target.value)}
+                  className={selectCls}
+                  disabled={loadingSnapshots}
+                >
+                  <option value="">
+                    {loadingSnapshots ? "Loading…" : "— select snapshot —"}
+                  </option>
+                  {snapshots.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.version_label} · {s.row_count} rows · ⬤{" "}
+                      {s.health_score}/100
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Health score preview for selected snapshot */}
+            {selectedSnap && (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="font-mono text-2xs text-text-muted">
+                  health
+                </span>
+                <span
+                  className={`mono-num text-sm font-semibold ${healthColor(selectedSnap.health_score)}`}
+                >
+                  {selectedSnap.health_score}/100
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  · {selectedSnap.row_count} rows
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Universe + Dataset Version */}

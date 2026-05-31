@@ -36,6 +36,12 @@ class DatasetSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="DataQualityIssue.created_at",
     )
+    # M7: strategy runs that are linked to this snapshot.
+    strategy_runs: Mapped[list["StrategyRun"]] = relationship(  # noqa: F821
+        "StrategyRun",
+        back_populates="snapshot",
+        foreign_keys="[StrategyRun.dataset_snapshot_id]",
+    )
 
     def __repr__(self) -> str:
         return (

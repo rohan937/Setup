@@ -28,6 +28,8 @@ class StrategyRunCreate(BaseModel):
     """Request body for POST /api/strategies/{strategy_id}/runs."""
 
     strategy_version_id: uuid.UUID | None = None
+    # M7: optional link to a QuantFidelity dataset snapshot (must be in the same project).
+    dataset_snapshot_id: uuid.UUID | None = None
     run_name: Annotated[str, StringConstraints(min_length=1, max_length=255, strip_whitespace=True)]
     # See constants.RunType for valid values.  Required.
     run_type: str
@@ -40,6 +42,7 @@ class StrategyRunCreate(BaseModel):
     assumptions_json: dict | None = None
     metrics_json: dict | None = None
     universe_name: str | None = Field(default=None, max_length=255)
+    # Free-text label retained alongside dataset_snapshot_id for unlinked runs.
     dataset_version: str | None = Field(default=None, max_length=255)
     notes: str | None = None
 
@@ -47,6 +50,27 @@ class StrategyRunCreate(BaseModel):
 # ---------------------------------------------------------------------------
 # Output schemas
 # ---------------------------------------------------------------------------
+
+class DataEvidenceSummary(BaseModel):
+    """Lightweight data health evidence embedded in strategy run responses (M7).
+
+    Computed from a linked DatasetSnapshot and its quality issues.
+    Never embeds raw rows or full issue lists.
+    """
+
+    id: uuid.UUID                 # snapshot id
+    dataset_id: uuid.UUID
+    dataset_name: str
+    snapshot_label: str           # version_label
+    health_score: int
+    row_count: int
+    column_count: int
+    symbol_count: int
+    min_timestamp: str | None
+    max_timestamp: str | None
+    issue_count: int
+    worst_severity: str | None    # None when issue_count == 0
+
 
 class StrategyVersionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -64,11 +88,17 @@ class StrategyVersionOut(BaseModel):
 
 
 class StrategyRunOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    """Strategy run response — built manually in route handlers (not from_attributes).
+
+    dataset_snapshot is populated only when the run has a linked snapshot
+    and the route eagerly loads StrategyRun.snapshot → dataset + issues.
+    """
 
     id: uuid.UUID
     strategy_id: uuid.UUID
     strategy_version_id: uuid.UUID | None
+    # M7: nullable FK to a linked dataset snapshot.
+    dataset_snapshot_id: uuid.UUID | None = None
     run_name: str
     run_type: str
     status: str
@@ -82,6 +112,8 @@ class StrategyRunOut(BaseModel):
     notes: str | None
     created_at: datetime
     updated_at: datetime
+    # M7: data evidence summary — None when no snapshot is linked.
+    dataset_snapshot: DataEvidenceSummary | None = None
 
 
 class StrategyListItemOut(BaseModel):

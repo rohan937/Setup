@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { StrategyDetail as StrategyDetailType } from "@/types";
+import type { DataEvidenceSummary, StrategyDetail as StrategyDetailType, StrategyRun } from "@/types";
 import { getStrategy } from "@/lib/api";
 import Badge from "@/components/Badge";
 import RunLogDrawer from "@/components/RunLogDrawer";
@@ -11,6 +11,13 @@ function fmtDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",
     hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function fmtDateShort(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
   });
 }
 
@@ -37,6 +44,166 @@ const BackArrow = () => (
     <path d="M7.5 2L3.5 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+
+// ---------------------------------------------------------------------------
+// Data evidence helpers
+// ---------------------------------------------------------------------------
+
+function healthColor(score: number): string {
+  if (score >= 90) return "text-fidelity-high";
+  if (score >= 60) return "text-fidelity-medium";
+  return "text-fidelity-low";
+}
+
+function healthBg(score: number): string {
+  if (score >= 90) return "border-fidelity-high/30 bg-fidelity-high/10";
+  if (score >= 60) return "border-fidelity-medium/30 bg-fidelity-medium/10";
+  return "border-fidelity-low/30 bg-fidelity-low/10";
+}
+
+function severityColor(s: string | null): string {
+  switch (s) {
+    case "critical": return "text-fidelity-low";
+    case "high":     return "text-fidelity-low";
+    case "medium":   return "text-fidelity-medium";
+    default:         return "text-text-muted";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inline data evidence chip for run evidence rows
+// ---------------------------------------------------------------------------
+
+function DataEvidenceChip({ ev }: { ev: DataEvidenceSummary }) {
+  return (
+    <div className={`mt-2.5 rounded-control border px-3 py-2 ${healthBg(ev.health_score)}`}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div className="flex items-center gap-1.5">
+          <span className="caption">data</span>
+          <span className={`mono-num text-sm font-semibold ${healthColor(ev.health_score)}`}>
+            {ev.health_score}/100
+          </span>
+        </div>
+        <span className="font-mono text-2xs text-text-secondary">
+          {ev.dataset_name}
+        </span>
+        <span className="font-mono text-2xs text-text-muted">
+          {ev.snapshot_label}
+        </span>
+        <span className="font-mono text-2xs text-text-muted">
+          {ev.row_count.toLocaleString()} rows
+        </span>
+        {ev.symbol_count > 0 && (
+          <span className="font-mono text-2xs text-text-muted">
+            {ev.symbol_count} symbol{ev.symbol_count !== 1 ? "s" : ""}
+          </span>
+        )}
+        {ev.min_timestamp && ev.max_timestamp && (
+          <span className="font-mono text-2xs text-text-muted">
+            {ev.min_timestamp} → {ev.max_timestamp}
+          </span>
+        )}
+        {ev.issue_count > 0 ? (
+          <span className={`font-mono text-2xs ${severityColor(ev.worst_severity)}`}>
+            {ev.issue_count} issue{ev.issue_count !== 1 ? "s" : ""}
+            {ev.worst_severity ? ` · worst: ${ev.worst_severity}` : ""}
+          </span>
+        ) : (
+          <span className="font-mono text-2xs text-fidelity-high">no issues</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Data Evidence summary panel (M7) — shows best (most recent) linked snapshot
+// ---------------------------------------------------------------------------
+
+function DataEvidencePanel({ runs }: { runs: StrategyRun[] }) {
+  const linkedRuns = runs.filter((r) => r.dataset_snapshot !== null);
+  if (linkedRuns.length === 0) return null;
+
+  // Use the most recent run that has linked evidence.
+  const latest = linkedRuns[0];
+  const ev = latest.dataset_snapshot!;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="border-b border-border px-4 py-2.5">
+        <p className="caption">Data Evidence</p>
+      </div>
+      <div className="p-4 space-y-3">
+        {/* Health score bar */}
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-xs text-text-secondary">
+              {ev.dataset_name} · {ev.snapshot_label}
+            </span>
+            <span className={`mono-num text-lg font-bold ${healthColor(ev.health_score)}`}>
+              {ev.health_score}
+              <span className="text-xs font-normal text-text-muted">/100</span>
+            </span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-bg-600">
+            <div
+              className={`h-1.5 rounded-full transition-all ${
+                ev.health_score >= 90
+                  ? "bg-fidelity-high"
+                  : ev.health_score >= 60
+                    ? "bg-fidelity-medium"
+                    : "bg-fidelity-low"
+              }`}
+              style={{ width: `${ev.health_score}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Evidence stats */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 font-mono text-2xs text-text-muted sm:grid-cols-4">
+          <div>
+            <p className="caption mb-0.5">Rows</p>
+            <p className="mono-num text-text-secondary">{ev.row_count.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="caption mb-0.5">Symbols</p>
+            <p className="mono-num text-text-secondary">{ev.symbol_count}</p>
+          </div>
+          <div>
+            <p className="caption mb-0.5">Columns</p>
+            <p className="mono-num text-text-secondary">{ev.column_count}</p>
+          </div>
+          <div>
+            <p className="caption mb-0.5">Issues</p>
+            <p className={`mono-num ${ev.issue_count > 0 ? severityColor(ev.worst_severity) : "text-fidelity-high"}`}>
+              {ev.issue_count === 0 ? "none" : `${ev.issue_count} · ${ev.worst_severity}`}
+            </p>
+          </div>
+        </div>
+
+        {ev.min_timestamp && (
+          <p className="font-mono text-2xs text-text-muted">
+            range: {ev.min_timestamp} → {ev.max_timestamp}
+          </p>
+        )}
+
+        <p className="font-mono text-2xs text-text-muted">
+          from run:{" "}
+          <span className="text-text-secondary">{latest.run_name}</span>
+          {" · "}
+          {fmtDateShort(latest.created_at)}
+          {linkedRuns.length > 1 && (
+            <span> · {linkedRuns.length} run{linkedRuns.length !== 1 ? "s" : ""} linked</span>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
@@ -133,6 +300,9 @@ export default function StrategyDetail() {
         />
       </div>
 
+      {/* M7: Data Evidence panel — shown when any run has a linked snapshot */}
+      <DataEvidencePanel runs={strategy.runs} />
+
       {/* Versions */}
       <div className="rounded-card border border-border bg-bg-700">
         <div className="border-b border-border px-4 py-2.5">
@@ -200,9 +370,18 @@ export default function StrategyDetail() {
                     </div>
                   )}
 
+                  {/* M7: Data evidence chip */}
+                  {r.dataset_snapshot ? (
+                    <DataEvidenceChip ev={r.dataset_snapshot} />
+                  ) : (
+                    <p className="mt-2 font-mono text-2xs text-text-muted/60">
+                      No dataset snapshot linked
+                    </p>
+                  )}
+
                   <div className="mt-2 flex flex-wrap gap-4 font-mono text-2xs text-text-muted">
                     {r.universe_name && <span>universe: {r.universe_name}</span>}
-                    {r.dataset_version && <span>dataset: {r.dataset_version}</span>}
+                    {r.dataset_version && <span>dataset ver: {r.dataset_version}</span>}
                     <span>{fmtDate(r.started_at)}</span>
                   </div>
                   {r.notes && (

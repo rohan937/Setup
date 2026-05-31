@@ -50,10 +50,31 @@ export interface StrategyVersion {
   updated_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// Data evidence summary (M7)
+// ---------------------------------------------------------------------------
+
+export interface DataEvidenceSummary {
+  id: string;           // snapshot id
+  dataset_id: string;
+  dataset_name: string;
+  snapshot_label: string;
+  health_score: number;
+  row_count: number;
+  column_count: number;
+  symbol_count: number;
+  min_timestamp: string | null;
+  max_timestamp: string | null;
+  issue_count: number;
+  worst_severity: string | null;  // null when issue_count === 0
+}
+
 export interface StrategyRun {
   id: string;
   strategy_id: string;
   strategy_version_id: string | null;
+  /** M7: nullable FK to a linked dataset snapshot. */
+  dataset_snapshot_id: string | null;
   run_name: string;
   run_type: string;
   status: string;
@@ -67,6 +88,8 @@ export interface StrategyRun {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  /** M7: lightweight data health evidence — null when no snapshot is linked. */
+  dataset_snapshot: DataEvidenceSummary | null;
 }
 
 export interface StrategyDetail extends Strategy {
@@ -85,6 +108,8 @@ export interface StrategyCreateRequest {
 
 export interface StrategyRunCreateRequest {
   strategy_version_id?: string;
+  /** M7: optional link to a QuantFidelity dataset snapshot. */
+  dataset_snapshot_id?: string;
   run_name: string;
   run_type: string;
   status?: string;

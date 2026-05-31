@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (119 tests)
+│   └── tests/              Pytest tests (133 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,9 +161,66 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M6: Dataset Snapshot Upload + Basic Data Health
+## Current milestone — M7: Strategy Run Dataset Linkage + Data Evidence
 
 **Status: complete.**
+
+### M7 deliverables
+
+- **`dataset_snapshot_id` on `strategy_runs`** — nullable FK column linking any run to a
+  QuantFidelity dataset snapshot from the same project. Alembic migration `0003` (batch-mode
+  for SQLite) adds the column with a `SET NULL` cascade. The existing `dataset_version` free-text
+  label is kept unchanged.
+- **Validation** — `POST /api/strategies/{id}/runs` accepts optional `dataset_snapshot_id`.
+  If provided: snapshot must exist (404), and its dataset must belong to the same project as
+  the strategy (400). Cross-project links are rejected.
+- **`DataEvidenceSummary` schema** — lightweight evidence object embedded in `StrategyRunOut`:
+  `dataset_name`, `snapshot_label`, `health_score`, `row_count`, `column_count`, `symbol_count`,
+  `min_timestamp`, `max_timestamp`, `issue_count`, `worst_severity`. Column/symbol/timestamp
+  stats are computed from `rows_json` at response time (no extra DB columns).
+- **Enriched run responses** — `GET /api/strategies/{id}`, `GET /api/strategies/{id}/runs`,
+  and `POST /api/strategies/{id}/runs` all include `dataset_snapshot` evidence when linked.
+  No-linked runs return `"dataset_snapshot": null`.
+- **`Data Evidence` panel** on Strategy Detail page — shows health score bar, row count,
+  symbol count, column count, issue count, worst severity, and timestamp range from the
+  most recent run with a linked snapshot.
+- **Per-run data evidence chip** in Run Evidence list — inline health score + dataset
+  name + snapshot label + issue summary per run. Unlinked runs show subtle "No dataset
+  snapshot linked" text.
+- **`RunLogDrawer` dataset selector** — two-stage selector: first choose a dataset (loaded
+  from `/api/datasets`), then choose a snapshot (loaded from `/api/datasets/{id}/snapshots`).
+  Selected snapshot shows health score preview. Blank = no link.
+- **14 new tests** — `tests/test_run_dataset_link_m7.py`: linked run 201, evidence fields,
+  column/symbol/timestamp stats, issue_count + worst_severity, nonexistent snapshot 404,
+  run list includes evidence, strategy detail includes evidence, unlinked runs return null.
+- **133 total passing tests**, clean TypeScript typecheck, clean production build.
+- **Alembic migration applied** to `backend/quantfidelity.db`.
+
+### Verify with curl
+
+```bash
+# Log a run linked to a dataset snapshot
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/runs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "run_name": "Q1 Backtest with OHLCV v2",
+    "run_type": "backtest",
+    "status": "completed",
+    "dataset_snapshot_id": "<snapshot_id>",
+    "metrics_json": {"sharpe": 1.4, "max_drawdown": -0.12}
+  }' | python3 -m json.tool
+# Response includes "dataset_snapshot": { "health_score": ..., "issue_count": ... }
+
+# Fetch strategy detail — runs include data evidence
+curl http://localhost:8000/api/strategies/<strategy_id> | python3 -m json.tool
+```
+
+### Previously completed
+
+- **M6: Dataset Snapshot Upload + Basic Data Health** — 3 tables, 6 endpoints, data quality
+  engine (10 check types), DataHealth page, 27 tests, 119 total tests.
+
+---
 
 ### M6 deliverables
 
@@ -243,7 +300,7 @@ curl http://localhost:8000/api/datasets
 The following are deferred to later milestones:
 
 - Authentication / API keys (M-later)
-- Backtest Reality Check (Trust Score) — M7
+- Backtest Reality Check (Trust Score) — M8
 - Live Drift / Execution Attribution — M8
 - Python SDK and ingestion endpoints — M9
 - Live market data providers (no external/paid data) — M10

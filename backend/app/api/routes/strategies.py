@@ -20,12 +20,16 @@ from app.core.constants import AssetClass, EventType, RunStatus, RunType, Severi
 from app.core.utils import slugify
 from app.db.session import get_db
 from app.models.audit_timeline_event import AuditTimelineEvent
+from app.models.data_quality_issue import DataQualityIssue
+from app.models.dataset import Dataset
+from app.models.dataset_snapshot import DatasetSnapshot
 from app.models.project import Project
 from app.models.strategy import Strategy
 from app.models.strategy_run import StrategyRun
 from app.models.strategy_version import StrategyVersion
 from app.schemas.comparison import RunComparisonResponse
 from app.schemas.strategy import (
+    DataEvidenceSummary,
     StrategyCreate,
     StrategyDetailOut,
     StrategyListItemOut,
@@ -36,6 +40,130 @@ from app.schemas.strategy import (
 from app.services.run_comparison import compare_runs
 
 router = APIRouter(tags=["strategies"])
+
+# ---------------------------------------------------------------------------
+# Severity ordering for worst-severity computation
+# ---------------------------------------------------------------------------
+
+_SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
+
+
+def _worst_severity(severities: list[str]) -> str | None:
+    """Return the most severe level from a list, or None if empty."""
+    for sev in _SEVERITY_ORDER:
+        if sev in severities:
+            return sev
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Snapshot stats helper
+# ---------------------------------------------------------------------------
+
+def _compute_snapshot_stats(rows: list[dict] | None) -> dict:
+    """Compute lightweight stats from stored rows_json.
+
+    Returns column_count, symbol_count, min_timestamp, max_timestamp.
+    Safe to call with None or empty list.
+    """
+    if not rows:
+        return {
+            "column_count": 0,
+            "symbol_count": 0,
+            "min_timestamp": None,
+            "max_timestamp": None,
+        }
+
+    # Union of all keys across rows.
+    all_keys: set[str] = set()
+    for row in rows:
+        all_keys.update(row.keys())
+    column_count = len(all_keys)
+
+    # Distinct non-null symbols.
+    symbols = {row.get("symbol") for row in rows if row.get("symbol") is not None}
+    symbol_count = len(symbols)
+
+    # Min/max timestamp strings (sort lexicographically — ISO dates sort correctly).
+    ts_list = [str(row["timestamp"]) for row in rows if row.get("timestamp") is not None]
+    if ts_list:
+        ts_list_sorted = sorted(ts_list)
+        min_timestamp = ts_list_sorted[0]
+        max_timestamp = ts_list_sorted[-1]
+    else:
+        min_timestamp = None
+        max_timestamp = None
+
+    return {
+        "column_count": column_count,
+        "symbol_count": symbol_count,
+        "min_timestamp": min_timestamp,
+        "max_timestamp": max_timestamp,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Evidence summary builder
+# ---------------------------------------------------------------------------
+
+def _build_evidence_summary(
+    snap: DatasetSnapshot,
+) -> DataEvidenceSummary:
+    """Build DataEvidenceSummary from a loaded snapshot.
+
+    Requires snap.dataset and snap.issues to be loaded (via selectinload).
+    """
+    stats = _compute_snapshot_stats(snap.rows_json)
+    issue_severities = [iss.severity for iss in (snap.issues or [])]
+    return DataEvidenceSummary(
+        id=snap.id,
+        dataset_id=snap.dataset_id,
+        dataset_name=snap.dataset.name if snap.dataset else "—",
+        snapshot_label=snap.version_label,
+        health_score=snap.health_score,
+        row_count=snap.row_count,
+        column_count=stats["column_count"],
+        symbol_count=stats["symbol_count"],
+        min_timestamp=stats["min_timestamp"],
+        max_timestamp=stats["max_timestamp"],
+        issue_count=len(issue_severities),
+        worst_severity=_worst_severity(issue_severities),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Run → StrategyRunOut builder
+# ---------------------------------------------------------------------------
+
+def _build_run_out(run: StrategyRun) -> StrategyRunOut:
+    """Build StrategyRunOut from a run that may have .snapshot eagerly loaded.
+
+    If run.snapshot is None (no link or not loaded), dataset_snapshot is None.
+    """
+    evidence: DataEvidenceSummary | None = None
+    if run.snapshot is not None:
+        evidence = _build_evidence_summary(run.snapshot)
+
+    return StrategyRunOut(
+        id=run.id,
+        strategy_id=run.strategy_id,
+        strategy_version_id=run.strategy_version_id,
+        dataset_snapshot_id=run.dataset_snapshot_id,
+        run_name=run.run_name,
+        run_type=run.run_type,
+        status=run.status,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        params_json=run.params_json,
+        assumptions_json=run.assumptions_json,
+        metrics_json=run.metrics_json,
+        universe_name=run.universe_name,
+        dataset_version=run.dataset_version,
+        notes=run.notes,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+        dataset_snapshot=evidence,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +306,12 @@ def get_strategy(
         .options(
             selectinload(Strategy.project),
             selectinload(Strategy.versions),
-            selectinload(Strategy.runs),
+            selectinload(Strategy.runs)
+            .selectinload(StrategyRun.snapshot)
+            .selectinload(DatasetSnapshot.dataset),
+            selectinload(Strategy.runs)
+            .selectinload(StrategyRun.snapshot)
+            .selectinload(DatasetSnapshot.issues),
         )
         .filter(Strategy.id == strategy_id)
         .first()
@@ -198,6 +331,8 @@ def get_strategy(
         .scalar()
     )
 
+    sorted_runs = sorted(strategy.runs, key=lambda x: x.created_at, reverse=True)
+
     return StrategyDetailOut(
         id=strategy.id,
         project_id=strategy.project_id,
@@ -212,10 +347,7 @@ def get_strategy(
         created_at=strategy.created_at,
         updated_at=strategy.updated_at,
         versions=[StrategyVersionOut.model_validate(v) for v in strategy.versions],
-        runs=[
-            StrategyRunOut.model_validate(r)
-            for r in sorted(strategy.runs, key=lambda x: x.created_at, reverse=True)
-        ],
+        runs=[_build_run_out(r) for r in sorted_runs],
     )
 
 
@@ -228,7 +360,7 @@ def create_strategy_run(
     strategy_id: uuid.UUID,
     body: StrategyRunCreate,
     db: Session = Depends(get_db),
-) -> StrategyRun:
+) -> StrategyRunOut:
     # Validate run_type
     try:
         RunType(body.run_type)
@@ -242,7 +374,12 @@ def create_strategy_run(
         raise HTTPException(status_code=422, detail=f"Invalid status '{body.status}'")
 
     # Check strategy exists
-    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    strategy = (
+        db.query(Strategy)
+        .options(selectinload(Strategy.project))
+        .filter(Strategy.id == strategy_id)
+        .first()
+    )
     if strategy is None:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
@@ -259,6 +396,31 @@ def create_strategy_run(
         if version is None:
             raise HTTPException(status_code=404, detail="Strategy version not found")
 
+    # M7: Validate dataset_snapshot_id when provided.
+    snap: DatasetSnapshot | None = None
+    if body.dataset_snapshot_id is not None:
+        snap = (
+            db.query(DatasetSnapshot)
+            .options(
+                selectinload(DatasetSnapshot.dataset),
+                selectinload(DatasetSnapshot.issues),
+            )
+            .filter(DatasetSnapshot.id == body.dataset_snapshot_id)
+            .first()
+        )
+        if snap is None:
+            raise HTTPException(
+                status_code=404, detail="Dataset snapshot not found"
+            )
+        # Snapshot's dataset must belong to the same project as the strategy.
+        if snap.dataset is None or snap.dataset.project_id != strategy.project_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Dataset snapshot does not belong to the same project as this strategy"
+                ),
+            )
+
     # Auto-set completed_at when status is completed and no value was supplied
     completed_at = body.completed_at
     if body.status == RunStatus.completed and completed_at is None:
@@ -267,6 +429,7 @@ def create_strategy_run(
     run = StrategyRun(
         strategy_id=strategy_id,
         strategy_version_id=body.strategy_version_id,
+        dataset_snapshot_id=body.dataset_snapshot_id,
         run_name=body.run_name,
         run_type=body.run_type,
         status=body.status,
@@ -282,11 +445,8 @@ def create_strategy_run(
     db.add(run)
     db.flush()
 
-    # Load project to get organization_id for the audit event
-    project = db.query(Project).filter(Project.id == strategy.project_id).first()
-
     event = AuditTimelineEvent(
-        organization_id=project.organization_id,
+        organization_id=strategy.project.organization_id,
         project_id=strategy.project_id,
         strategy_id=strategy_id,
         event_type=EventType.strategy_run_logged,
@@ -298,13 +458,17 @@ def create_strategy_run(
             "run_type": run.run_type,
             "status": run.status,
             "universe_name": run.universe_name,
+            "dataset_snapshot_id": str(body.dataset_snapshot_id) if body.dataset_snapshot_id else None,
         },
     )
     db.add(event)
     db.commit()
     db.refresh(run)
 
-    return run
+    # Attach the already-loaded snapshot object so _build_run_out can build evidence.
+    run.snapshot = snap  # type: ignore[assignment]
+
+    return _build_run_out(run)
 
 
 # ---------------------------------------------------------------------------
@@ -357,13 +521,20 @@ def compare_strategy_runs(
 @router.get("/strategies/{strategy_id}/runs", response_model=list[StrategyRunOut])
 def list_strategy_runs(
     strategy_id: uuid.UUID, db: Session = Depends(get_db)
-) -> list[StrategyRun]:
+) -> list[StrategyRunOut]:
     strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if strategy is None:
         raise HTTPException(status_code=404, detail="Strategy not found")
-    return (
+
+    runs = (
         db.query(StrategyRun)
+        .options(
+            selectinload(StrategyRun.snapshot).selectinload(DatasetSnapshot.dataset),
+            selectinload(StrategyRun.snapshot).selectinload(DatasetSnapshot.issues),
+        )
         .filter(StrategyRun.strategy_id == strategy_id)
         .order_by(StrategyRun.created_at.desc())
         .all()
     )
+
+    return [_build_run_out(r) for r in runs]
