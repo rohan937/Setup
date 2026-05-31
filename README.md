@@ -25,11 +25,11 @@ QuantFidelity/
 │   │   ├── main.py         App entrypoint + CORS + router wiring
 │   │   ├── core/           Config (env-driven settings) + constants
 │   │   ├── api/            Routers: health, meta, projects, strategies, timeline, datasets, reports
-│   │   ├── models/         SQLAlchemy ORM models (16 tables)
+│   │   ├── models/         SQLAlchemy ORM models (17 tables)
 │   │   ├── schemas/        Pydantic response models
-│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports)
+│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (430 tests)
+│   └── tests/              Pytest tests (545 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,192 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M15: Strategy Versions + Config Snapshotting
+## Current milestone — M16: Universe Snapshotting + Coverage Evidence
+
+**Status: complete.**
+
+### M16 deliverables
+
+- **Migration `0009_m16_universe_snapshots.py`** — adds `universe_snapshots` table and
+  `universe_snapshot_id` FK column on `strategy_runs`.
+  `universe_snapshots` columns: `id` (UUID PK), `strategy_id` (FK strategies CASCADE),
+  `strategy_version_id` (FK strategy_versions SET NULL, nullable), `label` (String 255),
+  `source_type` (String 100, default `manual_json`), `source_filename` (String 512, nullable),
+  `symbols_json` (JSON — normalized symbol list), `symbol_count` (Integer),
+  `metadata_json` (JSON nullable), `universe_hash` (String 64, SHA-256, indexed), `created_at`,
+  `updated_at`. Indexes: strategy_id, version_id, universe_hash, created_at.
+  `strategy_runs.universe_snapshot_id` — nullable UUID FK to `universe_snapshots` (SET NULL),
+  with index. 17 total ORM tables.
+- **`EventType.universe_snapshot_logged`** added to `constants.py`.
+- **`app/models/universe_snapshot.py`** — new `UniverseSnapshot` ORM model. Linked to
+  `Strategy` (CASCADE delete) and `StrategyVersion` (SET NULL). `strategy_runs` back-populated.
+  Strategy and StrategyVersion models updated with `universe_snapshots` relationship.
+  `StrategyRun` model updated with `universe_snapshot_id` FK column and `universe_snapshot`
+  relationship.
+- **`app/services/universe_snapshots.py`** — deterministic service. No AI, no live data:
+  - `normalize_symbols(symbols)` — trim, uppercase, deduplicate, sort. Drops empty entries.
+  - `compute_universe_hash(symbols, metadata)` — SHA-256 of
+    `{"symbols": sorted, "metadata": ...}` with `sort_keys=True`. Two universes with identical
+    symbols in any order always produce the same 64-char hex hash.
+  - `UniverseComparisonResult` dataclass — full comparison output with exact counts and capped
+    display lists.
+  - `compare_universe_snapshots(...)` — set-based deterministic comparison.
+    `overlap_ratio = |A ∩ B| / max(|A|, |B|)`, `jaccard_similarity = |A ∩ B| / |A ∪ B|`.
+    Added/removed symbol lists capped at 50 in the response; counts are exact.
+    Language is hedged throughout ("observed", "noted", "may affect") — no causal claims.
+- **Schemas** (`app/schemas/strategy.py`) extended:
+  - `UniverseSnapshotCreate` — new input schema (strategy_version_id nullable, label,
+    source_type, source_filename, symbols list, metadata_json optional dict).
+  - `UniverseSnapshotSummary` — lightweight evidence embedded in run responses (id, label,
+    symbol_count, universe_hash, strategy_version_id, created_at).
+  - `UniverseSnapshotRead` — summary output without symbols_json blob (used in list responses).
+  - `UniverseSnapshotDetail` — extends Read with `symbols_json: list[str]`.
+  - `UniverseComparisonResponse` — full comparison response (all counts, ratios, capped lists,
+    highlighted_changes, deterministic_explanation).
+  - `StrategyVersionOut` — extended with `universe_snapshot_count: int = 0`.
+  - `StrategyRunCreate` — extended with `universe_snapshot_id: uuid.UUID | None = None`.
+  - `StrategyRunOut` — extended with `universe_snapshot_id` and
+    `universe_snapshot: UniverseSnapshotSummary | None`.
+  - `StrategyDetailOut` — extended with `universe_snapshots: list[UniverseSnapshotRead]`.
+- **4 new API endpoints** + 3 updated:
+  - `POST /api/strategies/{strategy_id}/universe-snapshots` — validates strategy, validates
+    `strategy_version_id` belongs to this strategy if provided, validates symbols list non-empty,
+    normalizes symbols, rejects all-empty list after normalization (422), computes
+    `universe_hash`, emits `universe_snapshot_logged` audit timeline event → 201
+    `UniverseSnapshotRead`. Response does NOT include `symbols_json` blob.
+  - `GET  /api/strategies/{strategy_id}/universe-snapshots` — list newest-first; optional
+    `version_id` query param to filter by linked version. No `symbols_json` blob.
+  - `GET  /api/strategies/{strategy_id}/universe-snapshots/compare?snapshot_a_id=…&snapshot_b_id=…`
+    — registered BEFORE the list route (literal `/compare` matched first). Read-only
+    comparison of two snapshots belonging to this strategy → 200 `UniverseComparisonResponse`.
+    No timeline event.
+  - `GET  /api/universe-snapshots/{snapshot_id}` — full detail with `symbols_json` payload → 200.
+  - `POST /api/strategies/{strategy_id}/runs` updated — accepts `universe_snapshot_id`; validates
+    snapshot exists (404) and belongs to same strategy (400); attaches `universe_snapshot` summary
+    to response; logs snapshot label and symbol count in the timeline event metadata.
+  - `GET  /api/strategies/{strategy_id}/runs` updated — eagerly loads `universe_snapshot` via
+    `selectinload`.
+  - `GET  /api/strategies/{strategy_id}/versions` updated — includes `universe_snapshot_count`
+    per version via a single grouped query.
+  - `GET  /api/strategies/{strategy_id}` updated — eagerly loads `universe_snapshots`,
+    computes per-version `universe_snapshot_count`, includes `universe_snapshots` in
+    `StrategyDetailOut`.
+- **62 new backend tests** — `tests/test_universe_m16.py` across 13 test classes:
+  - `TestNormalizeSymbols` — sorted/uppercase, deduplication, whitespace, empty, single,
+    order independence.
+  - `TestComputeUniverseHash` — 64-char hex, determinism, different symbols, metadata effect,
+    metadata sort-key determinism.
+  - `TestCompareUniverseSnapshots` — identical, different, B superset, empty, overlap ratio
+    formula, Jaccard, highlighted changes, hedged explanation.
+  - `TestCreateUniverseSnapshot` — 201, normalization, hash determinism, version link, version
+    wrong strategy → 404, missing strategy → 404, empty symbols → 422, all-whitespace → 422,
+    metadata_json, source_filename, no symbols_json blob in response, timeline event created.
+  - `TestListUniverseSnapshots` — empty, returns created, newest-first, filter by version_id,
+    404, no symbols_json in list response.
+  - `TestGetUniverseSnapshot` — symbols present, symbols are normalized, 404, all fields.
+  - `TestCompareUniverseSnapshotsRoute` — identical, different, response fields, A not found → 404,
+    B not found → 404, snapshot from wrong strategy → 404, missing strategy → 404,
+    symbol_count_delta, missing query params → 422.
+  - `TestRunUniverseSnapshotLinkage` — run with snapshot, run without, wrong strategy → 400,
+    nonexistent → 404, summary fields.
+  - `TestListRunsUniverseEvidence` — embedded in list, null for unlinked.
+  - `TestStrategyDetailUniverseSnapshots` — included in detail, version count, no blob.
+  - `TestVersionsUniverseSnapshotCount` — in version list, zero for new version.
+- **Frontend types** (`frontend/src/types/index.ts`):
+  - `StrategyVersion` extended with `universe_snapshot_count: number`.
+  - `UniverseSnapshotSummary`, `UniverseSnapshotRead`, `UniverseSnapshotDetail` interfaces.
+  - `UniverseSnapshotCreateRequest`, `UniverseComparisonResponse` interfaces.
+  - `StrategyRun` extended with `universe_snapshot_id: string | null` and
+    `universe_snapshot: UniverseSnapshotSummary | null`.
+  - `StrategyDetail.universe_snapshots: UniverseSnapshotRead[]` field added.
+  - `StrategyRunCreateRequest.universe_snapshot_id?: string` field added.
+- **API client** (`frontend/src/lib/api.ts`):
+  - `createUniverseSnapshot()`, `getUniverseSnapshots()`, `getUniverseSnapshot()`,
+    `compareUniverseSnapshots()`.
+- **`UniverseSnapshotDrawer.tsx`** — right-panel drawer for logging a universe snapshot.
+  Fields: label (required), strategy_version_id (optional dropdown, only when versions exist),
+  source_type (select), source_filename, symbols textarea (one per line or comma-separated,
+  hint about normalization), metadata_json (optional JSON textarea). Client-side parses symbols
+  and validates metadata JSON before submit. Calls `onCreated(snapshot)`.
+- **`RunLogDrawer.tsx` updated** — accepts optional `universeSnapshots: UniverseSnapshotRead[]`
+  prop. When universe snapshots are available, shows a "Universe Evidence (optional)" selector
+  block. Selected snapshot shows symbol count + hash prefix preview. Selected
+  `universe_snapshot_id` included in run payload.
+- **`StrategyDetail.tsx` updated**:
+  - Imports `UniverseSnapshotDrawer`, `UniverseSnapshotRead`, `UniverseSnapshotSummary`.
+  - `UniverseEvidenceChip` — inline chip on run rows showing symbol count + label + hash
+    prefix when a universe snapshot is linked.
+  - `UniverseEvidencePanel` — section card showing all universe snapshots (up to 5, with
+    "+ N more" overflow), each with symbol count, source type, hash prefix, date. "+ Log
+    Universe" header button. Empty state with guidance text.
+  - `+ Log Universe` button added to header actions bar.
+  - `UniverseSnapshotDrawer` wired up; calls `setRefreshKey((k) => k + 1)` on creation.
+  - `RunLogDrawer` receives `universeSnapshots={strategy.universe_snapshots}`.
+  - Universe snapshot evidence chip shown per run row when `r.universe_snapshot` is non-null.
+  - Panel inserted between Data Evidence and Version & Config Evidence sections.
+- **545 total passing tests** (1 skipped), zero TypeScript errors, clean production build.
+
+### What M16 does NOT build (by design)
+
+- Sector/factor exposure analytics or universe composition analysis.
+- Live market data, corporate actions, or index membership tracking.
+- Signal snapshots (separate milestone).
+- AI explanations of universe changes.
+- SDK ingestion hooks or automated snapshot creation.
+- Universe comparison UI (compare endpoint available via API; frontend panel is future work).
+- Deployment evidence or live drift attribution.
+
+### Verify with curl
+
+```bash
+# Log a universe snapshot
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/universe-snapshots \
+  -H "Content-Type: application/json" \
+  -d '{
+    "label": "SP500-2024-Q1",
+    "symbols": ["AAPL", "MSFT", "goog", "amzn", "tsla"],
+    "source_type": "manual_json"
+  }' | python3 -m json.tool
+# Response: id, label, symbol_count=5, universe_hash (64-char SHA-256), created_at, ...
+# Symbols normalized: ["AAPL", "AMZN", "GOOG", "MSFT", "TSLA"] (uppercased + sorted)
+
+# List universe snapshots (newest first)
+curl "http://localhost:8000/api/strategies/<strategy_id>/universe-snapshots" \
+  | python3 -m json.tool
+
+# Filter by version
+curl "http://localhost:8000/api/strategies/<strategy_id>/universe-snapshots?version_id=<version_id>" \
+  | python3 -m json.tool
+
+# Get full detail (includes symbols_json payload)
+curl "http://localhost:8000/api/universe-snapshots/<snapshot_id>" | python3 -m json.tool
+
+# Compare two universe snapshots (read-only, no audit event)
+curl "http://localhost:8000/api/strategies/<strategy_id>/universe-snapshots/compare?\
+snapshot_a_id=<snap_a>&snapshot_b_id=<snap_b>" | python3 -m json.tool
+# Response: is_same_universe, added_count, removed_count, overlap_ratio, jaccard_similarity,
+#   added_symbols (≤50), removed_symbols (≤50), highlighted_changes, deterministic_explanation
+
+# Log a run linked to a universe snapshot
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "run_name": "SP500 Q1 Backtest",
+    "run_type": "backtest",
+    "universe_snapshot_id": "<snapshot_id>",
+    "metrics_json": {"sharpe": 1.4}
+  }' | python3 -m json.tool
+# Response includes "universe_snapshot": { "id": ..., "label": ..., "symbol_count": 5, ... }
+```
+
+> **M16 note:** Universe hash is SHA-256 of sorted symbols + optional metadata. Two snapshots
+> with the same symbols in any order always produce the same hash. Comparison is set-based —
+> no order sensitivity. Language is hedged ("observed", "noted", "may affect") and never makes
+> causal claims.
+
+---
+
+## Previously completed — M15: Strategy Versions + Config Snapshotting
 
 **Status: complete.**
 
@@ -270,6 +455,7 @@ the backend alongside the frontend to see it connected.
     `setRefreshKey((k) => k + 1)` on creation to refresh strategy detail.
   - `RunLogDrawer` receives `versions={strategy.versions}` for the version selector.
 - **483 total passing tests** (1 skipped), zero TypeScript errors, clean production build.
+  (545 total after M16.)
 
 ### What M15 does NOT build (by design)
 

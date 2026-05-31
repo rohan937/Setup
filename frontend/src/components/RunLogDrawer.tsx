@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Dataset, DatasetSnapshotRead, StrategyRunCreateRequest, StrategyVersion } from "@/types";
+import type { Dataset, DatasetSnapshotRead, StrategyRunCreateRequest, StrategyVersion, UniverseSnapshotRead } from "@/types";
 import { createStrategyRun, getDatasets, getDatasetSnapshots } from "@/lib/api";
 
 const RUN_TYPES = ["backtest", "research", "paper", "live"] as const;
@@ -19,6 +19,8 @@ interface Props {
   strategyId: string;
   /** M15: available strategy versions for the version selector. */
   versions?: StrategyVersion[];
+  /** M16: available universe snapshots for the universe snapshot selector. */
+  universeSnapshots?: UniverseSnapshotRead[];
   onClose: () => void;
   onLogged: () => void;
 }
@@ -56,7 +58,7 @@ function healthColor(score: number): string {
   return "text-fidelity-low";
 }
 
-export default function RunLogDrawer({ open, strategyId, versions = [], onClose, onLogged }: Props) {
+export default function RunLogDrawer({ open, strategyId, versions = [], universeSnapshots = [], onClose, onLogged }: Props) {
   const [runName, setRunName] = useState("");
   // M15: version selector
   const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -78,6 +80,9 @@ export default function RunLogDrawer({ open, strategyId, versions = [], onClose,
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+
+  // M16: universe snapshot selector state
+  const [selectedUniverseSnapshotId, setSelectedUniverseSnapshotId] = useState<string>("");
 
   // Load datasets when drawer opens.
   useEffect(() => {
@@ -117,6 +122,7 @@ export default function RunLogDrawer({ open, strategyId, versions = [], onClose,
     setSelectedDatasetId("");
     setSelectedSnapshotId("");
     setSnapshots([]);
+    setSelectedUniverseSnapshotId("");
     setError(null);
     setSubmitting(false);
   }
@@ -163,6 +169,8 @@ export default function RunLogDrawer({ open, strategyId, versions = [], onClose,
       ...(selectedSnapshotId && { dataset_snapshot_id: selectedSnapshotId }),
       // M15: include strategy version id when selected
       ...(selectedVersionId && { strategy_version_id: selectedVersionId }),
+      // M16: include universe snapshot id when selected
+      ...(selectedUniverseSnapshotId && { universe_snapshot_id: selectedUniverseSnapshotId }),
     };
 
     try {
@@ -354,6 +362,39 @@ export default function RunLogDrawer({ open, strategyId, versions = [], onClose,
               </div>
             )}
           </div>
+
+          {/* M16: Universe Snapshot selector */}
+          {universeSnapshots.length > 0 && (
+            <div className="space-y-2 rounded-control border border-border/60 bg-bg-700 p-3">
+              <p className="caption text-text-secondary">Universe Evidence (optional)</p>
+              <select
+                value={selectedUniverseSnapshotId}
+                onChange={(e) => setSelectedUniverseSnapshotId(e.target.value)}
+                className={selectCls}
+              >
+                <option value="">— no universe snapshot linked —</option>
+                {universeSnapshots.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.label} · {u.symbol_count} symbols
+                  </option>
+                ))}
+              </select>
+              {selectedUniverseSnapshotId && (() => {
+                const us = universeSnapshots.find((u) => u.id === selectedUniverseSnapshotId);
+                return us ? (
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <span className="font-mono text-2xs text-text-muted">symbols</span>
+                    <span className="mono-num text-sm font-semibold text-accent-300">
+                      {us.symbol_count}
+                    </span>
+                    <span className="font-mono text-2xs text-text-muted/60" title={us.universe_hash}>
+                      hash: {us.universe_hash.slice(0, 8)}…
+                    </span>
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          )}
 
           {/* Universe + Dataset Version */}
           <div className="grid grid-cols-2 gap-3">

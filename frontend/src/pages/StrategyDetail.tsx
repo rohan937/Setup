@@ -12,12 +12,15 @@ import type {
   StrategyRun,
   StrategyVersion,
   TimelineEvent,
+  UniverseSnapshotRead,
+  UniverseSnapshotSummary,
 } from "@/types";
 import { generateStrategyReport, getStrategy, getStrategyTimeline, runBacktestAudit } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
+import UniverseSnapshotDrawer from "@/components/UniverseSnapshotDrawer";
 import VersionCreateDrawer from "@/components/VersionCreateDrawer";
 
 function fmtDate(iso: string | null): string {
@@ -210,6 +213,93 @@ function DataEvidencePanel({ runs }: { runs: StrategyRun[] }) {
             <span> · {linkedRuns.length} run{linkedRuns.length !== 1 ? "s" : ""} linked</span>
           )}
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Universe evidence helpers (M16)
+// ---------------------------------------------------------------------------
+
+function UniverseEvidenceChip({ uni }: { uni: UniverseSnapshotSummary }) {
+  return (
+    <div className="mt-2 rounded-control border border-accent-500/20 bg-accent-500/5 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div className="flex items-center gap-1.5">
+          <span className="caption">universe</span>
+          <span className="mono-num text-sm font-semibold text-accent-300">
+            {uni.symbol_count}
+          </span>
+          <span className="font-mono text-2xs text-text-muted">symbols</span>
+        </div>
+        <span className="font-mono text-2xs text-text-secondary">{uni.label}</span>
+        <span
+          className="font-mono text-2xs text-text-muted/60 cursor-default"
+          title={uni.universe_hash}
+        >
+          hash: {uni.universe_hash.slice(0, 8)}…
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function UniverseEvidencePanel({
+  universeSnapshots,
+  onLogUniverse,
+}: {
+  universeSnapshots: UniverseSnapshotRead[];
+  onLogUniverse: () => void;
+}) {
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <p className="caption">Universe Evidence</p>
+        <button
+          onClick={onLogUniverse}
+          className="rounded-control border border-border px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+        >
+          + Log Universe
+        </button>
+      </div>
+      <div className="p-4">
+        {universeSnapshots.length === 0 ? (
+          <p className="font-mono text-2xs text-text-muted">
+            No universe snapshots logged yet. Log a snapshot to track eligible symbol coverage over time.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {universeSnapshots.slice(0, 5).map((us) => (
+              <div key={us.id} className="flex items-start justify-between gap-3 rounded-control border border-border/60 bg-bg-800 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-xs text-text-secondary">{us.label}</p>
+                  <div className="mt-0.5 flex flex-wrap gap-3 font-mono text-2xs text-text-muted">
+                    <span className="mono-num text-accent-300 font-semibold">
+                      {us.symbol_count} symbols
+                    </span>
+                    <span>{us.source_type}</span>
+                    {us.source_filename && <span>{us.source_filename}</span>}
+                    <span
+                      className="text-text-muted/50 cursor-default"
+                      title={us.universe_hash}
+                    >
+                      hash: {us.universe_hash.slice(0, 8)}…
+                    </span>
+                  </div>
+                </div>
+                <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
+                  {fmtDateShort(us.created_at)}
+                </span>
+              </div>
+            ))}
+            {universeSnapshots.length > 5 && (
+              <p className="font-mono text-2xs text-text-muted/60 pt-1">
+                + {universeSnapshots.length - 5} more snapshot{universeSnapshots.length - 5 !== 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -863,6 +953,9 @@ export default function StrategyDetail() {
   const [configSnapshotDrawerOpen, setConfigSnapshotDrawerOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // M16: universe snapshot drawer state
+  const [universeSnapshotDrawerOpen, setUniverseSnapshotDrawerOpen] = useState(false);
+
   // M8: backtest audit state — keyed by run id.
   const [audits, setAudits] = useState<Record<string, BacktestAudit>>({});
   const [auditingRunId, setAuditingRunId] = useState<string | null>(null);
@@ -982,6 +1075,12 @@ export default function StrategyDetail() {
             + Log Config
           </button>
           <button
+            onClick={() => setUniverseSnapshotDrawerOpen(true)}
+            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Log Universe
+          </button>
+          <button
             onClick={() => setRunDrawerOpen(true)}
             className="rounded-control bg-accent-500 px-3.5 py-2 font-mono text-xs font-medium text-text-inverse hover:bg-accent-600"
           >
@@ -994,6 +1093,7 @@ export default function StrategyDetail() {
         open={runDrawerOpen}
         strategyId={id!}
         versions={strategy.versions}
+        universeSnapshots={strategy.universe_snapshots}
         onClose={() => setRunDrawerOpen(false)}
         onLogged={() => {
           setRunDrawerOpen(false);
@@ -1013,6 +1113,15 @@ export default function StrategyDetail() {
         strategyId={id!}
         versions={strategy.versions}
         onClose={() => setConfigSnapshotDrawerOpen(false)}
+        onCreated={() => setRefreshKey((k) => k + 1)}
+      />
+
+      {/* M16: Universe Snapshot drawer */}
+      <UniverseSnapshotDrawer
+        open={universeSnapshotDrawerOpen}
+        strategyId={id!}
+        versions={strategy.versions}
+        onClose={() => setUniverseSnapshotDrawerOpen(false)}
         onCreated={() => setRefreshKey((k) => k + 1)}
       />
 
@@ -1082,6 +1191,12 @@ export default function StrategyDetail() {
       {/* M7: Data Evidence panel — shown when any run has a linked snapshot */}
       <DataEvidencePanel runs={strategy.runs} />
 
+      {/* M16: Universe Evidence panel */}
+      <UniverseEvidencePanel
+        universeSnapshots={strategy.universe_snapshots}
+        onLogUniverse={() => setUniverseSnapshotDrawerOpen(true)}
+      />
+
       {/* M15: Version & Config Evidence */}
       <VersionConfigSection
         versions={strategy.versions}
@@ -1125,6 +1240,11 @@ export default function StrategyDetail() {
                     <p className="mt-2 font-mono text-2xs text-text-muted/60">
                       No dataset snapshot linked
                     </p>
+                  )}
+
+                  {/* M16: Universe evidence chip */}
+                  {r.universe_snapshot && (
+                    <UniverseEvidenceChip uni={r.universe_snapshot} />
                   )}
 
                   <div className="mt-2 flex flex-wrap gap-4 font-mono text-2xs text-text-muted">

@@ -46,12 +46,27 @@ class StrategyConfigSnapshotCreate(BaseModel):
     config_json: dict[str, Any]
 
 
+class UniverseSnapshotCreate(BaseModel):
+    """Request body for POST /api/strategies/{strategy_id}/universe-snapshots (M16)."""
+
+    strategy_version_id: uuid.UUID | None = None
+    label: Annotated[str, StringConstraints(min_length=1, max_length=255, strip_whitespace=True)]
+    source_type: str = "manual_json"
+    source_filename: str | None = Field(default=None, max_length=512)
+    # Required list of symbols; normalized server-side.
+    symbols: list[str]
+    # Optional metadata dict; stored verbatim.
+    metadata_json: dict[str, Any] | None = None
+
+
 class StrategyRunCreate(BaseModel):
     """Request body for POST /api/strategies/{strategy_id}/runs."""
 
     strategy_version_id: uuid.UUID | None = None
     # M7: optional link to a QuantFidelity dataset snapshot (must be in the same project).
     dataset_snapshot_id: uuid.UUID | None = None
+    # M16: optional link to a universe snapshot (must belong to the same strategy).
+    universe_snapshot_id: uuid.UUID | None = None
     run_name: Annotated[str, StringConstraints(min_length=1, max_length=255, strip_whitespace=True)]
     # See constants.RunType for valid values.  Required.
     run_type: str
@@ -94,6 +109,67 @@ class DataEvidenceSummary(BaseModel):
     worst_severity: str | None    # None when issue_count == 0
 
 
+class UniverseSnapshotSummary(BaseModel):
+    """Lightweight universe evidence embedded in strategy run responses (M16).
+
+    Never embeds the full symbol list.
+    """
+
+    id: uuid.UUID
+    label: str
+    symbol_count: int
+    universe_hash: str            # 64-char hex; display first 8 chars in UI
+    strategy_version_id: uuid.UUID | None
+    created_at: datetime
+
+
+class UniverseSnapshotRead(BaseModel):
+    """Universe snapshot summary — no symbols_json blob (used in list responses)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    strategy_id: uuid.UUID
+    strategy_version_id: uuid.UUID | None
+    label: str
+    source_type: str
+    source_filename: str | None
+    symbol_count: int
+    universe_hash: str
+    metadata_json: dict[str, Any] | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class UniverseSnapshotDetail(UniverseSnapshotRead):
+    """Full universe snapshot including the symbols_json payload."""
+
+    symbols_json: list[str]
+
+
+class UniverseComparisonResponse(BaseModel):
+    """Deterministic universe comparison result."""
+
+    snapshot_a_id: uuid.UUID
+    snapshot_b_id: uuid.UUID
+    snapshot_a_label: str
+    snapshot_b_label: str
+    snapshot_a_symbol_count: int
+    snapshot_b_symbol_count: int
+    is_same_universe: bool
+    added_count: int
+    removed_count: int
+    common_symbols_count: int
+    symbol_count_delta: int
+    overlap_ratio: float
+    jaccard_similarity: float
+    # Capped at 50 each in the response; counts are exact.
+    added_symbols: list[str]
+    removed_symbols: list[str]
+    highlighted_changes: list[str]
+    deterministic_explanation: str
+
+
 class StrategyVersionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -109,6 +185,8 @@ class StrategyVersionOut(BaseModel):
     updated_at: datetime
     # M15: config snapshot count for this version (populated by route if requested)
     config_snapshot_count: int = 0
+    # M16: universe snapshot count for this version
+    universe_snapshot_count: int = 0
 
 
 class StrategyConfigSnapshotRead(BaseModel):
@@ -167,6 +245,7 @@ class StrategyRunOut(BaseModel):
 
     dataset_snapshot is populated only when the run has a linked snapshot
     and the route eagerly loads StrategyRun.snapshot → dataset + issues.
+    universe_snapshot is populated only when the run has a linked universe snapshot.
     """
 
     id: uuid.UUID
@@ -174,6 +253,8 @@ class StrategyRunOut(BaseModel):
     strategy_version_id: uuid.UUID | None
     # M7: nullable FK to a linked dataset snapshot.
     dataset_snapshot_id: uuid.UUID | None = None
+    # M16: nullable FK to a linked universe snapshot.
+    universe_snapshot_id: uuid.UUID | None = None
     run_name: str
     run_type: str
     status: str
@@ -189,6 +270,8 @@ class StrategyRunOut(BaseModel):
     updated_at: datetime
     # M7: data evidence summary — None when no snapshot is linked.
     dataset_snapshot: DataEvidenceSummary | None = None
+    # M16: universe evidence summary — None when no universe snapshot is linked.
+    universe_snapshot: UniverseSnapshotSummary | None = None
 
 
 class StrategyListItemOut(BaseModel):
@@ -209,11 +292,13 @@ class StrategyListItemOut(BaseModel):
 
 
 class StrategyDetailOut(StrategyListItemOut):
-    """Full strategy detail with versions, runs, and recent config snapshots (M15)."""
+    """Full strategy detail with versions, runs, config snapshots, and universe snapshots."""
 
     versions: list[StrategyVersionOut] = []
     runs: list[StrategyRunOut] = []
     config_snapshots: list[StrategyConfigSnapshotRead] = []
+    # M16: recent universe snapshots, newest-first.
+    universe_snapshots: list[UniverseSnapshotRead] = []
 
 
 # Keep the plain StrategyOut for any internal callers that still use it.

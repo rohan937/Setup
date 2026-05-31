@@ -70,11 +70,25 @@ class StrategyRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     strategy_version: Mapped["StrategyVersion | None"] = relationship(  # noqa: F821
         "StrategyVersion", back_populates="runs"
     )
+    # M16: optional link to a universe snapshot.
+    universe_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("universe_snapshots.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # M7: linked dataset snapshot (lazy by default; eagerly loaded in routes that need it).
     snapshot: Mapped["DatasetSnapshot | None"] = relationship(  # noqa: F821
         "DatasetSnapshot",
         back_populates="strategy_runs",
         foreign_keys="[StrategyRun.dataset_snapshot_id]",
+    )
+    # M16: linked universe snapshot.
+    universe_snapshot: Mapped["UniverseSnapshot | None"] = relationship(  # noqa: F821
+        "UniverseSnapshot",
+        back_populates="strategy_runs",
+        foreign_keys="[StrategyRun.universe_snapshot_id]",
     )
     # M8: backtest audit records for this run (at most one in practice — POST replaces).
     backtest_audits: Mapped[list["BacktestAudit"]] = relationship(  # noqa: F821

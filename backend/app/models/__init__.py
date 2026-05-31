@@ -12,6 +12,7 @@ from app.models.strategy import Strategy
 from app.models.strategy_version import StrategyVersion
 from app.models.strategy_run import StrategyRun
 from app.models.strategy_config_snapshot import StrategyConfigSnapshot
+from app.models.universe_snapshot import UniverseSnapshot
 from app.models.audit_timeline_event import AuditTimelineEvent
 from app.models.dataset import Dataset
 from app.models.dataset_snapshot import DatasetSnapshot
@@ -31,6 +32,7 @@ __all__ = [
     "StrategyVersion",
     "StrategyRun",
     "StrategyConfigSnapshot",
+    "UniverseSnapshot",
     "AuditTimelineEvent",
     "Dataset",
     "DatasetSnapshot",

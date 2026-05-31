@@ -34,6 +34,10 @@ import type {
   StrategyVersion,
   StrategyVersionCreateRequest,
   RunComparisonResponse,
+  UniverseComparisonResponse,
+  UniverseSnapshotCreateRequest,
+  UniverseSnapshotDetail,
+  UniverseSnapshotRead,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -361,4 +365,44 @@ export async function getConfigSnapshot(
   snapshotId: string,
 ): Promise<StrategyConfigSnapshotDetail> {
   return request<StrategyConfigSnapshotDetail>(`/api/config-snapshots/${snapshotId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Universe snapshots (M16)
+// ---------------------------------------------------------------------------
+
+export async function createUniverseSnapshot(
+  strategyId: string,
+  data: UniverseSnapshotCreateRequest,
+): Promise<UniverseSnapshotRead> {
+  return request<UniverseSnapshotRead>(
+    `/api/strategies/${strategyId}/universe-snapshots`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export async function getUniverseSnapshots(
+  strategyId: string,
+  versionId?: string,
+): Promise<UniverseSnapshotRead[]> {
+  const qs = versionId ? `?version_id=${versionId}` : "";
+  return request<UniverseSnapshotRead[]>(
+    `/api/strategies/${strategyId}/universe-snapshots${qs}`,
+  );
+}
+
+export async function getUniverseSnapshot(
+  snapshotId: string,
+): Promise<UniverseSnapshotDetail> {
+  return request<UniverseSnapshotDetail>(`/api/universe-snapshots/${snapshotId}`);
+}
+
+export async function compareUniverseSnapshots(
+  strategyId: string,
+  snapshotAId: string,
+  snapshotBId: string,
+): Promise<UniverseComparisonResponse> {
+  return request<UniverseComparisonResponse>(
+    `/api/strategies/${strategyId}/universe-snapshots/compare?snapshot_a_id=${snapshotAId}&snapshot_b_id=${snapshotBId}`,
+  );
 }

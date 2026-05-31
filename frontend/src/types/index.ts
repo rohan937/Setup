@@ -50,6 +50,8 @@ export interface StrategyVersion {
   updated_at: string;
   /** M15: number of config snapshots linked to this version. */
   config_snapshot_count: number;
+  /** M16: number of universe snapshots linked to this version. */
+  universe_snapshot_count: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,12 +140,81 @@ export interface DataEvidenceSummary {
   worst_severity: string | null;  // null when issue_count === 0
 }
 
+// ---------------------------------------------------------------------------
+// Universe snapshots (M16)
+// ---------------------------------------------------------------------------
+
+/** Lightweight universe evidence embedded in strategy run responses. */
+export interface UniverseSnapshotSummary {
+  id: string;
+  label: string;
+  symbol_count: number;
+  /** SHA-256 hex; display first 8 chars in UI. */
+  universe_hash: string;
+  strategy_version_id: string | null;
+  created_at: string;
+}
+
+/** Universe snapshot summary row — no symbols_json blob. */
+export interface UniverseSnapshotRead {
+  id: string;
+  strategy_id: string;
+  strategy_version_id: string | null;
+  label: string;
+  source_type: string;
+  source_filename: string | null;
+  symbol_count: number;
+  universe_hash: string;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Full universe snapshot including the symbols_json payload. */
+export interface UniverseSnapshotDetail extends UniverseSnapshotRead {
+  symbols_json: string[];
+}
+
+export interface UniverseSnapshotCreateRequest {
+  strategy_version_id?: string;
+  label: string;
+  source_type?: string;
+  source_filename?: string;
+  /** Required; normalized server-side (trimmed, uppercased, deduped, sorted). */
+  symbols: string[];
+  metadata_json?: Record<string, unknown>;
+}
+
+export interface UniverseComparisonResponse {
+  snapshot_a_id: string;
+  snapshot_b_id: string;
+  snapshot_a_label: string;
+  snapshot_b_label: string;
+  snapshot_a_symbol_count: number;
+  snapshot_b_symbol_count: number;
+  is_same_universe: boolean;
+  added_count: number;
+  removed_count: number;
+  common_symbols_count: number;
+  symbol_count_delta: number;
+  overlap_ratio: number;
+  jaccard_similarity: number;
+  /** Capped at 50. */
+  added_symbols: string[];
+  /** Capped at 50. */
+  removed_symbols: string[];
+  highlighted_changes: string[];
+  deterministic_explanation: string;
+}
+
 export interface StrategyRun {
   id: string;
   strategy_id: string;
   strategy_version_id: string | null;
   /** M7: nullable FK to a linked dataset snapshot. */
   dataset_snapshot_id: string | null;
+  /** M16: nullable FK to a linked universe snapshot. */
+  universe_snapshot_id: string | null;
   run_name: string;
   run_type: string;
   status: string;
@@ -159,6 +230,8 @@ export interface StrategyRun {
   updated_at: string;
   /** M7: lightweight data health evidence — null when no snapshot is linked. */
   dataset_snapshot: DataEvidenceSummary | null;
+  /** M16: lightweight universe evidence — null when no snapshot is linked. */
+  universe_snapshot: UniverseSnapshotSummary | null;
 }
 
 export interface StrategyDetail extends Strategy {
@@ -166,6 +239,8 @@ export interface StrategyDetail extends Strategy {
   runs: StrategyRun[];
   /** M15: config snapshots linked to this strategy, newest-first. */
   config_snapshots: StrategyConfigSnapshotRead[];
+  /** M16: universe snapshots linked to this strategy, newest-first. */
+  universe_snapshots: UniverseSnapshotRead[];
 }
 
 export interface StrategyCreateRequest {
@@ -181,6 +256,8 @@ export interface StrategyRunCreateRequest {
   strategy_version_id?: string;
   /** M7: optional link to a QuantFidelity dataset snapshot. */
   dataset_snapshot_id?: string;
+  /** M16: optional link to a universe snapshot (must belong to same strategy). */
+  universe_snapshot_id?: string;
   run_name: string;
   run_type: string;
   status?: string;

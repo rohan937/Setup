@@ -13,6 +13,12 @@
   GET  /api/strategies/{strategy_id}/config-snapshots
   GET  /api/strategies/{strategy_id}/config-snapshots/compare
   GET  /api/config-snapshots/{snapshot_id}
+
+  M16 universe snapshot endpoints:
+  POST /api/strategies/{strategy_id}/universe-snapshots
+  GET  /api/strategies/{strategy_id}/universe-snapshots
+  GET  /api/strategies/{strategy_id}/universe-snapshots/compare
+  GET  /api/universe-snapshots/{snapshot_id}
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ from app.models.strategy import Strategy
 from app.models.strategy_config_snapshot import StrategyConfigSnapshot
 from app.models.strategy_run import StrategyRun
 from app.models.strategy_version import StrategyVersion
+from app.models.universe_snapshot import UniverseSnapshot
 from app.schemas.comparison import RunComparisonResponse
 from app.schemas.strategy import (
     ConfigComparisonResponse,
@@ -52,6 +59,11 @@ from app.schemas.strategy import (
     StrategyRunOut,
     StrategyVersionCreate,
     StrategyVersionOut,
+    UniverseComparisonResponse,
+    UniverseSnapshotCreate,
+    UniverseSnapshotDetail,
+    UniverseSnapshotRead,
+    UniverseSnapshotSummary,
 )
 from app.schemas.timeline import TimelineEventOut, TimelineListResponse
 from app.services.config_snapshots import (
@@ -61,6 +73,11 @@ from app.services.config_snapshots import (
     count_params,
 )
 from app.services.run_comparison import compare_runs
+from app.services.universe_snapshots import (
+    compare_universe_snapshots,
+    compute_universe_hash,
+    normalize_symbols,
+)
 
 router = APIRouter(tags=["strategies"])
 
@@ -158,20 +175,38 @@ def _build_evidence_summary(
 # Run → StrategyRunOut builder
 # ---------------------------------------------------------------------------
 
+def _build_universe_summary(us: "UniverseSnapshot") -> UniverseSnapshotSummary:
+    """Build a lightweight UniverseSnapshotSummary from a loaded universe snapshot."""
+    return UniverseSnapshotSummary(
+        id=us.id,
+        label=us.label,
+        symbol_count=us.symbol_count,
+        universe_hash=us.universe_hash,
+        strategy_version_id=us.strategy_version_id,
+        created_at=us.created_at,
+    )
+
+
 def _build_run_out(run: StrategyRun) -> StrategyRunOut:
-    """Build StrategyRunOut from a run that may have .snapshot eagerly loaded.
+    """Build StrategyRunOut from a run that may have .snapshot / .universe_snapshot loaded.
 
     If run.snapshot is None (no link or not loaded), dataset_snapshot is None.
+    If run.universe_snapshot is None, universe_snapshot is None.
     """
     evidence: DataEvidenceSummary | None = None
     if run.snapshot is not None:
         evidence = _build_evidence_summary(run.snapshot)
+
+    uni_evidence: UniverseSnapshotSummary | None = None
+    if run.universe_snapshot is not None:
+        uni_evidence = _build_universe_summary(run.universe_snapshot)
 
     return StrategyRunOut(
         id=run.id,
         strategy_id=run.strategy_id,
         strategy_version_id=run.strategy_version_id,
         dataset_snapshot_id=run.dataset_snapshot_id,
+        universe_snapshot_id=run.universe_snapshot_id,
         run_name=run.run_name,
         run_type=run.run_type,
         status=run.status,
@@ -186,6 +221,7 @@ def _build_run_out(run: StrategyRun) -> StrategyRunOut:
         created_at=run.created_at,
         updated_at=run.updated_at,
         dataset_snapshot=evidence,
+        universe_snapshot=uni_evidence,
     )
 
 
@@ -345,7 +381,10 @@ def get_strategy(
             selectinload(Strategy.runs)
             .selectinload(StrategyRun.snapshot)
             .selectinload(DatasetSnapshot.issues),
+            selectinload(Strategy.runs)
+            .selectinload(StrategyRun.universe_snapshot),
             selectinload(Strategy.config_snapshots),
+            selectinload(Strategy.universe_snapshots),
         )
         .filter(Strategy.id == strategy_id)
         .first()
@@ -368,19 +407,28 @@ def get_strategy(
     sorted_runs = sorted(strategy.runs, key=lambda x: x.created_at, reverse=True)
 
     # Compute per-version config_snapshot_count from the eagerly loaded snapshots.
-    version_snapshot_counts: dict[uuid.UUID, int] = {}
+    version_config_counts: dict[uuid.UUID, int] = {}
     for cs in (strategy.config_snapshots or []):
         if cs.strategy_version_id is not None:
-            version_snapshot_counts[cs.strategy_version_id] = (
-                version_snapshot_counts.get(cs.strategy_version_id, 0) + 1
+            version_config_counts[cs.strategy_version_id] = (
+                version_config_counts.get(cs.strategy_version_id, 0) + 1
             )
 
-    # Build version list with counts, newest-first.
+    # Compute per-version universe_snapshot_count.
+    version_uni_counts: dict[uuid.UUID, int] = {}
+    for us in (strategy.universe_snapshots or []):
+        if us.strategy_version_id is not None:
+            version_uni_counts[us.strategy_version_id] = (
+                version_uni_counts.get(us.strategy_version_id, 0) + 1
+            )
+
+    # Build version list with both counts, newest-first.
     sorted_versions = sorted(strategy.versions, key=lambda v: v.created_at, reverse=True)
     version_outs: list[StrategyVersionOut] = []
     for v in sorted_versions:
         vout = StrategyVersionOut.model_validate(v)
-        vout.config_snapshot_count = version_snapshot_counts.get(v.id, 0)
+        vout.config_snapshot_count = version_config_counts.get(v.id, 0)
+        vout.universe_snapshot_count = version_uni_counts.get(v.id, 0)
         version_outs.append(vout)
 
     return StrategyDetailOut(
@@ -401,6 +449,10 @@ def get_strategy(
         config_snapshots=[
             StrategyConfigSnapshotRead.model_validate(cs)
             for cs in strategy.config_snapshots
+        ],
+        universe_snapshots=[
+            UniverseSnapshotRead.model_validate(us)
+            for us in strategy.universe_snapshots
         ],
     )
 
@@ -475,6 +527,24 @@ def create_strategy_run(
                 ),
             )
 
+    # M16: Validate universe_snapshot_id when provided.
+    uni_snap: UniverseSnapshot | None = None
+    if body.universe_snapshot_id is not None:
+        uni_snap = (
+            db.query(UniverseSnapshot)
+            .filter(UniverseSnapshot.id == body.universe_snapshot_id)
+            .first()
+        )
+        if uni_snap is None:
+            raise HTTPException(
+                status_code=404, detail="Universe snapshot not found"
+            )
+        if uni_snap.strategy_id != strategy_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Universe snapshot does not belong to this strategy",
+            )
+
     # Auto-set completed_at when status is completed and no value was supplied
     completed_at = body.completed_at
     if body.status == RunStatus.completed and completed_at is None:
@@ -484,6 +554,7 @@ def create_strategy_run(
         strategy_id=strategy_id,
         strategy_version_id=body.strategy_version_id,
         dataset_snapshot_id=body.dataset_snapshot_id,
+        universe_snapshot_id=body.universe_snapshot_id,
         run_name=body.run_name,
         run_type=body.run_type,
         status=body.status,
@@ -509,6 +580,10 @@ def create_strategy_run(
             f"{run.run_type.capitalize()} run '{run.run_name}' logged for strategy "
             f"'{strategy.name}'. Status: {run.status}."
             + (f" Universe: {run.universe_name}." if run.universe_name else "")
+            + (
+                f" Universe snapshot: {uni_snap.label} ({uni_snap.symbol_count} symbols)."
+                if uni_snap else ""
+            )
         ),
         source_type="strategy_run",
         source_id=str(run.id),
@@ -518,6 +593,9 @@ def create_strategy_run(
             "status": run.status,
             "universe_name": run.universe_name,
             "dataset_snapshot_id": str(body.dataset_snapshot_id) if body.dataset_snapshot_id else None,
+            "universe_snapshot_id": str(body.universe_snapshot_id) if body.universe_snapshot_id else None,
+            "universe_snapshot_label": uni_snap.label if uni_snap else None,
+            "universe_symbol_count": uni_snap.symbol_count if uni_snap else None,
             "strategy_name": strategy.name,
         },
     )
@@ -525,8 +603,9 @@ def create_strategy_run(
     db.commit()
     db.refresh(run)
 
-    # Attach the already-loaded snapshot object so _build_run_out can build evidence.
+    # Attach the already-loaded objects so _build_run_out can build evidence.
     run.snapshot = snap  # type: ignore[assignment]
+    run.universe_snapshot = uni_snap  # type: ignore[assignment]
 
     return _build_run_out(run)
 
@@ -633,6 +712,7 @@ def list_strategy_runs(
         .options(
             selectinload(StrategyRun.snapshot).selectinload(DatasetSnapshot.dataset),
             selectinload(StrategyRun.snapshot).selectinload(DatasetSnapshot.issues),
+            selectinload(StrategyRun.universe_snapshot),
         )
         .filter(StrategyRun.strategy_id == strategy_id)
         .order_by(StrategyRun.created_at.desc())
@@ -725,6 +805,7 @@ def create_strategy_version(
 
     vout = StrategyVersionOut.model_validate(version)
     vout.config_snapshot_count = 0
+    vout.universe_snapshot_count = 0
     return vout
 
 
@@ -758,7 +839,7 @@ def list_strategy_versions(
         return []
 
     version_ids = [v.id for v in versions]
-    counts: dict = dict(
+    config_counts: dict = dict(
         db.query(
             StrategyConfigSnapshot.strategy_version_id,
             func.count(StrategyConfigSnapshot.id),
@@ -767,11 +848,21 @@ def list_strategy_versions(
         .group_by(StrategyConfigSnapshot.strategy_version_id)
         .all()
     )
+    uni_counts: dict = dict(
+        db.query(
+            UniverseSnapshot.strategy_version_id,
+            func.count(UniverseSnapshot.id),
+        )
+        .filter(UniverseSnapshot.strategy_version_id.in_(version_ids))
+        .group_by(UniverseSnapshot.strategy_version_id)
+        .all()
+    )
 
     results: list[StrategyVersionOut] = []
     for v in versions:
         vout = StrategyVersionOut.model_validate(v)
-        vout.config_snapshot_count = counts.get(v.id, 0)
+        vout.config_snapshot_count = config_counts.get(v.id, 0)
+        vout.universe_snapshot_count = uni_counts.get(v.id, 0)
         results.append(vout)
     return results
 
@@ -1005,3 +1096,243 @@ def get_config_snapshot(
         raise HTTPException(status_code=404, detail="Config snapshot not found")
 
     return StrategyConfigSnapshotDetail.model_validate(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# M16: GET /api/strategies/{strategy_id}/universe-snapshots/compare
+# NOTE: registered BEFORE the list route (/universe-snapshots) so the literal
+# "/compare" segment is matched before any query-only /universe-snapshots handler.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/universe-snapshots/compare",
+    response_model=UniverseComparisonResponse,
+)
+def compare_universe_snapshots_route(
+    strategy_id: uuid.UUID,
+    snapshot_a_id: uuid.UUID = Query(..., description="ID of the baseline universe snapshot (A)"),
+    snapshot_b_id: uuid.UUID = Query(..., description="ID of the comparison universe snapshot (B)"),
+    db: Session = Depends(get_db),
+) -> UniverseComparisonResponse:
+    """Deterministically compare two universe snapshots belonging to this strategy.
+
+    Read-only — no audit event is emitted.
+    Returns set-based diff: added/removed/common symbol counts, overlap ratio,
+    Jaccard similarity, capped symbol lists (≤50 each), and a hedged explanation.
+    Language is hedged throughout — no causal claims are made.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    snap_a = (
+        db.query(UniverseSnapshot)
+        .filter(
+            UniverseSnapshot.id == snapshot_a_id,
+            UniverseSnapshot.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if snap_a is None:
+        raise HTTPException(status_code=404, detail="Universe snapshot A not found")
+
+    snap_b = (
+        db.query(UniverseSnapshot)
+        .filter(
+            UniverseSnapshot.id == snapshot_b_id,
+            UniverseSnapshot.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if snap_b is None:
+        raise HTTPException(status_code=404, detail="Universe snapshot B not found")
+
+    result = compare_universe_snapshots(
+        snap_a_id=str(snap_a.id),
+        snap_b_id=str(snap_b.id),
+        snap_a_label=snap_a.label,
+        snap_b_label=snap_b.label,
+        symbols_a=snap_a.symbols_json or [],
+        symbols_b=snap_b.symbols_json or [],
+        hash_a=snap_a.universe_hash,
+        hash_b=snap_b.universe_hash,
+    )
+
+    return UniverseComparisonResponse(
+        snapshot_a_id=snap_a.id,
+        snapshot_b_id=snap_b.id,
+        snapshot_a_label=result.snapshot_a_label,
+        snapshot_b_label=result.snapshot_b_label,
+        snapshot_a_symbol_count=result.snapshot_a_symbol_count,
+        snapshot_b_symbol_count=result.snapshot_b_symbol_count,
+        is_same_universe=result.is_same_universe,
+        added_count=result.added_count,
+        removed_count=result.removed_count,
+        common_symbols_count=result.common_symbols_count,
+        symbol_count_delta=result.symbol_count_delta,
+        overlap_ratio=result.overlap_ratio,
+        jaccard_similarity=result.jaccard_similarity,
+        added_symbols=result.added_symbols,
+        removed_symbols=result.removed_symbols,
+        highlighted_changes=result.highlighted_changes,
+        deterministic_explanation=result.deterministic_explanation,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M16: POST /api/strategies/{strategy_id}/universe-snapshots
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/strategies/{strategy_id}/universe-snapshots",
+    response_model=UniverseSnapshotRead,
+    status_code=201,
+)
+def create_universe_snapshot(
+    strategy_id: uuid.UUID,
+    body: UniverseSnapshotCreate,
+    db: Session = Depends(get_db),
+) -> UniverseSnapshotRead:
+    """Create a universe snapshot for a strategy.
+
+    Symbols are normalized (trimmed, uppercased, deduplicated, sorted) before
+    storage.  Empty or whitespace-only symbols are silently dropped.
+    A deterministic SHA-256 universe_hash is computed from the normalized
+    symbols + optional metadata.
+    If strategy_version_id is provided it must belong to this strategy.
+    Emits an audit timeline event on success.
+    """
+    strategy = (
+        db.query(Strategy)
+        .options(selectinload(Strategy.project))
+        .filter(Strategy.id == strategy_id)
+        .first()
+    )
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    if not body.symbols:
+        raise HTTPException(
+            status_code=422,
+            detail="symbols must be a non-empty list",
+        )
+
+    # Validate strategy_version_id belongs to this strategy when provided.
+    if body.strategy_version_id is not None:
+        version = (
+            db.query(StrategyVersion)
+            .filter(
+                StrategyVersion.id == body.strategy_version_id,
+                StrategyVersion.strategy_id == strategy_id,
+            )
+            .first()
+        )
+        if version is None:
+            raise HTTPException(status_code=404, detail="Strategy version not found")
+
+    normalized = normalize_symbols(body.symbols)
+    if not normalized:
+        raise HTTPException(
+            status_code=422,
+            detail="symbols list contains no valid symbols after normalization",
+        )
+
+    universe_hash = compute_universe_hash(normalized, body.metadata_json)
+
+    snapshot = UniverseSnapshot(
+        strategy_id=strategy_id,
+        strategy_version_id=body.strategy_version_id,
+        label=body.label,
+        source_type=body.source_type,
+        source_filename=body.source_filename,
+        symbols_json=normalized,
+        symbol_count=len(normalized),
+        metadata_json=body.metadata_json,
+        universe_hash=universe_hash,
+    )
+    db.add(snapshot)
+    db.flush()
+
+    event = AuditTimelineEvent(
+        organization_id=strategy.project.organization_id,
+        project_id=strategy.project_id,
+        strategy_id=strategy_id,
+        event_type=EventType.universe_snapshot_logged,
+        title=f"Universe snapshot logged: {snapshot.label}",
+        description=(
+            f"Universe snapshot '{snapshot.label}' logged for strategy '{strategy.name}'. "
+            f"Source: {snapshot.source_type}. "
+            f"Symbols: {snapshot.symbol_count}."
+        ),
+        source_type="universe_snapshot",
+        source_id=str(snapshot.id),
+        severity=Severity.info,
+        metadata_json={
+            "snapshot_label": snapshot.label,
+            "source_type": snapshot.source_type,
+            "universe_hash": universe_hash,
+            "symbol_count": snapshot.symbol_count,
+            "strategy_name": strategy.name,
+        },
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(snapshot)
+
+    return UniverseSnapshotRead.model_validate(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# M16: GET /api/strategies/{strategy_id}/universe-snapshots
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/universe-snapshots",
+    response_model=list[UniverseSnapshotRead],
+)
+def list_universe_snapshots(
+    strategy_id: uuid.UUID,
+    version_id: uuid.UUID | None = Query(default=None, description="Filter by strategy_version_id"),
+    db: Session = Depends(get_db),
+) -> list[UniverseSnapshotRead]:
+    """List universe snapshots for a strategy, newest-first.
+
+    Pass ``version_id`` to filter by a specific strategy version.
+    The symbols_json payload is not included; use the detail endpoint for that.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    q = db.query(UniverseSnapshot).filter(
+        UniverseSnapshot.strategy_id == strategy_id
+    )
+    if version_id is not None:
+        q = q.filter(UniverseSnapshot.strategy_version_id == version_id)
+
+    snapshots = q.order_by(UniverseSnapshot.created_at.desc()).all()
+    return [UniverseSnapshotRead.model_validate(s) for s in snapshots]
+
+
+# ---------------------------------------------------------------------------
+# M16: GET /api/universe-snapshots/{snapshot_id}
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/universe-snapshots/{snapshot_id}",
+    response_model=UniverseSnapshotDetail,
+)
+def get_universe_snapshot(
+    snapshot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> UniverseSnapshotDetail:
+    """Return full universe snapshot detail including the symbols_json payload."""
+    snapshot = (
+        db.query(UniverseSnapshot)
+        .filter(UniverseSnapshot.id == snapshot_id)
+        .first()
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Universe snapshot not found")
+
+    return UniverseSnapshotDetail.model_validate(snapshot)
