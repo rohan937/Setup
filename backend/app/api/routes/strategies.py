@@ -2,28 +2,32 @@
   POST /api/strategies
   GET  /api/strategies
   GET  /api/strategies/{strategy_id}
+  POST /api/strategies/{strategy_id}/runs
   GET  /api/strategies/{strategy_id}/runs
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.constants import AssetClass, EventType, Severity, StrategyStatus
+from app.core.constants import AssetClass, EventType, RunStatus, RunType, Severity, StrategyStatus
 from app.core.utils import slugify
 from app.db.session import get_db
 from app.models.audit_timeline_event import AuditTimelineEvent
 from app.models.project import Project
 from app.models.strategy import Strategy
 from app.models.strategy_run import StrategyRun
+from app.models.strategy_version import StrategyVersion
 from app.schemas.strategy import (
     StrategyCreate,
     StrategyDetailOut,
     StrategyListItemOut,
+    StrategyRunCreate,
     StrategyRunOut,
     StrategyVersionOut,
 )
@@ -205,8 +209,99 @@ def get_strategy(
         created_at=strategy.created_at,
         updated_at=strategy.updated_at,
         versions=[StrategyVersionOut.model_validate(v) for v in strategy.versions],
-        runs=[StrategyRunOut.model_validate(r) for r in strategy.runs],
+        runs=[
+            StrategyRunOut.model_validate(r)
+            for r in sorted(strategy.runs, key=lambda x: x.created_at, reverse=True)
+        ],
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/strategies/{strategy_id}/runs
+# ---------------------------------------------------------------------------
+
+@router.post("/strategies/{strategy_id}/runs", response_model=StrategyRunOut, status_code=201)
+def create_strategy_run(
+    strategy_id: uuid.UUID,
+    body: StrategyRunCreate,
+    db: Session = Depends(get_db),
+) -> StrategyRun:
+    # Validate run_type
+    try:
+        RunType(body.run_type)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid run_type '{body.run_type}'")
+
+    # Validate status
+    try:
+        RunStatus(body.status)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid status '{body.status}'")
+
+    # Check strategy exists
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    # Validate strategy_version_id belongs to this strategy when provided
+    if body.strategy_version_id is not None:
+        version = (
+            db.query(StrategyVersion)
+            .filter(
+                StrategyVersion.id == body.strategy_version_id,
+                StrategyVersion.strategy_id == strategy_id,
+            )
+            .first()
+        )
+        if version is None:
+            raise HTTPException(status_code=404, detail="Strategy version not found")
+
+    # Auto-set completed_at when status is completed and no value was supplied
+    completed_at = body.completed_at
+    if body.status == RunStatus.completed and completed_at is None:
+        completed_at = datetime.now(timezone.utc)
+
+    run = StrategyRun(
+        strategy_id=strategy_id,
+        strategy_version_id=body.strategy_version_id,
+        run_name=body.run_name,
+        run_type=body.run_type,
+        status=body.status,
+        started_at=body.started_at,
+        completed_at=completed_at,
+        params_json=body.params_json,
+        assumptions_json=body.assumptions_json,
+        metrics_json=body.metrics_json,
+        universe_name=body.universe_name,
+        dataset_version=body.dataset_version,
+        notes=body.notes,
+    )
+    db.add(run)
+    db.flush()
+
+    # Load project to get organization_id for the audit event
+    project = db.query(Project).filter(Project.id == strategy.project_id).first()
+
+    event = AuditTimelineEvent(
+        organization_id=project.organization_id,
+        project_id=strategy.project_id,
+        strategy_id=strategy_id,
+        event_type=EventType.strategy_run_logged,
+        title=f"Run logged: {run.run_name}",
+        source_type="strategy_run",
+        source_id=str(run.id),
+        severity=Severity.info,
+        metadata_json={
+            "run_type": run.run_type,
+            "status": run.status,
+            "universe_name": run.universe_name,
+        },
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(run)
+
+    return run
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +318,6 @@ def list_strategy_runs(
     return (
         db.query(StrategyRun)
         .filter(StrategyRun.strategy_id == strategy_id)
-        .order_by(StrategyRun.created_at)
+        .order_by(StrategyRun.created_at.desc())
         .all()
     )

@@ -24,6 +24,26 @@ class StrategyCreate(BaseModel):
     status: str = "active"
 
 
+class StrategyRunCreate(BaseModel):
+    """Request body for POST /api/strategies/{strategy_id}/runs."""
+
+    strategy_version_id: uuid.UUID | None = None
+    run_name: Annotated[str, StringConstraints(min_length=1, max_length=255, strip_whitespace=True)]
+    # See constants.RunType for valid values.  Required.
+    run_type: str
+    # See constants.RunStatus for valid values.  Defaults to completed.
+    status: str = "completed"
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    # Each JSON field must be a dict (object) if provided, not an array or scalar.
+    params_json: dict | None = None
+    assumptions_json: dict | None = None
+    metrics_json: dict | None = None
+    universe_name: str | None = Field(default=None, max_length=255)
+    dataset_version: str | None = Field(default=None, max_length=255)
+    notes: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Output schemas
 # ---------------------------------------------------------------------------

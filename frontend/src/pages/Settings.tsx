@@ -19,9 +19,9 @@ export default function Settings() {
         </Card>
 
         <Card label="Milestone">
-          <p className="mono-num text-sm text-text-secondary">M3 · Strategy Lab</p>
+          <p className="mono-num text-sm text-text-secondary">M4 · Run Logging</p>
           <p className="mt-1 font-mono text-2xs text-text-muted">
-            Strategy registration, run evidence, and reliability cockpit.
+            Strategy run ingestion, run evidence log, and JSON assumption capture.
           </p>
         </Card>
       </div>

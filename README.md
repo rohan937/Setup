@@ -106,6 +106,21 @@ curl http://localhost:8000/api/strategies
 curl http://localhost:8000/api/strategies/<strategy_id>
 curl http://localhost:8000/api/strategies/<strategy_id>/runs
 curl "http://localhost:8000/api/timeline?limit=10"
+
+# M4: log a run
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/runs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "run_name": "Baseline Backtest 2024-Q1",
+    "run_type": "backtest",
+    "status": "completed",
+    "universe_name": "SP500",
+    "dataset_version": "v2024-01",
+    "metrics_json": {"sharpe": 1.4, "max_drawdown": -0.12, "annual_return": 0.18},
+    "params_json": {"lookback": 20, "threshold": 0.5},
+    "assumptions_json": {"transaction_cost_bps": 5, "fill_model": "close"},
+    "notes": "Baseline run before signal tuning"
+  }'
 ```
 
 Interactive OpenAPI docs: `http://localhost:8000/docs`
@@ -115,7 +130,7 @@ Interactive OpenAPI docs: `http://localhost:8000/docs`
 ```bash
 cd backend
 ./.venv/bin/pytest -v
-# 30 tests: schema, seed, idempotency, all endpoints, JSON round-trip
+# 64 tests: schema, seed, idempotency, all endpoints, M3 strategy creation, M4 run logging
 ```
 
 ---
@@ -138,38 +153,38 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M3: Strategy Creation + Strategy List
+## Current milestone — M4: Strategy Run Logging
 
 **Status: complete.**
 
-### M3 deliverables
+### M4 deliverables
 
-- **POST /api/strategies** — create a strategy with name, description, asset class, status,
-  and auto-generated slug; validates against `AssetClass`/`StrategyStatus` constants; 409 on
-  duplicate slug within a project; logs an `AuditTimelineEvent` on create.
-- **Enriched GET /api/strategies** — returns `StrategyListItemOut` with `project_name`,
-  `run_count`, and `latest_run_at` aggregated via bulk SQL queries (no N+1).
-- **Enriched GET /api/strategies/{id}** — returns `StrategyDetailOut` with all the above
-  plus `versions` and `runs` lists (eager-loaded via `selectinload`).
-- **`app/core/utils.py`** — `slugify()` utility: lowercase, strip special chars, collapse
-  whitespace/hyphens, truncate to 100 chars.
-- **Frontend Strategies page** — full rewrite with real API data; loading, error, and empty
-  states; sortable table with name, project, asset class badge, status badge, run count,
-  last run date; "New Strategy" button.
-- **StrategyCreateDrawer** — slide-over form with project selector, name, optional slug,
-  description, asset class, and status; submits to POST /api/strategies; refreshes list on
-  success.
-- **StrategyDetail page** — `/strategies/:id` route; shows header with badges, stat row,
-  versions card, runs card with metric pills.
-- **Dashboard update** — Strategies section shows real data (mini-table, "View all" link).
-- **Badge component** — colored chip for status, asset_class, run_type, run_status variants.
-- **19 new tests** — `tests/test_strategies_m3.py`: create success, slug generation,
-  duplicate 409, missing project 404, invalid asset_class/status 422, enriched list fields,
-  detail fields, 404 on unknown ID.
-- **49 total passing tests**, clean TypeScript typecheck, clean production build.
+- **POST /api/strategies/{strategy_id}/runs** — log a strategy run with `run_name`,
+  `run_type` (validated: research/backtest/paper/live), `status` (validated, default:
+  completed), optional `started_at`/`completed_at`, `params_json`, `assumptions_json`,
+  `metrics_json` (all must be JSON objects if provided), `universe_name`, `dataset_version`,
+  `notes`; validates strategy exists; validates `strategy_version_id` belongs to same
+  strategy when provided; auto-sets `completed_at = utcnow()` when status is completed and
+  no value supplied; logs an `AuditTimelineEvent` with `event_type=strategy_run_logged`.
+- **GET /api/strategies/{id}/runs** — updated to newest-first ordering.
+- **GET /api/strategies/{id}** — runs list now newest-first.
+- **`StrategyRunCreate` Pydantic schema** — validated input for run creation.
+- **`RunLogDrawer` component** — slide-over form with run_name, run_type, status,
+  universe/dataset fields, and JSON text areas (metrics, params, assumptions) with
+  placeholder examples and client-side JSON object validation.
+- **StrategyDetail page** — "Log Run" button in header; drawer opens, submits, refreshes
+  detail page on success.
+- **15 new tests** — `tests/test_strategies_m4.py`: create success, field values,
+  completed_at auto-set, pending status no completed_at, invalid run_type/status 422,
+  dict-only JSON fields, strategy not found 404, version not found 404, required field 422,
+  run appears in list endpoint, newest-first ordering, run appears in detail.
+- **64 total passing tests**, clean TypeScript typecheck, clean production build.
 
 ### Previously completed
 
+- **M3: Strategy Creation + Strategy Lab** — POST /api/strategies, enriched list/detail,
+  slugify util, Badge/StrategyCreateDrawer/Strategies/StrategyDetail pages, quant terminal
+  visual identity, 49 tests.
 - **M2: Core Database Schema** — SQLAlchemy 2.x, Alembic, 7 ORM models, seed data, 5
   read-only endpoints, 30 tests.
 - **M1: Project Foundation** — FastAPI backend, React+TS+Vite+Tailwind dark shell, 8
@@ -182,13 +197,13 @@ the backend alongside the frontend to see it connected.
 The following are deferred to later milestones:
 
 - Authentication / API keys (M-later)
-- Strategy Lineage (run comparison, version diffing) — M4
-- Data Integrity Engine — M5
-- Backtest Reality Check — M6
-- Live Drift / Execution Attribution — M7
-- Python SDK and ingestion endpoints — M8
-- Live market data providers (no external/paid data) — M9
-- AI diagnostic layer — M10
-- Alerts, reports, and audit trail logic — M11
+- Strategy Lineage (run comparison, version diffing) — M5
+- Data Integrity Engine — M6
+- Backtest Reality Check — M7
+- Live Drift / Execution Attribution — M8
+- Python SDK and ingestion endpoints — M9
+- Live market data providers (no external/paid data) — M10
+- AI diagnostic layer — M11
+- Alerts, reports, and audit trail logic — M12
 
 No paid services, no live market data, and no broker/trading actions are part of this project.

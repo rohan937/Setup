@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import type { StrategyDetail as StrategyDetailType } from "@/types";
 import { getStrategy } from "@/lib/api";
 import Badge from "@/components/Badge";
+import RunLogDrawer from "@/components/RunLogDrawer";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -41,6 +42,8 @@ export default function StrategyDetail() {
   const [strategy, setStrategy] = useState<StrategyDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [runDrawerOpen, setRunDrawerOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!id) return;
@@ -49,7 +52,7 @@ export default function StrategyDetail() {
       .then(setStrategy)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load strategy."))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, refreshKey]);
 
   const backLink = (
     <Link
@@ -86,19 +89,37 @@ export default function StrategyDetail() {
       {backLink}
 
       {/* Strategy header */}
-      <div>
-        <p className="caption mb-1">{strategy.project_name}</p>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-xl font-semibold tracking-tight text-text-primary">
-            {strategy.name}
-          </h1>
-          <Badge value={strategy.asset_class} variant="asset_class" />
-          <Badge value={strategy.status} variant="status" />
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="caption mb-1">{strategy.project_name}</p>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-xl font-semibold tracking-tight text-text-primary">
+              {strategy.name}
+            </h1>
+            <Badge value={strategy.asset_class} variant="asset_class" />
+            <Badge value={strategy.status} variant="status" />
+          </div>
+          {strategy.description && (
+            <p className="mt-1.5 max-w-2xl text-sm text-text-secondary">{strategy.description}</p>
+          )}
         </div>
-        {strategy.description && (
-          <p className="mt-1.5 max-w-2xl text-sm text-text-secondary">{strategy.description}</p>
-        )}
+        <button
+          onClick={() => setRunDrawerOpen(true)}
+          className="shrink-0 rounded-control bg-accent-500 px-3.5 py-2 font-mono text-xs font-medium text-text-inverse hover:bg-accent-600"
+        >
+          + Log Run
+        </button>
       </div>
+
+      <RunLogDrawer
+        open={runDrawerOpen}
+        strategyId={id!}
+        onClose={() => setRunDrawerOpen(false)}
+        onLogged={() => {
+          setRunDrawerOpen(false);
+          setRefreshKey((k) => k + 1);
+        }}
+      />
 
       {/* Stat strip */}
       <div className="flex flex-wrap gap-6 rounded-card border border-border bg-bg-700 px-5 py-3">

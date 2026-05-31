@@ -83,6 +83,21 @@ export interface StrategyCreateRequest {
   status?: string;
 }
 
+export interface StrategyRunCreateRequest {
+  strategy_version_id?: string;
+  run_name: string;
+  run_type: string;
+  status?: string;
+  started_at?: string;
+  completed_at?: string;
+  params_json?: Record<string, unknown>;
+  assumptions_json?: Record<string, unknown>;
+  metrics_json?: Record<string, unknown>;
+  universe_name?: string;
+  dataset_version?: string;
+  notes?: string;
+}
+
 export interface ApiError {
   detail: string | { msg: string; type: string }[];
 }
