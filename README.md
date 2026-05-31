@@ -24,12 +24,12 @@ QuantFidelity/
 │   ├── app/
 │   │   ├── main.py         App entrypoint + CORS + router wiring
 │   │   ├── core/           Config (env-driven settings) + constants
-│   │   ├── api/            Routers: health, meta, projects, strategies, timeline
-│   │   ├── models/         SQLAlchemy ORM models (7 tables)
+│   │   ├── api/            Routers: health, meta, projects, strategies, timeline, datasets
+│   │   ├── models/         SQLAlchemy ORM models (10 tables)
 │   │   ├── schemas/        Pydantic response models
-│   │   ├── services/       Domain services (seed, more in later milestones)
+│   │   ├── services/       Domain services (seed, run_comparison, data_quality)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (30 tests)
+│   └── tests/              Pytest tests (119 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,53 +161,76 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M5: Strategy Run Comparison + Deterministic Diffing
+## Current milestone — M6: Dataset Snapshot Upload + Basic Data Health
 
 **Status: complete.**
 
-### M5 deliverables
+### M6 deliverables
 
-- **`GET /api/strategies/{strategy_id}/runs/compare?run_a_id=…&run_b_id=…`** — pure
-  read-only deterministic diff of two runs from the same strategy. Validates strategy
-  exists, both runs exist, both belong to the same strategy. Returns a structured JSON
-  response with per-section diffs (params, assumptions, metrics, metadata), numeric deltas
-  and percent deltas for recognised numeric fields, highlighted natural-language change
-  sentences, and a hedged plain-language explanation. Does NOT create an audit timeline
-  event. Returns 404/400/422 for all error cases.
-- **`app/services/run_comparison.py`** — pure Python comparison engine; no database
-  access, no AI. Compares `params_json`, `assumptions_json`, `metrics_json` key-by-key;
-  compares scalar metadata fields (run_type, status, universe_name, dataset_version,
-  strategy_version_id). Recognises 14 important metrics and 10 important params for
-  highlighted changes. Language is strictly hedged: "changed alongside", "noted as
-  observed" — never "caused".
-- **`app/schemas/comparison.py`** — `FieldChange`, `ComparisonSection`,
-  `RunComparisonResponse` Pydantic schemas.
-- **`RunComparisonPanel` component** — quant terminal UI on StrategyDetail; selects Run A
-  (baseline) and Run B (compare), defaults to the two most recent runs; one-click compare;
-  shows explanation box, key-changes list, and per-section diff tables with directional
-  delta coloring (green/red). Empty state when fewer than two runs exist.
-- **28 new tests** — `tests/test_comparison_m5.py`: endpoint 200, response structure,
-  404/400/422 error cases, same-run returns no changes, params/assumptions/metrics diffs,
-  numeric delta values, non-numeric fields handled safely, highlighted changes for
-  important fields, causal language check, no audit event created, total_changes
-  reconciliation, unchanged_count correctness, type-mismatch warning.
-- **92 total passing tests**, clean TypeScript typecheck, clean production build.
+- **3 new ORM models** — `Dataset`, `DatasetSnapshot`, `DataQualityIssue` (10 total
+  tables). Alembic migration `0002_m6_dataset_tables.py` chained from `0001`.
+- **6 new API endpoints:**
+  - `POST /api/datasets` — register a named dataset (type: ohlcv/factors/fundamentals/
+    returns/custom; source: manual/vendor/computed/sdk). Validates project exists. 201.
+  - `GET /api/datasets` — list all datasets with snapshot count. 200.
+  - `GET /api/datasets/{id}` — dataset detail with snapshot metadata list. 404 if missing.
+  - `POST /api/datasets/{id}/snapshots` — ingest a JSON array of row objects; runs all
+    10 data quality checks; persists issues; computes health score; creates
+    `dataset_snapshot_uploaded` audit timeline event. Returns `DatasetSnapshotDetail`. 201.
+  - `GET /api/datasets/{id}/snapshots` — list snapshots for a dataset (newest first). 200.
+  - `GET /api/dataset-snapshots/{snapshot_id}` — snapshot detail with all quality issues.
+- **`app/services/data_quality.py`** — pure Python quality engine (no AI, no database
+  access). 10 check types: `missing_values`, `duplicate_rows`,
+  `duplicate_symbol_timestamp`, `invalid_timestamp`, `negative_zero_price`,
+  `high_lt_low`, `close_outside_range`, `open_outside_range`, `negative_volume`,
+  `suspicious_return_jump` (>25% medium, >50% high). Health score formula: start 100,
+  subtract per-issue penalty (critical=25, high=15, medium=8, low=3), floor at 0.
+- **`app/schemas/dataset.py`** — `DatasetCreate`, `DatasetRead`, `DatasetDetail`,
+  `DatasetSnapshotCreate`, `DatasetSnapshotRead`, `DatasetSnapshotDetail`,
+  `DataQualityIssueRead` Pydantic schemas.
+- **`DataHealth` page** — full rewrite: dataset list with create form (left panel), selected
+  dataset detail, "Upload & Analyse" snapshot form with JSON textarea, health score bar
+  (green/amber/red), severity-tagged issue list, snapshot history table.
+- **27 new tests** — `tests/test_data_health_m6.py`: CRUD 201/404/422, snapshot ingestion,
+  all 10 issue type detections, critical/high severity assertions, health score floor at 0,
+  score decrement for critical issues, audit event created on upload.
+- **119 total passing tests**, clean TypeScript typecheck, clean production build.
+
+### Verify with curl
+
+```bash
+# Create a dataset
+curl -s -X POST http://localhost:8000/api/datasets \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "project_id": "<project_id>",
+    "name": "AAPL Daily OHLCV",
+    "dataset_type": "ohlcv",
+    "source_type": "manual"
+  }' | python3 -m json.tool
+
+# Upload a snapshot with a bad row to trigger quality checks
+curl -s -X POST http://localhost:8000/api/datasets/<dataset_id>/snapshots \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "version_label": "v2024-01",
+    "rows": [
+      {"symbol":"AAPL","timestamp":"2024-01-02","open":185.3,"high":188.5,"low":184.9,"close":187.1,"volume":52000000},
+      {"symbol":"AAPL","timestamp":"2024-01-03","open":180.0,"high":175.0,"low":170.0,"close":173.0,"volume":48000000}
+    ]
+  }' | python3 -m json.tool
+
+# List all datasets
+curl http://localhost:8000/api/datasets
+```
 
 ### Previously completed
 
+- **M5: Strategy Run Comparison** — GET /api/strategies/{id}/runs/compare, pure-Python
+  diff engine, RunComparisonPanel, 28 tests, 92 total tests.
 - **M4: Strategy Run Logging** — POST /api/strategies/{id}/runs, RunLogDrawer, 64 tests.
 - **M3: Strategy Creation + Strategy Lab** — POST /api/strategies, enriched list/detail,
   slugify util, quant terminal visual identity, 49 tests.
-- **M2: Core Database Schema** — SQLAlchemy 2.x, Alembic, 7 ORM models, seed data, 5
-  read-only endpoints, 30 tests.
-- **M1: Project Foundation** — FastAPI backend, React+TS+Vite+Tailwind dark shell, 8
-  placeholder pages, design tokens from UIDesignSystem.txt.
-
-### Previously completed
-
-- **M3: Strategy Creation + Strategy Lab** — POST /api/strategies, enriched list/detail,
-  slugify util, Badge/StrategyCreateDrawer/Strategies/StrategyDetail pages, quant terminal
-  visual identity, 49 tests.
 - **M2: Core Database Schema** — SQLAlchemy 2.x, Alembic, 7 ORM models, seed data, 5
   read-only endpoints, 30 tests.
 - **M1: Project Foundation** — FastAPI backend, React+TS+Vite+Tailwind dark shell, 8
@@ -220,7 +243,6 @@ the backend alongside the frontend to see it connected.
 The following are deferred to later milestones:
 
 - Authentication / API keys (M-later)
-- Data Integrity Engine — M6
 - Backtest Reality Check (Trust Score) — M7
 - Live Drift / Execution Attribution — M8
 - Python SDK and ingestion endpoints — M9

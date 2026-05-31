@@ -141,6 +141,64 @@ export interface RunComparisonResponse {
   total_changes: number;
 }
 
+// ---------------------------------------------------------------------------
+// Data health (M6)
+// ---------------------------------------------------------------------------
+
+export interface Dataset {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  dataset_type: string;
+  source_type: string;
+  snapshot_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatasetCreateRequest {
+  project_id: string;
+  name: string;
+  description?: string;
+  dataset_type?: string;
+  source_type?: string;
+}
+
+export interface DatasetSnapshotRead {
+  id: string;
+  dataset_id: string;
+  version_label: string;
+  row_count: number;
+  health_score: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DataQualityIssue {
+  id: string;
+  snapshot_id: string;
+  issue_type: string;
+  severity: string;
+  field_name: string | null;
+  row_index: number | null;
+  detail: string | null;
+  created_at: string;
+}
+
+export interface DatasetSnapshotDetail extends DatasetSnapshotRead {
+  issues: DataQualityIssue[];
+}
+
+export interface DatasetDetail extends Dataset {
+  snapshots: DatasetSnapshotRead[];
+}
+
+export interface DatasetSnapshotCreateRequest {
+  version_label: string;
+  rows: Record<string, unknown>[];
+}
+
 export interface ApiError {
   detail: string | { msg: string; type: string }[];
 }

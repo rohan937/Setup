@@ -12,6 +12,9 @@ from app.models.strategy import Strategy
 from app.models.strategy_version import StrategyVersion
 from app.models.strategy_run import StrategyRun
 from app.models.audit_timeline_event import AuditTimelineEvent
+from app.models.dataset import Dataset
+from app.models.dataset_snapshot import DatasetSnapshot
+from app.models.data_quality_issue import DataQualityIssue
 
 __all__ = [
     "Organization",
@@ -21,4 +24,7 @@ __all__ = [
     "StrategyVersion",
     "StrategyRun",
     "AuditTimelineEvent",
+    "Dataset",
+    "DatasetSnapshot",
+    "DataQualityIssue",
 ]

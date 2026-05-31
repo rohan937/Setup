@@ -2,7 +2,8 @@
 
 M1 routes: /health, /api (meta)
 M2 routes: /api/projects, /api/strategies, /api/timeline
-Product routers for lineage, data integrity, backtests, drift, alerts, etc.
+M6 routes: /api/datasets, /api/dataset-snapshots
+Product routers for lineage, backtests, drift, alerts, etc.
 are added in later milestones.
 """
 
@@ -10,7 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import health, meta, projects, strategies, timeline
+from app.api.routes import datasets, health, meta, projects, strategies, timeline
 
 api_router = APIRouter()
 
@@ -22,3 +23,4 @@ api_router.include_router(meta.router, prefix="/api")
 api_router.include_router(projects.router, prefix="/api")
 api_router.include_router(strategies.router, prefix="/api")
 api_router.include_router(timeline.router, prefix="/api")
+api_router.include_router(datasets.router, prefix="/api")

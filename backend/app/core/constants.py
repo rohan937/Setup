@@ -71,3 +71,31 @@ class Severity(StrEnum):
     medium = "medium"
     high = "high"
     critical = "critical"
+
+
+class DatasetType(StrEnum):
+    ohlcv = "ohlcv"
+    factors = "factors"
+    fundamentals = "fundamentals"
+    returns = "returns"
+    custom = "custom"
+
+
+class DatasetSourceType(StrEnum):
+    manual = "manual"
+    vendor = "vendor"
+    computed = "computed"
+    sdk = "sdk"
+
+
+class IssueType(StrEnum):
+    missing_values = "missing_values"
+    duplicate_rows = "duplicate_rows"
+    duplicate_symbol_timestamp = "duplicate_symbol_timestamp"
+    invalid_timestamp = "invalid_timestamp"
+    negative_zero_price = "negative_zero_price"
+    high_lt_low = "high_lt_low"
+    close_outside_range = "close_outside_range"
+    open_outside_range = "open_outside_range"
+    negative_volume = "negative_volume"
+    suspicious_return_jump = "suspicious_return_jump"

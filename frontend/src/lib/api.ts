@@ -1,6 +1,12 @@
 import type {
   ApiInfo,
   ApiError,
+  Dataset,
+  DatasetCreateRequest,
+  DatasetDetail,
+  DatasetSnapshotCreateRequest,
+  DatasetSnapshotDetail,
+  DatasetSnapshotRead,
   Project,
   Strategy,
   StrategyDetail,
@@ -76,4 +82,45 @@ export async function compareStrategyRuns(
   return request<RunComparisonResponse>(
     `/api/strategies/${strategyId}/runs/compare?run_a_id=${runAId}&run_b_id=${runBId}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Dataset endpoints (M6)
+// ---------------------------------------------------------------------------
+
+export async function getDatasets(): Promise<Dataset[]> {
+  return request<Dataset[]>("/api/datasets");
+}
+
+export async function getDataset(datasetId: string): Promise<DatasetDetail> {
+  return request<DatasetDetail>(`/api/datasets/${datasetId}`);
+}
+
+export async function createDataset(data: DatasetCreateRequest): Promise<Dataset> {
+  return request<Dataset>("/api/datasets", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createDatasetSnapshot(
+  datasetId: string,
+  data: DatasetSnapshotCreateRequest,
+): Promise<DatasetSnapshotDetail> {
+  return request<DatasetSnapshotDetail>(`/api/datasets/${datasetId}/snapshots`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getDatasetSnapshots(
+  datasetId: string,
+): Promise<DatasetSnapshotRead[]> {
+  return request<DatasetSnapshotRead[]>(`/api/datasets/${datasetId}/snapshots`);
+}
+
+export async function getDatasetSnapshot(
+  snapshotId: string,
+): Promise<DatasetSnapshotDetail> {
+  return request<DatasetSnapshotDetail>(`/api/dataset-snapshots/${snapshotId}`);
 }

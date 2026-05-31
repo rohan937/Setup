@@ -33,6 +33,9 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     strategies: Mapped[list["Strategy"]] = relationship(  # noqa: F821
         "Strategy", back_populates="project", cascade="all, delete-orphan"
     )
+    datasets: Mapped[list["Dataset"]] = relationship(  # noqa: F821
+        "Dataset", back_populates="project", cascade="all, delete-orphan"
+    )
     audit_timeline_events: Mapped[list["AuditTimelineEvent"]] = relationship(  # noqa: F821
         "AuditTimelineEvent", back_populates="project"
     )
