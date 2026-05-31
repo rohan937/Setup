@@ -7,6 +7,7 @@ import type {
   StrategyRun,
   StrategyCreateRequest,
   StrategyRunCreateRequest,
+  RunComparisonResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -65,4 +66,14 @@ export async function createStrategyRun(
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+export async function compareStrategyRuns(
+  strategyId: string,
+  runAId: string,
+  runBId: string,
+): Promise<RunComparisonResponse> {
+  return request<RunComparisonResponse>(
+    `/api/strategies/${strategyId}/runs/compare?run_a_id=${runAId}&run_b_id=${runBId}`,
+  );
 }

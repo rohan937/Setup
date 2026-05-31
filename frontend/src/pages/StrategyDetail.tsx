@@ -4,6 +4,7 @@ import type { StrategyDetail as StrategyDetailType } from "@/types";
 import { getStrategy } from "@/lib/api";
 import Badge from "@/components/Badge";
 import RunLogDrawer from "@/components/RunLogDrawer";
+import RunComparisonPanel from "@/components/RunComparisonPanel";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -213,6 +214,9 @@ export default function StrategyDetail() {
           )}
         </div>
       </div>
+
+      {/* Run comparison (M5) */}
+      <RunComparisonPanel strategyId={id!} runs={strategy.runs} />
     </div>
   );
 }

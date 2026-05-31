@@ -121,7 +121,15 @@ curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/runs \
     "assumptions_json": {"transaction_cost_bps": 5, "fill_model": "close"},
     "notes": "Baseline run before signal tuning"
   }'
+
+# M5: compare two runs — deterministic diff, no AI
+curl -s "http://localhost:8000/api/strategies/<strategy_id>/runs/compare?run_a_id=<run_a_id>&run_b_id=<run_b_id>" \
+  | python3 -m json.tool
 ```
+
+> **M5 note:** The comparison engine is purely deterministic — it diffs logged run data.
+> No AI is used. Language in `deterministic_explanation` is explicitly hedged
+> ("changed alongside", "noted as observed") and never makes causal claims.
 
 Interactive OpenAPI docs: `http://localhost:8000/docs`
 
@@ -153,32 +161,47 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M4: Strategy Run Logging
+## Current milestone — M5: Strategy Run Comparison + Deterministic Diffing
 
 **Status: complete.**
 
-### M4 deliverables
+### M5 deliverables
 
-- **POST /api/strategies/{strategy_id}/runs** — log a strategy run with `run_name`,
-  `run_type` (validated: research/backtest/paper/live), `status` (validated, default:
-  completed), optional `started_at`/`completed_at`, `params_json`, `assumptions_json`,
-  `metrics_json` (all must be JSON objects if provided), `universe_name`, `dataset_version`,
-  `notes`; validates strategy exists; validates `strategy_version_id` belongs to same
-  strategy when provided; auto-sets `completed_at = utcnow()` when status is completed and
-  no value supplied; logs an `AuditTimelineEvent` with `event_type=strategy_run_logged`.
-- **GET /api/strategies/{id}/runs** — updated to newest-first ordering.
-- **GET /api/strategies/{id}** — runs list now newest-first.
-- **`StrategyRunCreate` Pydantic schema** — validated input for run creation.
-- **`RunLogDrawer` component** — slide-over form with run_name, run_type, status,
-  universe/dataset fields, and JSON text areas (metrics, params, assumptions) with
-  placeholder examples and client-side JSON object validation.
-- **StrategyDetail page** — "Log Run" button in header; drawer opens, submits, refreshes
-  detail page on success.
-- **15 new tests** — `tests/test_strategies_m4.py`: create success, field values,
-  completed_at auto-set, pending status no completed_at, invalid run_type/status 422,
-  dict-only JSON fields, strategy not found 404, version not found 404, required field 422,
-  run appears in list endpoint, newest-first ordering, run appears in detail.
-- **64 total passing tests**, clean TypeScript typecheck, clean production build.
+- **`GET /api/strategies/{strategy_id}/runs/compare?run_a_id=…&run_b_id=…`** — pure
+  read-only deterministic diff of two runs from the same strategy. Validates strategy
+  exists, both runs exist, both belong to the same strategy. Returns a structured JSON
+  response with per-section diffs (params, assumptions, metrics, metadata), numeric deltas
+  and percent deltas for recognised numeric fields, highlighted natural-language change
+  sentences, and a hedged plain-language explanation. Does NOT create an audit timeline
+  event. Returns 404/400/422 for all error cases.
+- **`app/services/run_comparison.py`** — pure Python comparison engine; no database
+  access, no AI. Compares `params_json`, `assumptions_json`, `metrics_json` key-by-key;
+  compares scalar metadata fields (run_type, status, universe_name, dataset_version,
+  strategy_version_id). Recognises 14 important metrics and 10 important params for
+  highlighted changes. Language is strictly hedged: "changed alongside", "noted as
+  observed" — never "caused".
+- **`app/schemas/comparison.py`** — `FieldChange`, `ComparisonSection`,
+  `RunComparisonResponse` Pydantic schemas.
+- **`RunComparisonPanel` component** — quant terminal UI on StrategyDetail; selects Run A
+  (baseline) and Run B (compare), defaults to the two most recent runs; one-click compare;
+  shows explanation box, key-changes list, and per-section diff tables with directional
+  delta coloring (green/red). Empty state when fewer than two runs exist.
+- **28 new tests** — `tests/test_comparison_m5.py`: endpoint 200, response structure,
+  404/400/422 error cases, same-run returns no changes, params/assumptions/metrics diffs,
+  numeric delta values, non-numeric fields handled safely, highlighted changes for
+  important fields, causal language check, no audit event created, total_changes
+  reconciliation, unchanged_count correctness, type-mismatch warning.
+- **92 total passing tests**, clean TypeScript typecheck, clean production build.
+
+### Previously completed
+
+- **M4: Strategy Run Logging** — POST /api/strategies/{id}/runs, RunLogDrawer, 64 tests.
+- **M3: Strategy Creation + Strategy Lab** — POST /api/strategies, enriched list/detail,
+  slugify util, quant terminal visual identity, 49 tests.
+- **M2: Core Database Schema** — SQLAlchemy 2.x, Alembic, 7 ORM models, seed data, 5
+  read-only endpoints, 30 tests.
+- **M1: Project Foundation** — FastAPI backend, React+TS+Vite+Tailwind dark shell, 8
+  placeholder pages, design tokens from UIDesignSystem.txt.
 
 ### Previously completed
 
@@ -197,13 +220,12 @@ the backend alongside the frontend to see it connected.
 The following are deferred to later milestones:
 
 - Authentication / API keys (M-later)
-- Strategy Lineage (run comparison, version diffing) — M5
 - Data Integrity Engine — M6
-- Backtest Reality Check — M7
+- Backtest Reality Check (Trust Score) — M7
 - Live Drift / Execution Attribution — M8
 - Python SDK and ingestion endpoints — M9
 - Live market data providers (no external/paid data) — M10
-- AI diagnostic layer — M11
+- AI diagnostic layer (bounded to deterministic evidence) — M11
 - Alerts, reports, and audit trail logic — M12
 
 No paid services, no live market data, and no broker/trading actions are part of this project.

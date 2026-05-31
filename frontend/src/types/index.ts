@@ -98,6 +98,49 @@ export interface StrategyRunCreateRequest {
   notes?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Run comparison (M5)
+// ---------------------------------------------------------------------------
+
+export interface FieldChange {
+  field: string;
+  old_value: unknown;
+  new_value: unknown;
+  /** "added" | "removed" | "changed" */
+  change_type: string;
+  /** Numeric delta (new - old) when both values are numeric; null otherwise. */
+  delta: number | null;
+  /** Percent change relative to old_value; null when not applicable. */
+  pct_delta: number | null;
+}
+
+export interface ComparisonSection {
+  added: FieldChange[];
+  removed: FieldChange[];
+  changed: FieldChange[];
+  unchanged_count: number;
+  total_changes: number;
+}
+
+export interface RunComparisonResponse {
+  strategy_id: string;
+  run_a_id: string;
+  run_b_id: string;
+  run_a_name: string;
+  run_b_name: string;
+  run_a_created_at: string;
+  run_b_created_at: string;
+  is_same_run: boolean;
+  metadata: ComparisonSection;
+  params: ComparisonSection;
+  assumptions: ComparisonSection;
+  metrics: ComparisonSection;
+  highlighted_changes: string[];
+  deterministic_explanation: string;
+  warnings: string[];
+  total_changes: number;
+}
+
 export interface ApiError {
   detail: string | { msg: string; type: string }[];
 }

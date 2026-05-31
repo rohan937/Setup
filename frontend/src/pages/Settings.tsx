@@ -19,9 +19,9 @@ export default function Settings() {
         </Card>
 
         <Card label="Milestone">
-          <p className="mono-num text-sm text-text-secondary">M4 · Run Logging</p>
+          <p className="mono-num text-sm text-text-secondary">M5 · Run Comparison</p>
           <p className="mt-1 font-mono text-2xs text-text-muted">
-            Strategy run ingestion, run evidence log, and JSON assumption capture.
+            Deterministic run diffing — params, assumptions, metrics, and metadata.
           </p>
         </Card>
       </div>

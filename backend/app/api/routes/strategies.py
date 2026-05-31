@@ -3,6 +3,7 @@
   GET  /api/strategies
   GET  /api/strategies/{strategy_id}
   POST /api/strategies/{strategy_id}/runs
+  GET  /api/strategies/{strategy_id}/runs/compare  ← M5
   GET  /api/strategies/{strategy_id}/runs
 """
 
@@ -11,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
@@ -23,6 +24,7 @@ from app.models.project import Project
 from app.models.strategy import Strategy
 from app.models.strategy_run import StrategyRun
 from app.models.strategy_version import StrategyVersion
+from app.schemas.comparison import RunComparisonResponse
 from app.schemas.strategy import (
     StrategyCreate,
     StrategyDetailOut,
@@ -31,6 +33,7 @@ from app.schemas.strategy import (
     StrategyRunOut,
     StrategyVersionOut,
 )
+from app.services.run_comparison import compare_runs
 
 router = APIRouter(tags=["strategies"])
 
@@ -302,6 +305,49 @@ def create_strategy_run(
     db.refresh(run)
 
     return run
+
+
+# ---------------------------------------------------------------------------
+# GET /api/strategies/{strategy_id}/runs/compare  (M5)
+# NOTE: registered BEFORE the bare /runs route so Starlette matches
+# the literal "/compare" segment ahead of the query-only /runs handler.
+# ---------------------------------------------------------------------------
+
+@router.get("/strategies/{strategy_id}/runs/compare", response_model=RunComparisonResponse)
+def compare_strategy_runs(
+    strategy_id: uuid.UUID,
+    run_a_id: uuid.UUID = Query(..., description="ID of the baseline run (Run A)"),
+    run_b_id: uuid.UUID = Query(..., description="ID of the comparison run (Run B)"),
+    db: Session = Depends(get_db),
+) -> RunComparisonResponse:
+    """Deterministically compare two runs from the same strategy.
+
+    Read-only analysis — no AuditTimelineEvent is created.
+    Returns structured diffs for params, assumptions, metrics, and metadata,
+    plus highlighted changes and a hedged plain-language explanation.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    run_a = db.query(StrategyRun).filter(StrategyRun.id == run_a_id).first()
+    if run_a is None:
+        raise HTTPException(status_code=404, detail="Run A not found")
+
+    run_b = db.query(StrategyRun).filter(StrategyRun.id == run_b_id).first()
+    if run_b is None:
+        raise HTTPException(status_code=404, detail="Run B not found")
+
+    if run_a.strategy_id != strategy_id:
+        raise HTTPException(
+            status_code=400, detail="Run A does not belong to this strategy"
+        )
+    if run_b.strategy_id != strategy_id:
+        raise HTTPException(
+            status_code=400, detail="Run B does not belong to this strategy"
+        )
+
+    return compare_runs(run_a, run_b)
 
 
 # ---------------------------------------------------------------------------
