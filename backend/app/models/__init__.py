@@ -15,6 +15,8 @@ from app.models.audit_timeline_event import AuditTimelineEvent
 from app.models.dataset import Dataset
 from app.models.dataset_snapshot import DatasetSnapshot
 from app.models.data_quality_issue import DataQualityIssue
+from app.models.backtest_audit import BacktestAudit
+from app.models.backtest_issue import BacktestIssue
 
 __all__ = [
     "Organization",
@@ -27,4 +29,6 @@ __all__ = [
     "Dataset",
     "DatasetSnapshot",
     "DataQualityIssue",
+    "BacktestAudit",
+    "BacktestIssue",
 ]

@@ -76,6 +76,13 @@ class StrategyRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="strategy_runs",
         foreign_keys="[StrategyRun.dataset_snapshot_id]",
     )
+    # M8: backtest audit records for this run (at most one in practice — POST replaces).
+    backtest_audits: Mapped[list["BacktestAudit"]] = relationship(  # noqa: F821
+        "BacktestAudit",
+        back_populates="strategy_run",
+        cascade="all, delete-orphan",
+        order_by="BacktestAudit.created_at",
+    )
 
     def __repr__(self) -> str:
         return f"<StrategyRun name={self.run_name!r} type={self.run_type!r} status={self.status!r}>"

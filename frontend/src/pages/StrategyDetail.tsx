@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { DataEvidenceSummary, StrategyDetail as StrategyDetailType, StrategyRun } from "@/types";
-import { getStrategy } from "@/lib/api";
+import type {
+  BacktestAudit,
+  BacktestIssue,
+  BacktestStatus,
+  DataEvidenceSummary,
+  StrategyDetail as StrategyDetailType,
+  StrategyRun,
+} from "@/types";
+import { getStrategy, runBacktestAudit } from "@/lib/api";
 import Badge from "@/components/Badge";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
@@ -202,6 +209,152 @@ function DataEvidencePanel({ runs }: { runs: StrategyRun[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Backtest audit helpers (M8)
+// ---------------------------------------------------------------------------
+
+function trustColor(score: number): string {
+  if (score >= 75) return "text-fidelity-high";
+  if (score >= 50) return "text-fidelity-medium";
+  return "text-fidelity-low";
+}
+
+function statusStyle(status: BacktestStatus): string {
+  switch (status) {
+    case "excellent":
+      return "border-fidelity-high/30 bg-fidelity-high/10 text-fidelity-high";
+    case "good":
+      return "border-fidelity-high/20 bg-fidelity-high/5 text-fidelity-high";
+    case "review":
+      return "border-fidelity-medium/30 bg-fidelity-medium/10 text-fidelity-medium";
+    case "weak":
+      return "border-fidelity-low/30 bg-fidelity-low/10 text-fidelity-low";
+    case "unreliable":
+      return "border-fidelity-low/50 bg-fidelity-low/20 text-fidelity-low";
+  }
+}
+
+function issueSeverityColor(severity: string): string {
+  switch (severity) {
+    case "critical":
+    case "high":
+      return "text-fidelity-low";
+    case "medium":
+      return "text-fidelity-medium";
+    default:
+      return "text-text-muted";
+  }
+}
+
+function issueSeverityDot(severity: string): string {
+  switch (severity) {
+    case "critical":
+    case "high":
+      return "bg-fidelity-low";
+    case "medium":
+      return "bg-fidelity-medium";
+    default:
+      return "bg-text-muted";
+  }
+}
+
+function TrustScoreBar({ score }: { score: number }) {
+  const bar =
+    score >= 75 ? "bg-fidelity-high" : score >= 50 ? "bg-fidelity-medium" : "bg-fidelity-low";
+  return (
+    <div className="h-1 w-full rounded-full bg-bg-600">
+      <div className={`h-1 rounded-full transition-all ${bar}`} style={{ width: `${score}%` }} />
+    </div>
+  );
+}
+
+function AuditIssueRow({ issue }: { issue: BacktestIssue }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="py-2 first:pt-0 last:pb-0">
+      <button
+        className="flex w-full items-start gap-2 text-left"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${issueSeverityDot(issue.severity)}`} />
+        <div className="flex-1 min-w-0">
+          <span className={`font-mono text-xs font-medium ${issueSeverityColor(issue.severity)}`}>
+            {issue.title}
+          </span>
+          <span className="ml-2 font-mono text-2xs text-text-muted/60">[{issue.severity}]</span>
+        </div>
+        <span className="shrink-0 font-mono text-2xs text-text-muted/50">{expanded ? "▲" : "▼"}</span>
+      </button>
+      {expanded && (
+        <div className="mt-1.5 ml-3.5 space-y-1.5">
+          <p className="text-xs text-text-secondary leading-relaxed">{issue.description}</p>
+          {issue.suggested_check && (
+            <p className="font-mono text-2xs text-accent-300">
+              ↳ {issue.suggested_check}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BacktestAuditPanel({ audit }: { audit: BacktestAudit }) {
+  return (
+    <div className="mt-3 rounded-control border border-border bg-bg-800 p-3 space-y-3">
+      {/* Header: trust score + status */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <span className="caption">Backtest Audit</span>
+          <span className={`mono-num text-lg font-bold leading-none ${trustColor(audit.trust_score)}`}>
+            {audit.trust_score}
+            <span className="text-xs font-normal text-text-muted">/100</span>
+          </span>
+        </div>
+        <span className={`rounded-chip border px-2 py-0.5 font-mono text-xs font-medium ${statusStyle(audit.overall_status)}`}>
+          {audit.overall_status}
+        </span>
+      </div>
+
+      {/* Trust score bar */}
+      <TrustScoreBar score={audit.trust_score} />
+
+      {/* Summary */}
+      <p className="text-xs text-text-secondary leading-relaxed">{audit.summary}</p>
+
+      {/* Subscores */}
+      <div className="grid grid-cols-4 gap-2 rounded-control border border-border/50 bg-bg-700 px-3 py-2">
+        {[
+          { label: "Cost", value: audit.cost_realism_score },
+          { label: "Fill", value: audit.fill_realism_score },
+          { label: "Borrow", value: audit.borrow_realism_score },
+          { label: "Data", value: audit.data_quality_score },
+        ].map(({ label, value }) => (
+          <div key={label} className="text-center">
+            <p className="caption mb-0.5">{label}</p>
+            <p className={`mono-num text-sm font-semibold ${trustColor(value)}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Issues */}
+      {audit.issues.length === 0 ? (
+        <p className="font-mono text-2xs text-fidelity-high">✓ No realism concerns detected</p>
+      ) : (
+        <div className="divide-y divide-border/50">
+          {audit.issues.map((issue) => (
+            <AuditIssueRow key={issue.id} issue={issue} />
+          ))}
+        </div>
+      )}
+
+      <p className="font-mono text-2xs text-text-muted/50">
+        audited {fmtDateShort(audit.created_at)}
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -212,6 +365,27 @@ export default function StrategyDetail() {
   const [error, setError] = useState<string | null>(null);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // M8: backtest audit state — keyed by run id.
+  const [audits, setAudits] = useState<Record<string, BacktestAudit>>({});
+  const [auditingRunId, setAuditingRunId] = useState<string | null>(null);
+  const [auditErrors, setAuditErrors] = useState<Record<string, string>>({});
+
+  async function handleAuditRun(runId: string) {
+    setAuditingRunId(runId);
+    setAuditErrors((prev) => ({ ...prev, [runId]: "" }));
+    try {
+      const result = await runBacktestAudit(runId);
+      setAudits((prev) => ({ ...prev, [runId]: result }));
+    } catch (err) {
+      setAuditErrors((prev) => ({
+        ...prev,
+        [runId]: err instanceof Error ? err.message : "Audit failed.",
+      }));
+    } finally {
+      setAuditingRunId(null);
+    }
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -386,6 +560,44 @@ export default function StrategyDetail() {
                   </div>
                   {r.notes && (
                     <p className="mt-1.5 text-xs text-text-muted">{r.notes}</p>
+                  )}
+
+                  {/* M8: Backtest audit button + results */}
+                  {r.run_type === "live" ? (
+                    <p className="mt-2.5 font-mono text-2xs text-text-muted/50">
+                      Backtest audit not available for live runs
+                    </p>
+                  ) : (
+                    <div className="mt-2.5">
+                      {!audits[r.id] && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleAuditRun(r.id)}
+                            disabled={auditingRunId === r.id}
+                            className="rounded-control border border-border px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {auditingRunId === r.id ? "Auditing…" : "Run Backtest Audit"}
+                          </button>
+                          {auditErrors[r.id] && (
+                            <span className="font-mono text-2xs text-fidelity-low">
+                              {auditErrors[r.id]}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {audits[r.id] && (
+                        <div>
+                          <BacktestAuditPanel audit={audits[r.id]} />
+                          <button
+                            onClick={() => handleAuditRun(r.id)}
+                            disabled={auditingRunId === r.id}
+                            className="mt-1.5 font-mono text-2xs text-text-muted/60 hover:text-text-muted disabled:cursor-not-allowed"
+                          >
+                            {auditingRunId === r.id ? "Re-auditing…" : "Re-audit"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}

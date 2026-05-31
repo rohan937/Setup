@@ -1,6 +1,8 @@
 import type {
   ApiInfo,
   ApiError,
+  BacktestAudit,
+  BacktestAuditListItem,
   Dataset,
   DatasetCreateRequest,
   DatasetDetail,
@@ -123,4 +125,22 @@ export async function getDatasetSnapshot(
   snapshotId: string,
 ): Promise<DatasetSnapshotDetail> {
   return request<DatasetSnapshotDetail>(`/api/dataset-snapshots/${snapshotId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Backtest Reality Check endpoints (M8)
+// ---------------------------------------------------------------------------
+
+export async function runBacktestAudit(runId: string): Promise<BacktestAudit> {
+  return request<BacktestAudit>(`/api/strategy-runs/${runId}/backtest-audit`, {
+    method: "POST",
+  });
+}
+
+export async function getBacktestAudit(runId: string): Promise<BacktestAudit> {
+  return request<BacktestAudit>(`/api/strategy-runs/${runId}/backtest-audit`);
+}
+
+export async function getBacktestAudits(): Promise<BacktestAuditListItem[]> {
+  return request<BacktestAuditListItem[]>("/api/backtests/audits");
 }

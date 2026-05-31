@@ -161,7 +161,77 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M7: Strategy Run Dataset Linkage + Data Evidence
+## Current milestone — M8: Backtest Reality Check v1
+
+**Status: complete.**
+
+### M8 deliverables
+
+- **2 new ORM models** — `BacktestAudit`, `BacktestIssue` (12 total tables). Alembic migration
+  `0004_m8_backtest_audit_tables.py` chained from `0003`. Cascade-delete: removing an audit also
+  removes its issues. POST is idempotent — re-auditing a run replaces the existing audit.
+- **`backtest_reality.py` service** — pure Python deterministic engine (no AI, no database
+  access). 8 check categories:
+  - **A. Transaction cost realism** — missing, zero, or unusually low `transaction_cost_bps`
+  - **B. Fill model realism** — missing `fill_model`; close/EOD fills; open fills without slippage
+  - **C. Borrow / short realism** — `short_enabled=true` with missing or zero `borrow_rate`
+  - **D. Sample size / trade count** — high Sharpe with very few trades
+  - **E. Turnover realism** — `turnover > 1.5×` (medium) or `> 3.0×` (high)
+  - **F. Data evidence** — low health score (<70), critical data issue, or no linked snapshot
+  - **G. Max drawdown sanity** — `abs(max_drawdown) > 0.5`
+  - **H. Metric plausibility** — Sharpe >4, annual return >100%, zero volatility with non-zero return
+- **Trust score formula**: start 100, subtract per-issue (critical=−25, high=−15, medium=−8,
+  low=−3), floor 0. Six subscores (cost, fill, borrow, data_quality, lookahead, liquidity) use
+  the same formula scoped by category. `overall_status`: excellent ≥90, good 75–89, review
+  50–74, weak 25–49, unreliable <25. Summary language is explicitly hedged ("may indicate",
+  "could make results optimistic") — never causal.
+- **3 new API endpoints:**
+  - `POST /api/strategy-runs/{run_id}/backtest-audit` — run + store audit (idempotent), 201.
+    Returns 404 if run not found. Returns 400 for live runs.
+  - `GET  /api/strategy-runs/{run_id}/backtest-audit` — fetch latest audit, 404 if none.
+  - `GET  /api/backtests/audits` — newest-first list with strategy/run context.
+- **`BacktestStatus`, `BacktestIssueType`, `backtest_audited` EventType** added to `constants.py`.
+- **`BacktestAuditListItem`, `BacktestAuditDetail`, `BacktestAuditRead`, `BacktestIssueRead`**
+  Pydantic schemas.
+- **`Backtests` page** — full rewrite: audit list with trust score bar, status chip, subscore
+  grid (cost/fill/borrow/data), top issues with severity dots, summary text. Empty state links
+  to Strategy Lab.
+- **`StrategyDetail` audit panel** — "Run Backtest Audit" button per eligible run
+  (backtest/research/paper). After auditing: shows trust score + status + subscore grid +
+  expandable issue list with suggested checks. "Re-audit" link. Live runs show a disabled note.
+- **34 new tests** — `tests/test_backtest_reality_m8.py`: all 8 check categories, trust score
+  formula, status thresholds, idempotency/deduplication, 404/400 error cases, list context.
+- **167 total passing tests**, clean TypeScript typecheck, clean production build.
+- **Alembic migration applied** to `backend/quantfidelity.db`.
+
+### Verify with curl
+
+```bash
+# Audit a backtest run (idempotent — re-POST replaces existing audit)
+curl -s -X POST http://localhost:8000/api/strategy-runs/<run_id>/backtest-audit \
+  | python3 -m json.tool
+# Response: trust_score, overall_status, issues[], subscores
+
+# Fetch the latest audit for a run
+curl http://localhost:8000/api/strategy-runs/<run_id>/backtest-audit | python3 -m json.tool
+
+# List all audits with strategy/run context
+curl http://localhost:8000/api/backtests/audits | python3 -m json.tool
+```
+
+> **M8 note:** The backtest reality engine is purely deterministic — it evaluates logged
+> `params_json`, `assumptions_json`, and `metrics_json` against rule thresholds. No AI is
+> used. Issue language ("may indicate", "could make results optimistic") is explicitly hedged
+> and never makes causal claims.
+
+### Previously completed
+
+- **M7: Strategy Run Dataset Linkage + Data Evidence** — dataset_snapshot_id FK, DataEvidenceSummary,
+  RunLogDrawer dataset selector, StrategyDetail evidence panel, 14 tests, 133 total tests.
+
+---
+
+## Previously completed — M7: Strategy Run Dataset Linkage + Data Evidence
 
 **Status: complete.**
 

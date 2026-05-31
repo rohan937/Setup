@@ -380,17 +380,21 @@ def test_snapshot_upload_creates_audit_event(client):
     pid = _get_project_id(client)
     d = _create_dataset(client, pid, f"AuditCheck {uuid.uuid4().hex[:6]}")
 
-    before_resp = client.get("/api/timeline?limit=200")
-    before_count = len(before_resp.json())
+    # Record the most-recent event ID before the upload so we can verify a new
+    # event was created (not just that the latest happens to be the right type).
+    before_resp = client.get("/api/timeline?limit=1")
+    before_latest_id = before_resp.json()[0]["id"] if before_resp.json() else None
 
-    client.post(
+    resp = client.post(
         f"/api/datasets/{d['id']}/snapshots",
         json={"version_label": "v1", "rows": _clean_ohlcv_rows()},
     )
+    assert resp.status_code == 201, resp.text
 
-    after_resp = client.get("/api/timeline?limit=200")
-    after_count = len(after_resp.json())
-
-    assert after_count == before_count + 1
+    after_resp = client.get("/api/timeline?limit=1")
+    assert after_resp.json(), "Timeline returned no events after snapshot upload"
     latest_event = after_resp.json()[0]
+
+    # The newest event must be different from the pre-upload latest event.
+    assert latest_event["id"] != before_latest_id
     assert latest_event["event_type"] == "dataset_snapshot_uploaded"

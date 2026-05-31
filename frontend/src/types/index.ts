@@ -227,3 +227,59 @@ export interface DatasetSnapshotCreateRequest {
 export interface ApiError {
   detail: string | { msg: string; type: string }[];
 }
+
+// ---------------------------------------------------------------------------
+// Backtest Reality Check (M8)
+// ---------------------------------------------------------------------------
+
+export interface BacktestIssue {
+  id: string;
+  issue_type: string;
+  severity: string;
+  title: string;
+  description: string;
+  evidence_json: Record<string, unknown> | null;
+  suggested_check: string | null;
+  created_at: string;
+}
+
+export type BacktestStatus = "excellent" | "good" | "review" | "weak" | "unreliable";
+
+export interface BacktestAudit {
+  id: string;
+  strategy_run_id: string;
+  trust_score: number;
+  lookahead_risk_score: number;
+  cost_realism_score: number;
+  fill_realism_score: number;
+  liquidity_realism_score: number;
+  borrow_realism_score: number;
+  data_quality_score: number;
+  overall_status: BacktestStatus;
+  summary: string;
+  issues: BacktestIssue[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BacktestAuditListItem {
+  id: string;
+  strategy_run_id: string;
+  strategy_id: string;
+  strategy_name: string;
+  run_name: string;
+  run_type: string;
+  trust_score: number;
+  lookahead_risk_score: number;
+  cost_realism_score: number;
+  fill_realism_score: number;
+  liquidity_realism_score: number;
+  borrow_realism_score: number;
+  data_quality_score: number;
+  overall_status: BacktestStatus;
+  summary: string;
+  issue_count: number;
+  top_issues: BacktestIssue[];
+  created_at: string;
+  updated_at: string;
+}
