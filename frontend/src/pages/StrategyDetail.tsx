@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type {
   BacktestAudit,
   BacktestIssue,
   BacktestStatus,
   CostSensitivityScenario,
   DataEvidenceSummary,
+  ReportDetail,
   StrategyDetail as StrategyDetailType,
   StrategyRun,
   TimelineEvent,
 } from "@/types";
-import { getStrategy, getStrategyTimeline, runBacktestAudit } from "@/lib/api";
+import { generateStrategyReport, getStrategy, getStrategyTimeline, runBacktestAudit } from "@/lib/api";
 import Badge from "@/components/Badge";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
@@ -668,8 +669,16 @@ function BacktestAuditPanel({ audit }: { audit: BacktestAudit }) {
 // Main component
 // ---------------------------------------------------------------------------
 
+function reportScoreColor(score: number | null): string {
+  if (score === null) return "text-text-muted";
+  if (score >= 75) return "text-fidelity-high";
+  if (score >= 50) return "text-fidelity-medium";
+  return "text-fidelity-low";
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [strategy, setStrategy] = useState<StrategyDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -680,6 +689,25 @@ export default function StrategyDetail() {
   const [audits, setAudits] = useState<Record<string, BacktestAudit>>({});
   const [auditingRunId, setAuditingRunId] = useState<string | null>(null);
   const [auditErrors, setAuditErrors] = useState<Record<string, string>>({});
+
+  // M14: reliability report generation
+  const [latestReport, setLatestReport] = useState<ReportDetail | null>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  async function handleGenerateReport() {
+    if (!id) return;
+    setGeneratingReport(true);
+    setReportError(null);
+    try {
+      const report = await generateStrategyReport(id);
+      setLatestReport(report);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Report generation failed.");
+    } finally {
+      setGeneratingReport(false);
+    }
+  }
 
   async function handleAuditRun(runId: string) {
     setAuditingRunId(runId);
@@ -755,12 +783,21 @@ export default function StrategyDetail() {
             <p className="mt-1.5 max-w-2xl text-sm text-text-secondary">{strategy.description}</p>
           )}
         </div>
-        <button
-          onClick={() => setRunDrawerOpen(true)}
-          className="shrink-0 rounded-control bg-accent-500 px-3.5 py-2 font-mono text-xs font-medium text-text-inverse hover:bg-accent-600"
-        >
-          + Log Run
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={handleGenerateReport}
+            disabled={generatingReport}
+            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {generatingReport ? "Generating…" : "Generate Report"}
+          </button>
+          <button
+            onClick={() => setRunDrawerOpen(true)}
+            className="rounded-control bg-accent-500 px-3.5 py-2 font-mono text-xs font-medium text-text-inverse hover:bg-accent-600"
+          >
+            + Log Run
+          </button>
+        </div>
       </div>
 
       <RunLogDrawer
@@ -783,6 +820,58 @@ export default function StrategyDetail() {
           value={<span className="font-mono text-xs text-text-muted">{strategy.slug}</span>}
         />
       </div>
+
+      {/* M14: Report error */}
+      {reportError && (
+        <div className="rounded-control border border-fidelity-low/30 bg-fidelity-low/10 px-3 py-2 font-mono text-xs text-fidelity-low">
+          {reportError}
+        </div>
+      )}
+
+      {/* M14: Latest generated report summary */}
+      {latestReport && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+            <p className="caption">Latest Reliability Report</p>
+            <button
+              onClick={() => navigate(`/reports/${latestReport.id}`)}
+              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            >
+              view full report →
+            </button>
+          </div>
+          <div className="flex items-start gap-4 p-4">
+            {/* Score */}
+            <div className="shrink-0 text-center">
+              {latestReport.score !== null ? (
+                <div>
+                  <p className={`mono-num text-2xl font-bold leading-none ${reportScoreColor(latestReport.score)}`}>
+                    {latestReport.score}
+                  </p>
+                  <p className="font-mono text-2xs text-text-muted">/100</p>
+                </div>
+              ) : (
+                <p className="font-mono text-xs text-text-muted">n/a</p>
+              )}
+            </div>
+            {/* Summary */}
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <p className="text-xs font-medium text-text-primary">{latestReport.title}</p>
+              <p className="text-2xs text-text-secondary leading-relaxed line-clamp-3">
+                {latestReport.summary}
+              </p>
+              <p className="font-mono text-2xs text-text-muted">
+                {latestReport.sections.length} section{latestReport.sections.length !== 1 ? "s" : ""}
+                {" · "}
+                {new Date(latestReport.generated_at).toLocaleString("en-US", {
+                  month: "short", day: "numeric",
+                  hour: "2-digit", minute: "2-digit", hour12: false,
+                })}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* M7: Data Evidence panel — shown when any run has a linked snapshot */}
       <DataEvidencePanel runs={strategy.runs} />

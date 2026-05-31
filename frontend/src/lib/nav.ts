@@ -9,6 +9,7 @@ export const navItems: NavItem[] = [
   { label: "Audit Trail",      path: "/timeline",    section: "Analysis" },
   { label: "Data Health",      path: "/data-health", section: "Analysis" },
   { label: "Backtest Audit",   path: "/backtests",   section: "Analysis" },
+  { label: "Reports",          path: "/reports",     section: "Analysis" },
   { label: "Execution Drift",  path: "/live-drift",  section: "Analysis" },
   // Config
   { label: "Signals",          path: "/alerts",      section: "Config" },

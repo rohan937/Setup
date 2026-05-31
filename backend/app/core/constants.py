@@ -66,6 +66,7 @@ class EventType(StrEnum):
     alert_raised = "alert_raised"
     alert_generated = "alert_generated"
     alert_status_changed = "alert_status_changed"
+    report_generated = "report_generated"
 
 
 class Severity(StrEnum):
@@ -125,6 +126,18 @@ class AlertStatus(StrEnum):
     acknowledged = "acknowledged"
     resolved = "resolved"
     snoozed = "snoozed"
+
+
+class ReportType(StrEnum):
+    strategy_reliability = "strategy_reliability"
+    backtest_audit = "backtest_audit"
+    dataset_health = "dataset_health"
+
+
+class ReportStatus(StrEnum):
+    generated = "generated"
+    stale = "stale"
+    archived = "archived"
 
 
 class BacktestIssueType(StrEnum):

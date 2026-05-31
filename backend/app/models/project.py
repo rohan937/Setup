@@ -39,6 +39,9 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     audit_timeline_events: Mapped[list["AuditTimelineEvent"]] = relationship(  # noqa: F821
         "AuditTimelineEvent", back_populates="project"
     )
+    reports: Mapped[list["Report"]] = relationship(  # noqa: F821
+        "Report", back_populates="project"
+    )
 
     def __repr__(self) -> str:
         return f"<Project slug={self.slug!r}>"

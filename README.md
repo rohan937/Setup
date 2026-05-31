@@ -24,12 +24,12 @@ QuantFidelity/
 │   ├── app/
 │   │   ├── main.py         App entrypoint + CORS + router wiring
 │   │   ├── core/           Config (env-driven settings) + constants
-│   │   ├── api/            Routers: health, meta, projects, strategies, timeline, datasets
-│   │   ├── models/         SQLAlchemy ORM models (14 tables)
+│   │   ├── api/            Routers: health, meta, projects, strategies, timeline, datasets, reports
+│   │   ├── models/         SQLAlchemy ORM models (16 tables)
 │   │   ├── schemas/        Pydantic response models
-│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison)
+│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (312 tests)
+│   └── tests/              Pytest tests (430 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,128 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M13: Backtest Reality Check v2
+## Current milestone — M14: Reliability Reports v1
+
+**Status: complete.**
+
+### M14 deliverables
+
+- **Migration `0007_m14_reports_tables.py`** — adds 2 new tables: `reports` and `report_sections`.
+  `reports` stores the top-level report record (type, score, summary, source FK, JSON blob).
+  `report_sections` stores ordered evidence sections with optional severity and `evidence_json`.
+  FKs: organization CASCADE, project/strategy SET NULL, report_id CASCADE (sections).
+  14 indexes total. 16 total ORM tables.
+- **`ReportType`, `ReportStatus`** StrEnum constants added to `constants.py`.
+  `EventType.report_generated` added.
+- **`app/models/report.py`** and **`app/models/report_section.py`** — two new ORM models.
+  `Report` added to organization, project, and strategy relationships. `Report.sections` uses
+  `cascade="all, delete-orphan"`.
+- **`app/services/reports.py`** — deterministic report generation service. No AI, no live data,
+  no external calls. Three generators:
+  - **`generate_strategy_reliability_report(strategy_id, db)`** — 10 sections:
+    `overview`, `strategy_activity`, `latest_runs`, `data_evidence`, `backtest_trust`,
+    `cost_sensitivity` (conditional on `fragility_summary_json`), `fill_realism` (conditional on
+    `fill_realism_json`), `open_alerts`, `recent_timeline`, `suggested_checks`.
+    Score = avg(evidence_scores) − min(alert_penalty, 30), where evidence_scores includes latest
+    backtest trust score and/or average snapshot health score. Score is `null` when neither
+    source is available — never fabricated.
+  - **`generate_backtest_audit_report(audit_id, db)`** — 6 sections:
+    `audit_summary`, `trust_score_breakdown`, `cost_sensitivity` (conditional),
+    `fill_realism` (conditional), `data_evidence`, `issues_and_checks`.
+    Score = audit trust score directly.
+  - **`generate_dataset_health_report(snapshot_id, db)`** — 6 sections:
+    `snapshot_summary`, `data_health_score`, `quality_issues`, `schema_and_coverage`,
+    `linked_strategy_runs`, `suggested_checks`.
+    Score = snapshot health score directly.
+  - **`persist_report(result, db)`** — writes a `ReportResult` to the DB; caller commits.
+  - Section severity mapping: score < 50 → high; < 75 → medium; < 90 → low; else None.
+  - All summaries use hedged, evidence-based language ("noted", "observed", "may require review").
+    No causal claims, no AI language, no trading advice.
+- **`app/schemas/reports.py`** — 4 Pydantic schemas: `ReportSectionRead`, `ReportRead`,
+  `ReportDetail` (extends `ReportRead` with `sections`), `ReportListResponse`.
+- **5 new API endpoints** (`app/api/routes/reports.py`):
+  - `POST /api/reports/strategy/{strategy_id}` — generate strategy reliability report → 201.
+  - `POST /api/reports/backtest-audit/{audit_id}` — generate backtest audit report → 201.
+  - `POST /api/reports/dataset-snapshot/{snapshot_id}` — generate dataset health report → 201.
+  - `GET  /api/reports` — paginated list (filters: `report_type`, `strategy_id`, `source_type`,
+    `limit`, `offset`). Newest first.
+  - `GET  /api/reports/{report_id}` — report detail with all sections. 404 if not found.
+  - All three POST endpoints emit a `report_generated` `AuditTimelineEvent`.
+- **80 new backend tests** — `tests/test_reports_m14.py` across 8 test classes:
+  - All three POST endpoints → 201, required sections present, correct `report_type`/`source_type`
+  - Score null when no evidence, score computed when audit or snapshot exists
+  - Score is integer 0–100, equals trust_score (backtest) or health_score (dataset)
+  - Section fields, order_index sequential, evidence_json populated
+  - Conditional sections (cost_sensitivity, fill_realism) only present when data available
+  - List endpoint pagination, filters, envelope shape, items do not include sections
+  - GET detail returns sections; sections match POST response
+  - 404 for all three unknown IDs
+  - Timeline event created on generation; report_id in metadata
+  - No causal overclaiming language in summaries
+  - `report_json` populated with correct IDs
+- **Frontend types** — `ReportType`, `ReportStatus`, `ReportSection`, `ReportRead`,
+  `ReportDetail`, `ReportListResponse`, `ReportFilters` added to `frontend/src/types/index.ts`.
+- **API client** — `generateStrategyReport()`, `generateBacktestAuditReport()`,
+  `generateDatasetSnapshotReport()`, `getReports()`, `getReport()` added to `frontend/src/lib/api.ts`.
+- **`Reports.tsx` page** — list + detail view:
+  - Filter bar (All / Strategy / Backtest / Dataset type chips).
+  - Report list rows: score chip, type badge, title, summary excerpt, date, source type.
+  - Pagination (25 per page, prev/next).
+  - Report detail: score pill with bar, title, summary, section count, generated timestamp.
+  - Section rows: expandable with evidence_json raw JSON view. Severity chips colour-coded.
+  - Empty state with guidance to generate reports from Strategy/Backtest pages.
+  - URL: `/reports` (list) and `/reports/:id` (detail with back button).
+- **`StrategyDetail.tsx` update** — "Generate Report" button in strategy header.
+  On click, calls `POST /api/reports/strategy/{id}`. On success, shows a mini report summary
+  panel below the stat strip (score, title, summary, section count, date) with a "view full
+  report →" link to `/reports/{id}`.
+- **Nav** — "Reports" item added to Analysis section in `frontend/src/lib/nav.ts`.
+- **430 total passing tests** (1 skipped), zero TypeScript errors, clean production build.
+
+### What M14 does NOT build (by design)
+
+- PDF export, AI-generated reports, email/Slack delivery, scheduled reports.
+- Live drift reports, execution attribution reports.
+- Report versioning, diff-between-reports, archiving workflows.
+- SDK or external trigger endpoints.
+
+### Verify with curl
+
+```bash
+# Generate a strategy reliability report
+curl -s -X POST http://localhost:8000/api/reports/strategy/<strategy_id> \
+  | python3 -m json.tool
+# Response: id, report_type="strategy_reliability", score, summary, sections[{section_key, title, ...}]
+
+# Generate a backtest audit report
+curl -s -X POST http://localhost:8000/api/reports/backtest-audit/<audit_id> \
+  | python3 -m json.tool
+
+# Generate a dataset health report
+curl -s -X POST http://localhost:8000/api/reports/dataset-snapshot/<snapshot_id> \
+  | python3 -m json.tool
+
+# List all reports (paginated, newest first)
+curl "http://localhost:8000/api/reports?limit=10" | python3 -m json.tool
+
+# Filter by type
+curl "http://localhost:8000/api/reports?report_type=strategy_reliability" | python3 -m json.tool
+
+# Filter by strategy
+curl "http://localhost:8000/api/reports?strategy_id=<strategy_id>" | python3 -m json.tool
+
+# Get report detail with all sections
+curl "http://localhost:8000/api/reports/<report_id>" | python3 -m json.tool
+```
+
+> **M14 note:** All reports are deterministic — computed from existing DB evidence, never
+> fabricated. Scores are `null` when insufficient evidence exists. Language is hedged
+> ("noted", "observed", "may require review") and never makes causal claims or investment
+> recommendations.
+
+---
+
+## Previously completed — M13: Backtest Reality Check v2
 
 **Status: complete.**
 
@@ -802,9 +923,9 @@ The following are deferred to later milestones:
 - Live Drift / Execution Attribution
 - Python SDK and ingestion endpoints
 - Live market data providers (no external/paid data)
-- AI diagnostic layer (bounded to deterministic evidence) — M14+
+- AI diagnostic layer (bounded to deterministic evidence) — M15+
 - Full overfit / parameter sensitivity engine (walk-forward, parameter sweeps)
 - Regime analysis and market condition attribution
-- Reports and scheduled summaries
+- PDF export, scheduled report delivery, AI-generated report text
 
 No paid services, no live market data, and no broker/trading actions are part of this project.

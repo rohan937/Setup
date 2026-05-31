@@ -53,6 +53,9 @@ class Strategy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     alerts: Mapped[list["Alert"]] = relationship(  # noqa: F821
         "Alert", back_populates="strategy"
     )
+    reports: Mapped[list["Report"]] = relationship(  # noqa: F821
+        "Report", back_populates="strategy"
+    )
 
     def __repr__(self) -> str:
         return f"<Strategy slug={self.slug!r} status={self.status!r}>"

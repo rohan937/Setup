@@ -616,3 +616,63 @@ export interface DatasetSnapshotComparisonResponse {
   warnings: string[];
   generated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Reliability Reports (M14)
+// ---------------------------------------------------------------------------
+
+export type ReportType =
+  | "strategy_reliability"
+  | "backtest_audit"
+  | "dataset_health";
+
+export type ReportStatus = "generated" | "stale" | "archived";
+
+export interface ReportSection {
+  id: string;
+  report_id: string;
+  section_key: string;
+  title: string;
+  summary: string;
+  severity: string | null;
+  order_index: number;
+  evidence_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ReportRead {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  strategy_id: string | null;
+  report_type: ReportType;
+  title: string;
+  status: ReportStatus;
+  summary: string;
+  generated_at: string;
+  source_type: string | null;
+  source_id: string | null;
+  score: number | null;
+  report_json: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReportDetail extends ReportRead {
+  sections: ReportSection[];
+}
+
+export interface ReportListResponse {
+  items: ReportRead[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ReportFilters {
+  report_type?: ReportType;
+  strategy_id?: string;
+  source_type?: string;
+  limit?: number;
+  offset?: number;
+}

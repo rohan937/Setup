@@ -6,6 +6,7 @@ import StrategyDetail from "@/pages/StrategyDetail";
 import Timeline from "@/pages/Timeline";
 import DataHealth from "@/pages/DataHealth";
 import Backtests from "@/pages/Backtests";
+import Reports from "@/pages/Reports";
 import LiveDrift from "@/pages/LiveDrift";
 import Alerts from "@/pages/Alerts";
 import Settings from "@/pages/Settings";
@@ -21,6 +22,8 @@ export default function App() {
         <Route path="timeline" element={<Timeline />} />
         <Route path="data-health" element={<DataHealth />} />
         <Route path="backtests" element={<Backtests />} />
+        <Route path="reports" element={<Reports />} />
+        <Route path="reports/:id" element={<Reports />} />
         <Route path="live-drift" element={<LiveDrift />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="settings" element={<Settings />} />

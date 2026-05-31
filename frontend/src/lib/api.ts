@@ -19,6 +19,9 @@ import type {
   DatasetSnapshotDetail,
   DatasetSnapshotRead,
   Project,
+  ReportDetail,
+  ReportFilters,
+  ReportListResponse,
   Strategy,
   StrategyDetail,
   StrategyRun,
@@ -243,4 +246,53 @@ export async function updateAlert(
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Reliability Reports (M14)
+// ---------------------------------------------------------------------------
+
+function _buildReportQS(filters: ReportFilters): string {
+  const params = new URLSearchParams();
+  if (filters.report_type) params.set("report_type", filters.report_type);
+  if (filters.strategy_id) params.set("strategy_id", filters.strategy_id);
+  if (filters.source_type) params.set("source_type", filters.source_type);
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.offset != null) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export async function generateStrategyReport(
+  strategyId: string,
+): Promise<ReportDetail> {
+  return request<ReportDetail>(`/api/reports/strategy/${strategyId}`, {
+    method: "POST",
+  });
+}
+
+export async function generateBacktestAuditReport(
+  auditId: string,
+): Promise<ReportDetail> {
+  return request<ReportDetail>(`/api/reports/backtest-audit/${auditId}`, {
+    method: "POST",
+  });
+}
+
+export async function generateDatasetSnapshotReport(
+  snapshotId: string,
+): Promise<ReportDetail> {
+  return request<ReportDetail>(`/api/reports/dataset-snapshot/${snapshotId}`, {
+    method: "POST",
+  });
+}
+
+export async function getReports(
+  filters: ReportFilters = {},
+): Promise<ReportListResponse> {
+  return request<ReportListResponse>(`/api/reports${_buildReportQS(filters)}`);
+}
+
+export async function getReport(reportId: string): Promise<ReportDetail> {
+  return request<ReportDetail>(`/api/reports/${reportId}`);
 }
