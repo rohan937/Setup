@@ -17,6 +17,8 @@ from app.models.dataset_snapshot import DatasetSnapshot
 from app.models.data_quality_issue import DataQualityIssue
 from app.models.backtest_audit import BacktestAudit
 from app.models.backtest_issue import BacktestIssue
+from app.models.alert_rule import AlertRule
+from app.models.alert import Alert
 
 __all__ = [
     "Organization",
@@ -31,4 +33,6 @@ __all__ = [
     "DataQualityIssue",
     "BacktestAudit",
     "BacktestIssue",
+    "AlertRule",
+    "Alert",
 ]

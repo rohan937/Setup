@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { DashboardSummary, RecentEvidenceItem, Strategy } from "@/types";
+import type { DashboardAlertItem, DashboardSummary, RecentEvidenceItem, Strategy } from "@/types";
 import { getDashboardSummary, getStrategies } from "@/lib/api";
 import Badge from "@/components/Badge";
 
@@ -123,6 +123,46 @@ function SevChip({ severity, count }: { severity: string; count: number }) {
     >
       {severity} <span className="font-semibold">{count}</span>
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Alert signal row (for the Reliability Signals panel)
+// ---------------------------------------------------------------------------
+
+const SEVERITY_DOT_MAP: Record<string, string> = {
+  low: "bg-blue-400",
+  medium: "bg-yellow-400",
+  high: "bg-orange-400",
+  critical: "bg-red-500",
+};
+
+const RULE_LABEL_MAP: Record<string, string> = {
+  data_health_below_threshold: "Data Health",
+  backtest_trust_below_threshold: "Backtest Trust",
+  data_quality_issue_high_or_critical: "Data Quality",
+  backtest_issue_high_or_critical: "Backtest Issue",
+  strategy_run_missing_dataset_evidence: "Missing Evidence",
+};
+
+function AlertSignalRow({ alert }: { alert: DashboardAlertItem }) {
+  const dot = SEVERITY_DOT_MAP[alert.severity] ?? "bg-bg-600";
+  return (
+    <div className="flex items-start gap-2.5 py-2 border-b border-border last:border-0">
+      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-text-secondary leading-snug truncate">{alert.title}</p>
+        <div className="mt-0.5 flex gap-2">
+          <span className="font-mono text-2xs text-text-muted">
+            {RULE_LABEL_MAP[alert.rule_type] ?? alert.rule_type.replace(/_/g, " ")}
+          </span>
+          <span className="font-mono text-2xs text-text-muted">{alert.status}</span>
+        </div>
+      </div>
+      <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
+        {formatShortDate(alert.triggered_at)}
+      </span>
+    </div>
   );
 }
 
@@ -319,6 +359,49 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Reliability Signals (M11 alerts)                                   */}
+      {/* ------------------------------------------------------------------ */}
+      {!loading && counts && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <p className="caption">Reliability Signals</p>
+              {counts.open_alert_count > 0 && (
+                <span className="inline-flex items-center gap-1 rounded border border-red-700/40 bg-red-900/30 px-2 py-0.5 font-mono text-2xs text-red-300">
+                  {counts.open_alert_count} open
+                </span>
+              )}
+              {counts.high_critical_alert_count > 0 && (
+                <span className="inline-flex items-center gap-1 rounded border border-orange-700/40 bg-orange-900/30 px-2 py-0.5 font-mono text-2xs text-orange-300">
+                  {counts.high_critical_alert_count} high/critical
+                </span>
+              )}
+            </div>
+            <Link
+              to="/alerts"
+              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            >
+              all alerts →
+            </Link>
+          </div>
+          <div className="px-4 py-2">
+            {!summary || summary.recent_alerts.length === 0 ? (
+              <p className="py-4 font-mono text-2xs text-text-muted">
+                No alerts yet.{" "}
+                <Link to="/alerts" className="text-accent-500 hover:text-accent-300">
+                  Run an alert check →
+                </Link>
+              </p>
+            ) : (
+              summary.recent_alerts.map((alert) => (
+                <AlertSignalRow key={alert.id} alert={alert} />
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Data health + Backtest trust detail panels                          */}

@@ -64,6 +64,8 @@ class EventType(StrEnum):
     live_run_completed = "live_run_completed"
     reliability_diagnosed = "reliability_diagnosed"
     alert_raised = "alert_raised"
+    alert_generated = "alert_generated"
+    alert_status_changed = "alert_status_changed"
 
 
 class Severity(StrEnum):
@@ -108,6 +110,21 @@ class BacktestStatus(StrEnum):
     review = "review"
     weak = "weak"
     unreliable = "unreliable"
+
+
+class AlertRuleType(StrEnum):
+    data_health_below_threshold = "data_health_below_threshold"
+    backtest_trust_below_threshold = "backtest_trust_below_threshold"
+    data_quality_issue_high_or_critical = "data_quality_issue_high_or_critical"
+    backtest_issue_high_or_critical = "backtest_issue_high_or_critical"
+    strategy_run_missing_dataset_evidence = "strategy_run_missing_dataset_evidence"
+
+
+class AlertStatus(StrEnum):
+    open = "open"
+    acknowledged = "acknowledged"
+    resolved = "resolved"
+    snoozed = "snoozed"
 
 
 class BacktestIssueType(StrEnum):

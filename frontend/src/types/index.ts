@@ -337,6 +337,9 @@ export interface DashboardCounts {
   total_backtest_issues: number;
   backtest_issues_by_severity: Record<string, number>;
   audits_by_status: Record<string, number>;
+  // Alerts (M11)
+  open_alert_count: number;
+  high_critical_alert_count: number;
 }
 
 export interface DashboardScores {
@@ -348,6 +351,16 @@ export interface DashboardScores {
   overall_reliability_score: number | null;
 }
 
+export interface DashboardAlertItem {
+  id: string;
+  rule_type: string;
+  severity: string;
+  status: string;
+  title: string;
+  triggered_at: string;
+  strategy_id: string | null;
+}
+
 export interface DashboardSummary {
   generated_at: string;
   counts: DashboardCounts;
@@ -356,6 +369,66 @@ export interface DashboardSummary {
   recent_snapshots: RecentEvidenceItem[];
   recent_audits: RecentEvidenceItem[];
   recent_timeline_events: RecentEvidenceItem[];
+  recent_alerts: DashboardAlertItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Alerts Engine (M11)
+// ---------------------------------------------------------------------------
+
+export type AlertStatus = "open" | "acknowledged" | "resolved" | "snoozed";
+
+export type AlertRuleType =
+  | "data_health_below_threshold"
+  | "backtest_trust_below_threshold"
+  | "data_quality_issue_high_or_critical"
+  | "backtest_issue_high_or_critical"
+  | "strategy_run_missing_dataset_evidence";
+
+export interface Alert {
+  id: string;
+  organization_id: string;
+  rule_type: string;
+  status: AlertStatus;
+  severity: string;
+  title: string;
+  description: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  strategy_id: string | null;
+  triggered_at: string;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  snoozed_until: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertListResponse {
+  items: Alert[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AlertGenerateResponse {
+  alerts_created: number;
+  alerts_skipped_duplicate: number;
+  total_alerts_open: number;
+}
+
+export interface AlertFilters {
+  status?: string;
+  severity?: string;
+  rule_type?: string;
+  strategy_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface AlertUpdateRequest {
+  status: string;
 }
 
 export interface BacktestAuditListItem {

@@ -25,11 +25,11 @@ QuantFidelity/
 │   │   ├── main.py         App entrypoint + CORS + router wiring
 │   │   ├── core/           Config (env-driven settings) + constants
 │   │   ├── api/            Routers: health, meta, projects, strategies, timeline, datasets
-│   │   ├── models/         SQLAlchemy ORM models (10 tables)
+│   │   ├── models/         SQLAlchemy ORM models (14 tables)
 │   │   ├── schemas/        Pydantic response models
-│   │   ├── services/       Domain services (seed, run_comparison, data_quality)
+│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (133 tests)
+│   └── tests/              Pytest tests (266 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,105 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M10: Audit Timeline v1
+## Current milestone — M11: Alerts Engine v1
+
+**Status: complete.**
+
+### M11 deliverables
+
+- **2 new ORM models** — `AlertRule`, `Alert` (14 total tables). Alembic migration
+  `0005_m11_alert_tables.py` chained from `0004`. `Alert` has cascade-delete from
+  `Organization` and nullable SET NULL from `Strategy`.
+- **`AlertRuleType`, `AlertStatus`** StrEnum constants added to `constants.py`.
+  `EventType.alert_generated` and `EventType.alert_status_changed` added.
+- **`app/services/alerts.py`** — pure-Python deterministic alert generation (no AI, no
+  external calls). Five check types:
+  1. **`data_health_below_threshold`** — `DatasetSnapshot.health_score < 70`:
+     critical <25, high <50, medium <70.
+  2. **`backtest_trust_below_threshold`** — `BacktestAudit.trust_score < 70`:
+     same severity thresholds.
+  3. **`data_quality_issue_high_or_critical`** — any `DataQualityIssue` with severity
+     high/critical: critical issue → high alert, high issue → medium alert.
+  4. **`backtest_issue_high_or_critical`** — any `BacktestIssue` with severity
+     high/critical: same escalation.
+  5. **`strategy_run_missing_dataset_evidence`** — backtest/research/paper runs with no
+     linked `dataset_snapshot_id` → low severity alert.
+  **Deduplication:** if an open/acknowledged/snoozed alert already exists for the same
+  `rule_type + source_type + source_id`, the new alert is skipped. Resolved alerts allow
+  re-triggering.
+- **4 new API endpoints:**
+  - `POST /api/alerts/generate` — trigger the generation service for the default org;
+    returns `{ alerts_created, alerts_skipped_duplicate, total_alerts_open }`.
+  - `GET  /api/alerts` — paginated + filterable list (`status`, `severity`, `rule_type`,
+    `strategy_id`, `limit`, `offset`). Returns `{ items, total, limit, offset }`.
+  - `GET  /api/alerts/{id}` — fetch a single alert. 404 if not found.
+  - `PATCH /api/alerts/{id}` — update alert status. Transitions open→acknowledged set
+    `acknowledged_at`; any transition to resolved sets `resolved_at`. 422 on invalid status.
+- **Dashboard integration** — `GET /api/dashboard/summary` now includes:
+  - `counts.open_alert_count`, `counts.high_critical_alert_count`
+  - `recent_alerts: list[DashboardAlertItem]` (up to 5, most-recent-first)
+- **`Alerts.tsx` page rewrite** — full evidence-driven alert page:
+  - **Filter bar** — status, severity, rule type dropdowns.
+  - **Alert rows** — severity dot, status badge, rule type chip, title, expandable
+    description, acknowledge/resolve action buttons.
+  - **"Run alert check" button** — calls `POST /api/alerts/generate`; shows
+    `+N created · M skipped` feedback; reloads list.
+  - **Load more** pagination.
+- **Dashboard Reliability Signals panel** — new panel showing open alert count,
+  high/critical count badge, and up to 5 recent alerts. Links to `/alerts`.
+- **`Alert`, `AlertListResponse`, `AlertGenerateResponse`, `AlertFilters`,
+  `AlertUpdateRequest`, `DashboardAlertItem`** added to `frontend/src/types/index.ts`.
+- **`generateAlerts()`, `getAlerts()`, `getAlert()`, `updateAlert()`** added to
+  `frontend/src/lib/api.ts`.
+- **32 new tests** — `tests/test_alerts_m11.py`: generate shape, deduplication,
+  resolved re-trigger, low trust/health/missing-evidence alerts, list pagination + filters,
+  GET / PATCH routes (404, 422, timestamp side-effects), dashboard integration.
+- **266 total passing tests** (1 skipped), clean TypeScript typecheck, clean production build.
+- **Alembic migration applied** to `backend/quantfidelity.db`.
+
+### Verify with curl
+
+```bash
+# Generate alerts (idempotent — safe to run multiple times)
+curl -s -X POST http://localhost:8000/api/alerts/generate | python3 -m json.tool
+# Response: { "alerts_created": N, "alerts_skipped_duplicate": M, "total_alerts_open": K }
+
+# List all open alerts (newest-triggered first)
+curl "http://localhost:8000/api/alerts?status=open" | python3 -m json.tool
+
+# Filter by severity
+curl "http://localhost:8000/api/alerts?severity=high" | python3 -m json.tool
+
+# Filter by rule type
+curl "http://localhost:8000/api/alerts?rule_type=data_health_below_threshold" | python3 -m json.tool
+
+# Acknowledge an alert
+curl -s -X PATCH http://localhost:8000/api/alerts/<alert_id> \
+  -H 'Content-Type: application/json' \
+  -d '{"status": "acknowledged"}' | python3 -m json.tool
+
+# Resolve an alert
+curl -s -X PATCH http://localhost:8000/api/alerts/<alert_id> \
+  -H 'Content-Type: application/json' \
+  -d '{"status": "resolved"}' | python3 -m json.tool
+
+# Dashboard includes alert counts + recent alerts
+curl "http://localhost:8000/api/dashboard/summary" | python3 -m json.tool
+```
+
+> **M11 note:** The alerts engine is purely deterministic — it evaluates existing DB
+> evidence against hardcoded thresholds. No AI, no live data, no email/Slack, no broker
+> actions. Alerts are informational reliability signals, not incident tickets.
+
+### Previously completed
+
+- **M10: Audit Timeline v1** — improved `/api/timeline` with pagination + 5 filters,
+  `/api/strategies/{id}/timeline`, richer event data, Timeline page rewrite, AuditTrailPanel,
+  40 tests, 234 total tests.
+
+---
+
+## Previously completed — M10: Audit Timeline v1
 
 **Status: complete.**
 
@@ -504,8 +602,8 @@ curl http://localhost:8000/api/datasets
 The following are deferred to later milestones:
 
 - Authentication / API keys (M-later)
-- Alerts engine and notifications — M11
-- Live Drift / Execution Attribution — M11
+- Extended alert rules with custom thresholds — M12
+- Live Drift / Execution Attribution — M12
 - Python SDK and ingestion endpoints — M11
 - Live market data providers (no external/paid data) — M12
 - AI diagnostic layer (bounded to deterministic evidence) — M13

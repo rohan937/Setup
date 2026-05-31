@@ -24,6 +24,12 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     audit_timeline_events: Mapped[list["AuditTimelineEvent"]] = relationship(  # noqa: F821
         "AuditTimelineEvent", back_populates="organization"
     )
+    alert_rules: Mapped[list["AlertRule"]] = relationship(  # noqa: F821
+        "AlertRule", back_populates="organization", cascade="all, delete-orphan"
+    )
+    alerts: Mapped[list["Alert"]] = relationship(  # noqa: F821
+        "Alert", back_populates="organization", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Organization slug={self.slug!r}>"

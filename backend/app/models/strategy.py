@@ -50,6 +50,9 @@ class Strategy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     audit_timeline_events: Mapped[list["AuditTimelineEvent"]] = relationship(  # noqa: F821
         "AuditTimelineEvent", back_populates="strategy"
     )
+    alerts: Mapped[list["Alert"]] = relationship(  # noqa: F821
+        "Alert", back_populates="strategy"
+    )
 
     def __repr__(self) -> str:
         return f"<Strategy slug={self.slug!r} status={self.status!r}>"

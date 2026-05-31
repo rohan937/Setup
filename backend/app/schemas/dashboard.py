@@ -42,6 +42,10 @@ class DashboardCounts(BaseModel):
     backtest_issues_by_severity: dict[str, int]
     audits_by_status: dict[str, int]
 
+    # Alerts (M11)
+    open_alert_count: int
+    high_critical_alert_count: int
+
 
 # ---------------------------------------------------------------------------
 # Scores
@@ -67,6 +71,22 @@ class DashboardScores(BaseModel):
     strategy_activity_score: float | None
     # Weighted average of available non-null dimension scores.
     overall_reliability_score: float | None
+
+
+# ---------------------------------------------------------------------------
+# Alert summary item (M11)
+# ---------------------------------------------------------------------------
+
+class DashboardAlertItem(BaseModel):
+    """Lightweight alert row for the dashboard panel."""
+
+    id: uuid.UUID
+    rule_type: str
+    severity: str
+    status: str
+    title: str
+    triggered_at: datetime
+    strategy_id: uuid.UUID | None
 
 
 # ---------------------------------------------------------------------------
@@ -103,3 +123,5 @@ class DashboardSummary(BaseModel):
     recent_snapshots: list[RecentEvidenceItem]
     recent_audits: list[RecentEvidenceItem]
     recent_timeline_events: list[RecentEvidenceItem]
+    # Alerts (M11) — most-recent open alerts first
+    recent_alerts: list[DashboardAlertItem]

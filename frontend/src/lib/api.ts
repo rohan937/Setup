@@ -1,4 +1,9 @@
 import type {
+  Alert,
+  AlertFilters,
+  AlertGenerateResponse,
+  AlertListResponse,
+  AlertUpdateRequest,
   ApiInfo,
   ApiError,
   BacktestAudit,
@@ -187,4 +192,44 @@ export async function getStrategyTimeline(
   return request<TimelineListResponse>(
     `/api/strategies/${strategyId}/timeline${qs}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Alerts Engine (M11)
+// ---------------------------------------------------------------------------
+
+function _buildAlertQS(filters: AlertFilters): string {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.severity) params.set("severity", filters.severity);
+  if (filters.rule_type) params.set("rule_type", filters.rule_type);
+  if (filters.strategy_id) params.set("strategy_id", filters.strategy_id);
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.offset != null) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export async function generateAlerts(): Promise<AlertGenerateResponse> {
+  return request<AlertGenerateResponse>("/api/alerts/generate", { method: "POST" });
+}
+
+export async function getAlerts(
+  filters: AlertFilters = {},
+): Promise<AlertListResponse> {
+  return request<AlertListResponse>(`/api/alerts${_buildAlertQS(filters)}`);
+}
+
+export async function getAlert(alertId: string): Promise<Alert> {
+  return request<Alert>(`/api/alerts/${alertId}`);
+}
+
+export async function updateAlert(
+  alertId: string,
+  data: AlertUpdateRequest,
+): Promise<Alert> {
+  return request<Alert>(`/api/alerts/${alertId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }

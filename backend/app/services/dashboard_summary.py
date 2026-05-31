@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.alert import Alert
 from app.models.audit_timeline_event import AuditTimelineEvent
 from app.models.backtest_audit import BacktestAudit
 from app.models.backtest_issue import BacktestIssue
@@ -24,7 +25,9 @@ from app.models.dataset import Dataset
 from app.models.dataset_snapshot import DatasetSnapshot
 from app.models.strategy import Strategy
 from app.models.strategy_run import StrategyRun
+from app.core.constants import AlertStatus
 from app.schemas.dashboard import (
+    DashboardAlertItem,
     DashboardCounts,
     DashboardScores,
     DashboardSummary,
@@ -209,7 +212,66 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
         lowest_backtest_trust = int(min_bt) if min_bt is not None else None
 
     # ------------------------------------------------------------------
-    # E. Reliability scores
+    # E. Alert counts (M11)
+    # ------------------------------------------------------------------
+    # We need the organisation id — derive it from any existing strategy if
+    # available, otherwise fall back to None (alerts table may be empty on
+    # a fresh install).
+    org_id_result = db.query(Strategy).first()
+    org_id_for_alerts: str | None = None
+    if org_id_result is not None:
+        # Walk up: strategy → project → organization
+        from app.models.project import Project  # local import avoids circular
+        proj = db.query(Project).filter(Project.id == org_id_result.project_id).first()
+        if proj is not None:
+            org_id_for_alerts = str(proj.organization_id)
+
+    open_alert_count = 0
+    high_critical_alert_count = 0
+    recent_alerts: list[DashboardAlertItem] = []
+
+    if org_id_for_alerts is not None:
+        open_alert_count = (
+            db.query(func.count(Alert.id))
+            .filter(
+                Alert.organization_id == org_id_for_alerts,
+                Alert.status == str(AlertStatus.open),
+            )
+            .scalar()
+            or 0
+        )
+        high_critical_alert_count = (
+            db.query(func.count(Alert.id))
+            .filter(
+                Alert.organization_id == org_id_for_alerts,
+                Alert.status == str(AlertStatus.open),
+                Alert.severity.in_(["high", "critical"]),
+            )
+            .scalar()
+            or 0
+        )
+        recent_alert_rows = (
+            db.query(Alert)
+            .filter(Alert.organization_id == org_id_for_alerts)
+            .order_by(Alert.triggered_at.desc())
+            .limit(_RECENT_N)
+            .all()
+        )
+        recent_alerts = [
+            DashboardAlertItem(
+                id=a.id,
+                rule_type=a.rule_type,
+                severity=a.severity,
+                status=a.status,
+                title=a.title,
+                triggered_at=a.triggered_at,
+                strategy_id=a.strategy_id,
+            )
+            for a in recent_alert_rows
+        ]
+
+    # ------------------------------------------------------------------
+    # G. Reliability scores
     # ------------------------------------------------------------------
     activity_score = _strategy_activity_score(total_strategies, total_runs)
     overall_score = _overall_reliability_score(
@@ -217,7 +279,7 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
     )
 
     # ------------------------------------------------------------------
-    # F. Recent evidence (most recent N items each)
+    # H. Recent evidence (most recent N items each)
     # ------------------------------------------------------------------
 
     # Recent strategy runs — join to get strategy name.
@@ -329,6 +391,8 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
         total_backtest_issues=total_backtest_issues,
         backtest_issues_by_severity=backtest_issues_by_severity,
         audits_by_status=audits_by_status,
+        open_alert_count=open_alert_count,
+        high_critical_alert_count=high_critical_alert_count,
     )
 
     scores = DashboardScores(
@@ -348,4 +412,5 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
         recent_snapshots=recent_snapshots,
         recent_audits=recent_audits,
         recent_timeline_events=recent_timeline_events,
+        recent_alerts=recent_alerts,
     )
