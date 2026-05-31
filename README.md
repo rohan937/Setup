@@ -27,9 +27,9 @@ QuantFidelity/
 │   │   ├── api/            Routers: health, meta, projects, strategies, timeline, datasets
 │   │   ├── models/         SQLAlchemy ORM models (14 tables)
 │   │   ├── schemas/        Pydantic response models
-│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts)
+│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (266 tests)
+│   └── tests/              Pytest tests (312 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,96 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M11: Alerts Engine v1
+## Current milestone — M12: Dataset Snapshot Comparison
+
+**Status: complete.**
+
+### M12 deliverables
+
+- **`app/schemas/dataset_comparison.py`** — 9 new Pydantic schemas covering every comparison
+  section: `MetadataComparison`, `SchemaComparison`, `TypeChange`, `SymbolCoverageComparison`,
+  `TimestampCoverageComparison`, `DataHealthComparison`, `ValueRevisionExample`,
+  `ValueRevisionsComparison`, `DatasetSnapshotComparisonResponse`.
+- **`app/services/dataset_comparison.py`** — pure-Python deterministic comparison service
+  (`compare_snapshots()`). No DB access, no AI, no causal language. Covers:
+  - **Metadata** — row count delta.
+  - **Schema** — added/removed columns, type changes (inferred via `_infer_type()`).
+  - **Symbol coverage** — added/removed symbols, common count, keyed_by_symbol flag.
+  - **Timestamp range** — min/max date change detection, date-range-days delta.
+  - **Data health** — health score delta, issue count delta, worst severity, issue type changes.
+  - **Value revisions** — row-level diff keyed by `(symbol, timestamp)` composite key;
+    SHA-256 hash-based fallback when keys unavailable; `MAX_EXAMPLES = 20` cap.
+  - **Highlighted changes** — top-N human-readable bullet points.
+  - **Deterministic explanation** — hedged prose ("observed", "may affect", never causal).
+  - **Warnings** — different column sets, hash-fallback active, examples capped.
+- **New API endpoint** — `GET /api/datasets/{dataset_id}/snapshots/compare`:
+  - Query params: `snapshot_a_id`, `snapshot_b_id`.
+  - Validates dataset exists (404), both snapshots exist (404 each), both belong to dataset (400).
+  - Comparing a snapshot to itself returns `is_same_snapshot: true` with empty diffs.
+- **46 new backend tests** — `tests/test_dataset_comparison_m12.py` across 10 test classes:
+  basic shape, error cases (404/400), same-snapshot, metadata, schema, symbol coverage,
+  timestamp coverage, data health, value revisions (keyed + hash fallback + cap), explanation
+  language (no causal keywords), warnings.
+- **Frontend types** — `MetadataComparison`, `TypeChange`, `SchemaComparison`,
+  `SymbolCoverageComparison`, `TimestampCoverageComparison`, `DataHealthComparison`,
+  `ValueRevisionExample`, `ValueRevisionsComparison`, `DatasetSnapshotComparisonResponse`
+  added to `frontend/src/types/index.ts`.
+- **`compareDatasetSnapshots()`** added to `frontend/src/lib/api.ts`.
+- **Data Health page rewrite** (`DataHealth.tsx`):
+  - **Compare Snapshots panel** — visible when selected dataset has ≥2 snapshots.
+  - Snapshot A / Snapshot B selectors; defaults to previous vs latest.
+  - "Compare →" button triggers deterministic diff.
+  - **Result display** — summary card, warnings, notable changes bullet list, deterministic
+    explanation, column-header row, then six section cards:
+    - **Metadata** — row count A/B/delta.
+    - **Schema** — column counts, added/removed column pills, type change table.
+    - **Symbol Coverage** — symbol counts, added/removed symbol pills.
+    - **Timestamp Coverage** — min/max dates, range-days delta.
+    - **Data Health** — health score delta, issue count delta, worst severity, issue type pills.
+    - **Value Revisions** — added/removed/changed counts; examples table (symbol, timestamp,
+      type, changed fields, field deltas); capped-examples note.
+  - Empty state when <2 snapshots: "Upload at least two snapshots to compare dataset drift."
+  - `DatasetSections` component loads dataset detail once and renders both history and compare.
+- **312 total passing tests** (1 skipped), zero TypeScript errors, clean production build.
+
+### Verify with curl
+
+```bash
+# Upload two snapshots for the same dataset, then compare:
+curl -s "http://localhost:8000/api/datasets/<dataset_id>/snapshots/compare?\
+snapshot_a_id=<snap_a_id>&snapshot_b_id=<snap_b_id>" | python3 -m json.tool
+```
+
+Example response (abridged):
+```json
+{
+  "is_same_snapshot": false,
+  "summary": "3 notable change(s) detected across schema, coverage, health, and row data.",
+  "highlighted_changes": [
+    "Row count changed: 4 → 5 (+1)",
+    "Timestamp range extended: max date changed to 2024-01-04",
+    "1 row(s) with revised values (e.g. AAPL / 2024-01-02)"
+  ],
+  "deterministic_explanation": "1 difference(s) were observed in row counts...",
+  "warnings": [],
+  "metadata": { "row_count_a": 4, "row_count_b": 5, "row_count_delta": 1 },
+  "value_revisions": {
+    "keyed_comparison_available": true,
+    "added_rows_count": 1,
+    "removed_rows_count": 0,
+    "changed_rows_count": 1,
+    "examples": [...]
+  }
+}
+```
+
+> **M12 note:** The comparison engine is purely deterministic — it diffs stored snapshot data.
+> No AI is used. Language in `deterministic_explanation` is explicitly hedged
+> ("observed", "noted", "may affect") and never makes causal claims.
+
+---
+
+## Previously completed — M11: Alerts Engine v1
 
 **Status: complete.**
 

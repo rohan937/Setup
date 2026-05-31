@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
@@ -37,7 +37,9 @@ from app.schemas.dataset import (
     DatasetSnapshotDetail,
     DatasetSnapshotRead,
 )
+from app.schemas.dataset_comparison import DatasetSnapshotComparisonResponse
 from app.services.data_quality import analyze_snapshot
+from app.services.dataset_comparison import compare_snapshots
 
 router = APIRouter(tags=["datasets"])
 
@@ -374,3 +376,82 @@ def get_snapshot(
             for iss in snapshot.issues
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/datasets/{dataset_id}/snapshots/compare
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/datasets/{dataset_id}/snapshots/compare",
+    response_model=DatasetSnapshotComparisonResponse,
+)
+def compare_dataset_snapshots(
+    dataset_id: str,
+    snapshot_a_id: str = Query(..., description="ID of snapshot A (baseline)"),
+    snapshot_b_id: str = Query(..., description="ID of snapshot B (comparison target)"),
+    db: Session = Depends(get_db),
+) -> DatasetSnapshotComparisonResponse:
+    """Compare two snapshots from the same dataset.
+
+    Returns a deterministic, structured diff across schema, symbol coverage,
+    timestamp range, data health, and row-level value revisions.
+
+    Rules:
+    - Both snapshots must exist and belong to the specified dataset.
+    - Comparing a snapshot to itself is allowed and returns an empty diff.
+    - No AI, no causality claims — observed differences only.
+    """
+    # Validate dataset exists.
+    try:
+        ds_uuid = uuid.UUID(dataset_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    dataset = db.query(Dataset).filter(Dataset.id == ds_uuid).first()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    # Parse snapshot IDs.
+    try:
+        snap_a_uuid = uuid.UUID(snapshot_a_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Snapshot A not found")
+
+    try:
+        snap_b_uuid = uuid.UUID(snapshot_b_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Snapshot B not found")
+
+    # Load snapshots with issues eagerly.
+    snap_a = (
+        db.query(DatasetSnapshot)
+        .options(selectinload(DatasetSnapshot.issues))
+        .filter(DatasetSnapshot.id == snap_a_uuid)
+        .first()
+    )
+    if snap_a is None:
+        raise HTTPException(status_code=404, detail="Snapshot A not found")
+
+    snap_b = (
+        db.query(DatasetSnapshot)
+        .options(selectinload(DatasetSnapshot.issues))
+        .filter(DatasetSnapshot.id == snap_b_uuid)
+        .first()
+    )
+    if snap_b is None:
+        raise HTTPException(status_code=404, detail="Snapshot B not found")
+
+    # Both snapshots must belong to the specified dataset.
+    if snap_a.dataset_id != ds_uuid:
+        raise HTTPException(
+            status_code=400,
+            detail="Snapshot A does not belong to the specified dataset",
+        )
+    if snap_b.dataset_id != ds_uuid:
+        raise HTTPException(
+            status_code=400,
+            detail="Snapshot B does not belong to the specified dataset",
+        )
+
+    return compare_snapshots(snap_a, snap_b, snap_a.issues, snap_b.issues)

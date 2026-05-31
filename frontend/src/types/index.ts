@@ -452,3 +452,110 @@ export interface BacktestAuditListItem {
   created_at: string;
   updated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Dataset Snapshot Comparison (M12)
+// ---------------------------------------------------------------------------
+
+export interface MetadataComparison {
+  snapshot_a_label: string;
+  snapshot_b_label: string;
+  row_count_a: number;
+  row_count_b: number;
+  row_count_delta: number;
+}
+
+export interface TypeChange {
+  column: string;
+  type_a: string;
+  type_b: string;
+}
+
+export interface SchemaComparison {
+  columns_a: string[];
+  columns_b: string[];
+  added_columns: string[];
+  removed_columns: string[];
+  type_changes: TypeChange[];
+  unchanged_columns_count: number;
+  total_changes: number;
+}
+
+export interface SymbolCoverageComparison {
+  symbol_count_a: number;
+  symbol_count_b: number;
+  symbol_count_delta: number;
+  added_symbols: string[];
+  removed_symbols: string[];
+  common_symbols_count: number;
+  keyed_by_symbol: boolean;
+}
+
+export interface TimestampCoverageComparison {
+  min_timestamp_a: string | null;
+  max_timestamp_a: string | null;
+  min_timestamp_b: string | null;
+  max_timestamp_b: string | null;
+  min_changed: boolean;
+  max_changed: boolean;
+  date_range_days_a: number | null;
+  date_range_days_b: number | null;
+  date_range_days_delta: number | null;
+}
+
+export interface DataHealthComparison {
+  health_score_a: number;
+  health_score_b: number;
+  health_score_delta: number;
+  issue_count_a: number;
+  issue_count_b: number;
+  issue_count_delta: number;
+  worst_severity_a: string | null;
+  worst_severity_b: string | null;
+  issue_types_a: string[];
+  issue_types_b: string[];
+  issue_types_added: string[];
+  issue_types_removed: string[];
+}
+
+export interface ValueRevisionExample {
+  symbol: string | null;
+  timestamp: string | null;
+  change_type: "added" | "removed" | "changed";
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  changed_fields: string[];
+  field_deltas: Record<string, number>;
+}
+
+export interface ValueRevisionsComparison {
+  rows_available_a: boolean;
+  rows_available_b: boolean;
+  keyed_comparison_available: boolean;
+  added_rows_count: number;
+  removed_rows_count: number;
+  changed_rows_count: number;
+  examples: ValueRevisionExample[];
+  total_examples_capped: boolean;
+  max_examples: number;
+}
+
+export interface DatasetSnapshotComparisonResponse {
+  dataset_id: string;
+  snapshot_a_id: string;
+  snapshot_b_id: string;
+  snapshot_a_label: string;
+  snapshot_b_label: string;
+  is_same_snapshot: boolean;
+  summary: string;
+  metadata: MetadataComparison;
+  schema_diff: SchemaComparison;
+  symbol_coverage: SymbolCoverageComparison;
+  timestamp_coverage: TimestampCoverageComparison;
+  data_health: DataHealthComparison;
+  value_revisions: ValueRevisionsComparison;
+  highlighted_changes: string[];
+  deterministic_explanation: string;
+  warnings: string[];
+  generated_at: string;
+}

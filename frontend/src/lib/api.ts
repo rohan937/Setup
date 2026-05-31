@@ -10,6 +10,7 @@ import type {
   BacktestAuditListItem,
   DashboardSummary,
   Dataset,
+  DatasetSnapshotComparisonResponse,
   TimelineListResponse,
   TimelineFilters,
   DatasetCreateRequest,
@@ -133,6 +134,16 @@ export async function getDatasetSnapshot(
   snapshotId: string,
 ): Promise<DatasetSnapshotDetail> {
   return request<DatasetSnapshotDetail>(`/api/dataset-snapshots/${snapshotId}`);
+}
+
+export async function compareDatasetSnapshots(
+  datasetId: string,
+  snapshotAId: string,
+  snapshotBId: string,
+): Promise<DatasetSnapshotComparisonResponse> {
+  return request<DatasetSnapshotComparisonResponse>(
+    `/api/datasets/${datasetId}/snapshots/compare?snapshot_a_id=${snapshotAId}&snapshot_b_id=${snapshotBId}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
