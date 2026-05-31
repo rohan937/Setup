@@ -161,7 +161,65 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M8: Backtest Reality Check v1
+## Current milestone — M9: Unified Reliability Dashboard v1
+
+**Status: complete.**
+
+### M9 deliverables
+
+- **`GET /api/dashboard/summary`** — single aggregated endpoint returning all M3–M8 evidence
+  in one response. Scores are `null` when no evidence exists; never faked.
+- **`app/services/dashboard_summary.py`** — pure SQLAlchemy aggregation service (no AI, no
+  external calls). Queries all M3–M8 tables for counts, averages, minimums, and most-recent
+  evidence items.
+- **Score design:** All four dimension scores are `null` until real evidence is ingested.
+  - `data_health_score` — average `DatasetSnapshot.health_score` across all snapshots.
+  - `backtest_trust_score` — average `BacktestAudit.trust_score` across all audits.
+  - `strategy_activity_score` — deterministic formula: 0 strategies → null; 1+ strategies + 0 runs → 20;
+    1–2 runs → 40; 3–5 → 60; 6–9 → 80; 10+ → 100.
+  - `overall_reliability_score` — simple average of available (non-null) dimension scores.
+- **`DashboardSummary` schema** — `generated_at`, `counts` (all evidence counts), `scores`
+  (four reliability dimensions + lowest scores), `recent_runs`, `recent_snapshots`,
+  `recent_audits`, `recent_timeline_events` (most-recent 5 each).
+- **Dashboard page rewrite** — evidence-driven reliability cockpit:
+  - **Score strip** — four pillars (Overall, Data Health, Backtest Trust, Strategy Activity).
+    Each shows the real score (green/yellow/orange/red) or "—" + "No evidence yet" when null.
+  - **Evidence counters** — strategies, total runs, dataset snapshots, backtest audits.
+  - **Active strategies table** — top-6, links to detail pages.
+  - **Data Health panel** — snapshot count, with-issues count, lowest score, issues-by-severity
+    chips. Empty state links to /datasets.
+  - **Backtest Trust panel** — audit count, issue count, lowest trust, status breakdown,
+    issues-by-severity chips. Empty state links to /backtests.
+  - **Recent Activity** — four side-by-side panels (recent runs, snapshots, audits, timeline
+    events). Each item shows title, strategy name, score (colour-coded), date.
+- **`DashboardSummary`, `DashboardCounts`, `DashboardScores`, `RecentEvidenceItem`** added to
+  `frontend/src/types/index.ts`.
+- **`getDashboardSummary()`** added to `frontend/src/lib/api.ts`.
+- **27 new tests** — `tests/test_dashboard_m9.py`: shape, counts, scores, score null/non-null
+  contracts, run/snapshot/audit increments, recent items, 5-item caps.
+- **194 total passing tests**, clean TypeScript typecheck, clean production build.
+
+### Verify with curl
+
+```bash
+curl http://localhost:8000/api/dashboard/summary | python3 -m json.tool
+# Response: generated_at, counts{…}, scores{data_health_score, backtest_trust_score,
+#   strategy_activity_score, overall_reliability_score, …},
+#   recent_runs[…], recent_snapshots[…], recent_audits[…], recent_timeline_events[…]
+```
+
+> **M9 note:** All scores are computed deterministically from existing DB records. No AI,
+> no live market data, no external calls. Scores return `null` when no evidence exists —
+> "No evidence yet" is the correct state, not a fake 100.
+
+### Previously completed
+
+- **M8: Backtest Reality Check v1** — 2 new tables, 8-category audit engine, 3 endpoints,
+  Backtests page rewrite, StrategyDetail audit panel, 34 tests, 167 total tests.
+
+---
+
+## Previously completed — M8: Backtest Reality Check v1
 
 **Status: complete.**
 
@@ -370,11 +428,11 @@ curl http://localhost:8000/api/datasets
 The following are deferred to later milestones:
 
 - Authentication / API keys (M-later)
-- Backtest Reality Check (Trust Score) — M8
-- Live Drift / Execution Attribution — M8
-- Python SDK and ingestion endpoints — M9
-- Live market data providers (no external/paid data) — M10
-- AI diagnostic layer (bounded to deterministic evidence) — M11
-- Alerts, reports, and audit trail logic — M12
+- Live Drift / Execution Attribution — M10
+- Python SDK and ingestion endpoints — M10
+- Live market data providers (no external/paid data) — M11
+- AI diagnostic layer (bounded to deterministic evidence) — M12
+- Alerts engine — M13
+- Reports and scheduled audit trail — M14
 
 No paid services, no live market data, and no broker/trading actions are part of this project.

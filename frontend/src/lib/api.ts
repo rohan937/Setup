@@ -3,6 +3,7 @@ import type {
   ApiError,
   BacktestAudit,
   BacktestAuditListItem,
+  DashboardSummary,
   Dataset,
   DatasetCreateRequest,
   DatasetDetail,
@@ -143,4 +144,12 @@ export async function getBacktestAudit(runId: string): Promise<BacktestAudit> {
 
 export async function getBacktestAudits(): Promise<BacktestAuditListItem[]> {
   return request<BacktestAuditListItem[]>("/api/backtests/audits");
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard summary (M9)
+// ---------------------------------------------------------------------------
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  return request<DashboardSummary>("/api/dashboard/summary");
 }

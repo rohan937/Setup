@@ -262,6 +262,65 @@ export interface BacktestAudit {
   updated_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// Reliability Dashboard (M9)
+// ---------------------------------------------------------------------------
+
+export interface RecentEvidenceItem {
+  id: string;
+  item_type: string;     // "run" | "snapshot" | "audit" | "timeline_event"
+  title: string;
+  strategy_name: string | null;
+  score: number | null;  // health_score, trust_score, etc. — null where N/A
+  status: string | null;
+  timestamp: string;
+}
+
+export interface DashboardCounts {
+  // Strategies
+  total_strategies: number;
+  active_strategies: number;
+  archived_strategies: number;
+  strategies_by_asset_class: Record<string, number>;
+  // Runs
+  total_runs: number;
+  backtest_run_count: number;
+  research_run_count: number;
+  paper_run_count: number;
+  live_run_count: number;
+  latest_run_at: string | null;
+  // Data
+  total_datasets: number;
+  total_dataset_snapshots: number;
+  snapshots_with_issues: number;
+  total_data_quality_issues: number;
+  data_issues_by_severity: Record<string, number>;
+  // Backtest audits
+  total_backtest_audits: number;
+  total_backtest_issues: number;
+  backtest_issues_by_severity: Record<string, number>;
+  audits_by_status: Record<string, number>;
+}
+
+export interface DashboardScores {
+  data_health_score: number | null;
+  lowest_data_health_score: number | null;
+  backtest_trust_score: number | null;
+  lowest_backtest_trust_score: number | null;
+  strategy_activity_score: number | null;
+  overall_reliability_score: number | null;
+}
+
+export interface DashboardSummary {
+  generated_at: string;
+  counts: DashboardCounts;
+  scores: DashboardScores;
+  recent_runs: RecentEvidenceItem[];
+  recent_snapshots: RecentEvidenceItem[];
+  recent_audits: RecentEvidenceItem[];
+  recent_timeline_events: RecentEvidenceItem[];
+}
+
 export interface BacktestAuditListItem {
   id: string;
   strategy_run_id: string;
