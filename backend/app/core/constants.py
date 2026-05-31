@@ -145,3 +145,14 @@ class BacktestIssueType(StrEnum):
     implausible_sharpe = "implausible_sharpe"
     implausible_return = "implausible_return"
     zero_volatility = "zero_volatility"
+    # M13: cost sensitivity
+    high_cost_fragility = "high_cost_fragility"
+    medium_cost_fragility = "medium_cost_fragility"
+    # M13: fill realism (new checks beyond M8)
+    same_bar_fill = "same_bar_fill"
+    mid_fill_no_slippage = "mid_fill_no_slippage"
+    high_participation_rate = "high_participation_rate"
+    elevated_participation_rate = "elevated_participation_rate"
+    missing_liquidity_filter = "missing_liquidity_filter"
+    missing_execution_timing = "missing_execution_timing"
+    high_trade_count_simple_fill = "high_trade_count_simple_fill"

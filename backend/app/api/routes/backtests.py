@@ -1,4 +1,4 @@
-"""Backtest Reality Check endpoints (M8):
+"""Backtest Reality Check endpoints (M8 + M13):
 
   POST /api/strategy-runs/{run_id}/backtest-audit   — run + store audit (idempotent)
   GET  /api/strategy-runs/{run_id}/backtest-audit   — fetch latest audit for a run
@@ -113,6 +113,10 @@ def _build_audit_detail(audit: BacktestAudit) -> BacktestAuditDetail:
         data_quality_score=audit.data_quality_score,
         overall_status=audit.overall_status,
         summary=audit.summary,
+        # M13: pass through JSON analysis blobs (None when not available)
+        cost_sensitivity_json=audit.cost_sensitivity_json,
+        fill_realism_json=audit.fill_realism_json,
+        fragility_summary_json=audit.fragility_summary_json,
         created_at=audit.created_at,
         updated_at=audit.updated_at,
         issues=[BacktestIssueRead.model_validate(i) for i in audit.issues],
@@ -126,6 +130,15 @@ def _build_list_item(audit: BacktestAudit) -> BacktestAuditListItem:
         audit.issues,
         key=lambda i: _SEVERITY_ORDER.index(i.severity) if i.severity in _SEVERITY_ORDER else len(_SEVERITY_ORDER),
     )
+    # M13: extract fragility levels for quick display.
+    # Map "unknown" → None so the frontend can use a simple null check.
+    # The full fragility_summary_json blob (also present in this response) retains
+    # the "unknown" value for detailed inspection.
+    fragility = audit.fragility_summary_json or {}
+    _cfl = fragility.get("cost_fragility_level")
+    _frl = fragility.get("fill_realism_level")
+    cost_fragility_level: str | None = _cfl if (_cfl and _cfl != "unknown") else None
+    fill_realism_level: str | None = _frl if (_frl and _frl != "unknown") else None
     return BacktestAuditListItem(
         id=audit.id,
         strategy_run_id=audit.strategy_run_id,
@@ -138,6 +151,10 @@ def _build_list_item(audit: BacktestAudit) -> BacktestAuditListItem:
         data_quality_score=audit.data_quality_score,
         overall_status=audit.overall_status,
         summary=audit.summary,
+        # M13: pass through JSON analysis blobs
+        cost_sensitivity_json=audit.cost_sensitivity_json,
+        fill_realism_json=audit.fill_realism_json,
+        fragility_summary_json=audit.fragility_summary_json,
         created_at=audit.created_at,
         updated_at=audit.updated_at,
         strategy_id=run.strategy_id if run else uuid.UUID(int=0),
@@ -146,6 +163,8 @@ def _build_list_item(audit: BacktestAudit) -> BacktestAuditListItem:
         run_type=run.run_type if run else "—",
         issue_count=len(audit.issues),
         top_issues=[BacktestIssueRead.model_validate(i) for i in sorted_issues[:3]],
+        cost_fragility_level=cost_fragility_level,
+        fill_realism_level=fill_realism_level,
     )
 
 
@@ -210,6 +229,10 @@ def create_backtest_audit(
         data_quality_score=result.data_quality_score,
         overall_status=result.overall_status,
         summary=result.summary,
+        # M13: persist cost sensitivity, fill realism, and fragility blobs
+        cost_sensitivity_json=result.cost_sensitivity_json,
+        fill_realism_json=result.fill_realism_json,
+        fragility_summary_json=result.fragility_summary_json,
     )
     db.add(audit)
     db.flush()

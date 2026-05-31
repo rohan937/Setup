@@ -161,7 +161,114 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M12: Dataset Snapshot Comparison
+## Current milestone — M13: Backtest Reality Check v2
+
+**Status: complete.**
+
+### M13 deliverables
+
+- **Migration `0006_m13_backtest_sensitivity.py`** — adds 3 nullable JSON columns to
+  `backtest_audits`: `cost_sensitivity_json`, `fill_realism_json`, `fragility_summary_json`.
+- **`app/core/constants.py`** — 9 new `BacktestIssueType` values:
+  `high_cost_fragility`, `medium_cost_fragility`, `same_bar_fill`, `mid_fill_no_slippage`,
+  `high_participation_rate`, `elevated_participation_rate`, `missing_liquidity_filter`,
+  `missing_execution_timing`, `high_trade_count_simple_fill`.
+- **`app/services/backtest_reality.py`** — full rewrite with M13 analyses (all M8 checks preserved):
+  - **I. Cost sensitivity** (`_analyze_cost_sensitivity`): estimates adjusted return and Sharpe
+    under 5/10/15/25/50 bps cost scenarios. Incremental drag = `turnover × (cost_bps − assumed_cost_bps) / 10 000`.
+    Fragility level: "high" if estimated Sharpe < 1.0 at 10 bps; "medium" if < 1.0 at 25 bps;
+    "low" otherwise. Returns "unknown" when turnover or both return/sharpe are absent.
+  - **J. Fill realism** (`_analyze_fill_realism`): examines fill_model, slippage_bps,
+    execution_timing, participation_rate, liquidity_filter, trade_count. Produces structured
+    `findings` list and an overall `fill_realism_level`:
+    `weak` → high-severity finding present; `review` → medium finding; `strong` → slippage +
+    timing both present; `acceptable` → fill model present with no medium+ findings; `unknown` → no fill_model.
+  - **K. Fragility summary** (`_build_fragility_summary`): rolls cost + fill into `overall_fragility`
+    and `key_concerns`.
+  - New BacktestIssues created for M13 findings; M8 duplicates (`missing_fill_model`,
+    `close_fill_model`, `same_close_fill`) skipped to avoid double-counting.
+  - `missing_liquidity_filter` now maps to `liquidity_realism_score` (was always 100 in M8).
+  - All outputs are labelled as estimates: "approximate", "not a full re-backtest",
+    "may require review". No causal language.
+- **`app/schemas/backtest.py`** — 5 new typed nested schemas:
+  `CostSensitivityScenario`, `CostSensitivityResult`, `FillRealismFinding`, `FillRealismResult`,
+  `FragilitySummary`. `BacktestAuditRead` and `BacktestAuditListItem` updated.
+  `BacktestAuditListItem` adds `cost_fragility_level: str | None` and `fill_realism_level: str | None`
+  (null = unknown/unavailable — not the string "unknown").
+- **`app/api/routes/backtests.py`** — POST audit persists JSON blobs; GET and list endpoints
+  return them; list items extract fragility levels for quick display.
+- **38 new tests** — `tests/test_backtest_m13.py`:
+  - M13 JSON fields present in POST and GET responses
+  - Scenarios at 5/10/15/25/50 bps present
+  - Adjusted return and Sharpe decrease monotonically as cost increases
+  - High fragility (Sharpe < 1.0 at 10 bps), medium fragility (< 1.0 at 25 bps)
+  - Unknown fragility when turnover missing; no divide-by-zero on edge cases
+  - `incremental_cost_drag == 0` at assumed cost level
+  - Assumed cost bps included in scenarios
+  - Fill realism: unknown level when fill_model missing
+  - `same_bar_fill` issue + weak level for same_bar/intrabar fills
+  - `mid_fill_no_slippage` issue for mid/midpoint fills without slippage_bps
+  - `high_participation_rate` and `elevated_participation_rate` issues
+  - `missing_liquidity_filter` issue and `liquidity_realism_score < 100`
+  - Strong fill_realism_level with full assumptions
+  - Fragility summary keys present; overall_fragility = high for weak fill
+  - Trust score reduced by M13 issues; `fill_realism_score < 100` for same_bar
+  - List endpoint returns `cost_fragility_level` and `fill_realism_level`; null for unknown
+  - M8 backward-compatibility: `close_fill_model` and `missing_fill_model` still raised exactly once
+- **Frontend types** — 5 new interfaces: `CostSensitivityScenario`, `CostSensitivityResult`,
+  `FillRealismFinding`, `FillRealismResult`, `FragilitySummary`. `BacktestAudit` and
+  `BacktestAuditListItem` updated with M13 fields.
+- **`Backtests.tsx`** — `AuditCard` updated:
+  - Cost/fill fragility level chips.
+  - Compact cost sensitivity scenario strip showing Sharpe at 5/10/25/50 bps.
+  - Top fill realism findings (medium+ severity, excluding informational).
+  - Liquidity subscore added (now 5 subscores: Cost / Fill / Liquidity / Borrow / Data).
+- **`StrategyDetail.tsx`** — `BacktestAuditPanel` updated:
+  - Fragility key_concerns banner (when present).
+  - Collapsible **Cost Sensitivity** section: compact scenario table with baseline + 5 cost tiers,
+    adjusted return %, adjusted Sharpe (colour-coded below 1.0), Sharpe delta.
+  - Collapsible **Fill Realism** section: fill_model, findings list, slippage/timing/participation metadata.
+  - Liquidity subscore added (5 subscores).
+- **350 total passing tests** (1 skipped), zero TypeScript errors, clean production build.
+
+### What M13 does NOT build (by design)
+
+- Live execution drift or real broker fills.
+- AI-generated explanations or scoring.
+- Full overfit / parameter sensitivity engine (parameter sweeps, walk-forward, etc.).
+- Regime analysis or market condition attribution.
+- SDK ingestion or external data providers.
+- Email, Slack, or webhook delivery of fragility reports.
+
+### Verify with curl
+
+```bash
+# Post an audit for a run with detailed assumptions:
+curl -s -X POST http://localhost:8000/api/strategy-runs/<run_id>/backtest-audit | python3 -m json.tool
+
+# The response includes cost_sensitivity_json, fill_realism_json, fragility_summary_json.
+# Example cost_sensitivity_json snippet:
+# {
+#   "assumed_cost_bps": 5.0,
+#   "base_sharpe": 1.8,
+#   "cost_fragility_level": "low",
+#   "scenarios": [
+#     { "cost_bps": 5.0,  "adjusted_sharpe": 1.80, "sharpe_delta": 0.0 },
+#     { "cost_bps": 10.0, "adjusted_sharpe": 1.62, "sharpe_delta": -0.18 },
+#     { "cost_bps": 25.0, "adjusted_sharpe": 1.26, "sharpe_delta": -0.54 },
+#     { "cost_bps": 50.0, "adjusted_sharpe": 0.72, "sharpe_delta": -1.08 }
+#   ],
+#   "warnings": ["These are estimates only — not a full re-backtest. Treat as indicative."]
+# }
+```
+
+> **M13 note:** All numeric outputs are estimates derived from logged metrics. They are not a
+> substitute for a full re-backtest with explicit cost scenarios. Language throughout uses
+> "estimated", "approximate", "may require review" and never makes definitive causal claims.
+
+---
+
+## Previously completed — M12: Dataset Snapshot Comparison
 
 **Status: complete.**
 
@@ -211,7 +318,7 @@ the backend alongside the frontend to see it connected.
       type, changed fields, field deltas); capped-examples note.
   - Empty state when <2 snapshots: "Upload at least two snapshots to compare dataset drift."
   - `DatasetSections` component loads dataset detail once and renders both history and compare.
-- **312 total passing tests** (1 skipped), zero TypeScript errors, clean production build.
+- **312 total passing tests** (1 skipped) at M12 completion, zero TypeScript errors, clean production build.
 
 ### Verify with curl
 
@@ -691,11 +798,13 @@ curl http://localhost:8000/api/datasets
 The following are deferred to later milestones:
 
 - Authentication / API keys (M-later)
-- Extended alert rules with custom thresholds — M12
-- Live Drift / Execution Attribution — M12
-- Python SDK and ingestion endpoints — M11
-- Live market data providers (no external/paid data) — M12
-- AI diagnostic layer (bounded to deterministic evidence) — M13
-- Reports and scheduled summaries — M14
+- Extended alert rules with custom thresholds
+- Live Drift / Execution Attribution
+- Python SDK and ingestion endpoints
+- Live market data providers (no external/paid data)
+- AI diagnostic layer (bounded to deterministic evidence) — M14+
+- Full overfit / parameter sensitivity engine (walk-forward, parameter sweeps)
+- Regime analysis and market condition attribution
+- Reports and scheduled summaries
 
 No paid services, no live market data, and no broker/trading actions are part of this project.

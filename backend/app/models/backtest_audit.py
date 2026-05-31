@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
@@ -44,6 +44,12 @@ class BacktestAudit(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # Hedged plain-language summary of the audit findings.
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    # M13: cost sensitivity, fill realism, and fragility summary as JSON blobs.
+    # Nullable — populated only when the run has sufficient input data.
+    cost_sensitivity_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    fill_realism_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    fragility_summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
     strategy_run: Mapped["StrategyRun"] = relationship(  # noqa: F821

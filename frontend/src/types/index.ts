@@ -245,6 +245,52 @@ export interface BacktestIssue {
 
 export type BacktestStatus = "excellent" | "good" | "review" | "weak" | "unreliable";
 
+// ---------------------------------------------------------------------------
+// M13: Cost sensitivity + fill realism typed nested schemas
+// ---------------------------------------------------------------------------
+
+export interface CostSensitivityScenario {
+  cost_bps: number;
+  incremental_cost_drag: number | null;
+  adjusted_annual_return: number | null;
+  adjusted_sharpe: number | null;
+  sharpe_delta: number | null;
+}
+
+export interface CostSensitivityResult {
+  assumed_cost_bps: number | null;
+  turnover: number | null;
+  base_annual_return: number | null;
+  base_sharpe: number | null;
+  scenarios: CostSensitivityScenario[];
+  warnings: string[];
+  cost_fragility_level: "high" | "medium" | "low" | "unknown";
+}
+
+export interface FillRealismFinding {
+  code: string;
+  severity: string;
+  message: string;
+  suggested_check?: string;
+}
+
+export interface FillRealismResult {
+  fill_model: string | null;
+  slippage_bps: number | null;
+  execution_timing: string | null;
+  participation_rate: number | null;
+  liquidity_filter_present: boolean | null;
+  fill_realism_level: "strong" | "acceptable" | "review" | "weak" | "unknown";
+  findings: FillRealismFinding[];
+}
+
+export interface FragilitySummary {
+  overall_fragility: "high" | "medium" | "low" | "unknown";
+  cost_fragility_level: "high" | "medium" | "low" | "unknown";
+  fill_realism_level: "strong" | "acceptable" | "review" | "weak" | "unknown";
+  key_concerns: string[];
+}
+
 export interface BacktestAudit {
   id: string;
   strategy_run_id: string;
@@ -257,6 +303,10 @@ export interface BacktestAudit {
   data_quality_score: number;
   overall_status: BacktestStatus;
   summary: string;
+  // M13: optional analysis blobs (null when insufficient input data)
+  cost_sensitivity_json: CostSensitivityResult | null;
+  fill_realism_json: FillRealismResult | null;
+  fragility_summary_json: FragilitySummary | null;
   issues: BacktestIssue[];
   created_at: string;
   updated_at: string;
@@ -449,6 +499,13 @@ export interface BacktestAuditListItem {
   summary: string;
   issue_count: number;
   top_issues: BacktestIssue[];
+  // M13: analysis blobs (also available inline)
+  cost_sensitivity_json: CostSensitivityResult | null;
+  fill_realism_json: FillRealismResult | null;
+  fragility_summary_json: FragilitySummary | null;
+  // M13: extracted for quick display (null = unknown/unavailable)
+  cost_fragility_level: string | null;
+  fill_realism_level: string | null;
   created_at: string;
   updated_at: string;
 }

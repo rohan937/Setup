@@ -1,4 +1,4 @@
-"""Backtest Reality Check service (M8).
+"""Backtest Reality Check service (M8 + M13).
 
 Purely deterministic — no AI, no database access, no external calls.
 
@@ -7,7 +7,7 @@ Takes a ``StrategyRun`` ORM object and an optional ``DataEvidenceSummary``
 an ``AuditResult`` dataclass describing realism concerns, per-category
 subscores, a trust score, and a hedged plain-language summary.
 
-Checks implemented (v1):
+Checks implemented (v1 — M8):
   A. Transaction cost realism
   B. Fill model realism
   C. Borrow / short-selling realism
@@ -16,6 +16,11 @@ Checks implemented (v1):
   F. Data evidence integration
   G. Max drawdown sanity
   H. Metric plausibility (Sharpe, return, volatility)
+
+New in v2 (M13):
+  I. Cost sensitivity analysis — estimates adjusted performance under cost scenarios
+  J. Fill realism analysis   — detailed fill assumption checks + fill_realism_level
+  K. Fragility summary        — rolls I + J into an overall fragility assessment
 """
 
 from __future__ import annotations
@@ -27,6 +32,13 @@ if TYPE_CHECKING:
     from app.models.strategy_run import StrategyRun
     from app.schemas.strategy import DataEvidenceSummary
 
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+# Cost scenarios to estimate (bps).
+_COST_SCENARIOS_BPS: list[float] = [5.0, 10.0, 15.0, 25.0, 50.0]
 
 # ---------------------------------------------------------------------------
 # Penalty table
@@ -45,6 +57,7 @@ _SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
 # Maps issue_type → which subscore it penalises.
 # Issues not listed here only affect the overall trust_score.
 _ISSUE_SUBSCORE_MAP: dict[str, str] = {
+    # M8
     "missing_transaction_cost": "cost_realism_score",
     "zero_transaction_cost": "cost_realism_score",
     "high_turnover_low_cost": "cost_realism_score",
@@ -56,6 +69,17 @@ _ISSUE_SUBSCORE_MAP: dict[str, str] = {
     "low_data_quality": "data_quality_score",
     "no_data_snapshot": "data_quality_score",
     "critical_data_issue": "data_quality_score",
+    # M13 — cost sensitivity
+    "high_cost_fragility": "cost_realism_score",
+    "medium_cost_fragility": "cost_realism_score",
+    # M13 — fill realism
+    "same_bar_fill": "fill_realism_score",
+    "mid_fill_no_slippage": "fill_realism_score",
+    "high_participation_rate": "fill_realism_score",
+    "elevated_participation_rate": "fill_realism_score",
+    "missing_liquidity_filter": "liquidity_realism_score",
+    "missing_execution_timing": "fill_realism_score",
+    "high_trade_count_simple_fill": "fill_realism_score",
 }
 
 
@@ -85,10 +109,14 @@ class AuditResult:
     data_quality_score: int
     overall_status: str
     summary: str
+    # M13: structured JSON blobs — None when input data is insufficient.
+    cost_sensitivity_json: dict | None = None
+    fill_realism_json: dict | None = None
+    fragility_summary_json: dict | None = None
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Internal helpers (shared)
 # ---------------------------------------------------------------------------
 
 def _penalty(severity: str) -> int:
@@ -197,7 +225,7 @@ def _get_bool(d: dict, *keys: str) -> bool | None:
 
 
 # ---------------------------------------------------------------------------
-# Individual check functions
+# M8 check functions
 # ---------------------------------------------------------------------------
 
 def _check_transaction_costs(
@@ -286,7 +314,7 @@ def _check_fill_model(
     assumptions: dict,
     issues: list[AuditIssue],
 ) -> None:
-    """B. Fill model realism."""
+    """B. Fill model realism (M8 basic checks — M13 adds more via fill realism analysis)."""
     fill_model = assumptions.get("fill_model")
     slippage = _get_float(assumptions, "slippage_bps", "slippage")
 
@@ -672,6 +700,619 @@ def _check_metric_plausibility(
 
 
 # ---------------------------------------------------------------------------
+# M13 — Cost sensitivity analysis
+# ---------------------------------------------------------------------------
+
+def _analyze_cost_sensitivity(
+    assumptions: dict,
+    metrics: dict,
+) -> dict:
+    """I. Estimate how sensitive reported performance is to transaction cost levels.
+
+    This is an approximation only — not a full re-backtest.  All outputs are
+    labelled as estimates.  The function never raises; it returns a partial
+    result with warnings when required inputs are missing.
+
+    Returns
+    -------
+    dict
+        Keys: assumed_cost_bps, turnover, base_annual_return, base_sharpe,
+              scenarios, warnings, cost_fragility_level.
+    """
+    txn_cost = _get_float(assumptions, "transaction_cost_bps", "transaction_cost")
+    assumed_cost_bps: float = txn_cost if txn_cost is not None else 0.0
+
+    annual_return = _get_float(metrics, "annual_return", "annualised_return", "cagr")
+    sharpe = _get_float(metrics, "sharpe", "sharpe_ratio")
+    volatility = _get_float(metrics, "volatility", "annualised_vol", "annual_vol")
+    turnover = _get_float(metrics, "turnover", "annual_turnover")
+    slippage = _get_float(assumptions, "slippage_bps", "slippage")
+
+    warnings: list[str] = [
+        "These are estimates only — not a full re-backtest.  Treat as indicative."
+    ]
+
+    # Can't estimate without turnover.
+    if turnover is None:
+        warnings.append(
+            "turnover not provided — cost sensitivity cannot be estimated. "
+            "Add turnover (annual_turnover) to metrics_json to enable this analysis."
+        )
+        return {
+            "assumed_cost_bps": assumed_cost_bps,
+            "turnover": None,
+            "base_annual_return": annual_return,
+            "base_sharpe": sharpe,
+            "scenarios": [],
+            "warnings": warnings,
+            "cost_fragility_level": "unknown",
+        }
+
+    # Can't estimate without at least return or sharpe.
+    if annual_return is None and sharpe is None:
+        warnings.append(
+            "annual_return and sharpe not provided — cannot estimate adjusted performance."
+        )
+        return {
+            "assumed_cost_bps": assumed_cost_bps,
+            "turnover": turnover,
+            "base_annual_return": None,
+            "base_sharpe": None,
+            "scenarios": [],
+            "warnings": warnings,
+            "cost_fragility_level": "unknown",
+        }
+
+    # Infer a volatility proxy for Sharpe approximation when volatility is absent.
+    vol_proxy: float | None = None
+    if volatility is not None and volatility > 0:
+        vol_proxy = volatility
+    elif (
+        sharpe is not None
+        and annual_return is not None
+        and sharpe != 0
+        and annual_return != 0
+    ):
+        # Rough estimate: vol ≈ annual_return / sharpe
+        inferred = annual_return / sharpe
+        if inferred > 0:
+            vol_proxy = inferred
+            warnings.append(
+                "volatility not provided — adjusted Sharpe is approximated from "
+                "annual_return / sharpe ratio.  Estimate may be less accurate."
+            )
+
+    if slippage is not None and slippage > 0:
+        warnings.append(
+            f"slippage_bps={slippage:.1f} is separately specified in assumptions. "
+            "Cost scenarios below vary transaction_cost_bps only; total cost friction "
+            "may be higher if slippage is additive."
+        )
+
+    # Build scenario set: always include assumed_cost_bps + standard tiers.
+    scenario_bps_set: set[float] = {assumed_cost_bps} | set(_COST_SCENARIOS_BPS)
+    scenario_bps_list = sorted(scenario_bps_set)
+
+    scenarios: list[dict] = []
+    for cost_bps in scenario_bps_list:
+        # Incremental drag = extra cost vs baseline, applied each turn of turnover.
+        incremental_drag = turnover * (cost_bps - assumed_cost_bps) / 10_000
+
+        adj_return: float | None = None
+        if annual_return is not None:
+            adj_return = annual_return - incremental_drag
+
+        adj_sharpe: float | None = None
+        if vol_proxy is not None and vol_proxy > 0 and adj_return is not None:
+            adj_sharpe = adj_return / vol_proxy
+        elif sharpe is not None and annual_return is not None and annual_return != 0:
+            # Secondary approximation: scale sharpe by the ratio of adjusted to base return.
+            adj_sharpe = sharpe * (adj_return / annual_return) if adj_return is not None else None
+
+        sharpe_delta: float | None = None
+        if adj_sharpe is not None and sharpe is not None:
+            sharpe_delta = adj_sharpe - sharpe
+
+        scenarios.append({
+            "cost_bps": cost_bps,
+            "incremental_cost_drag": round(incremental_drag, 6),
+            "adjusted_annual_return": round(adj_return, 6) if adj_return is not None else None,
+            "adjusted_sharpe": round(adj_sharpe, 4) if adj_sharpe is not None else None,
+            "sharpe_delta": round(sharpe_delta, 4) if sharpe_delta is not None else None,
+        })
+
+    # Determine fragility level from Sharpe thresholds.
+    fragility = "low"
+    sharpe_at: dict[float, float | None] = {}
+    for sc in scenarios:
+        if sc["adjusted_sharpe"] is not None:
+            sharpe_at[sc["cost_bps"]] = sc["adjusted_sharpe"]
+
+    if not sharpe_at:
+        fragility = "unknown"
+    else:
+        sharpe_10 = sharpe_at.get(10.0)
+        sharpe_25 = sharpe_at.get(25.0)
+        if sharpe_10 is not None and sharpe_10 < 1.0:
+            fragility = "high"
+        elif sharpe_25 is not None and sharpe_25 < 1.0:
+            fragility = "medium"
+
+    return {
+        "assumed_cost_bps": assumed_cost_bps,
+        "turnover": turnover,
+        "base_annual_return": annual_return,
+        "base_sharpe": sharpe,
+        "scenarios": scenarios,
+        "warnings": warnings,
+        "cost_fragility_level": fragility,
+    }
+
+
+# ---------------------------------------------------------------------------
+# M13 — Fill realism analysis
+# ---------------------------------------------------------------------------
+
+_CLOSE_FILLS = frozenset({"close", "close-to-close", "eod", "same_close", "same-close"})
+_SAME_BAR_FILLS = frozenset({"same_bar", "same-bar", "intrabar"})
+_MID_FILLS = frozenset({"mid", "midpoint", "mid_price"})
+_SIMPLE_FILLS = frozenset({"close", "open", "mid", "midpoint"})
+
+
+def _analyze_fill_realism(
+    assumptions: dict,
+    metrics: dict,
+) -> dict:
+    """J. Detailed fill realism analysis.
+
+    Examines fill_model, slippage_bps, execution_timing, participation_rate,
+    liquidity_filter, trade_count, and turnover to produce a structured set
+    of findings and an overall fill_realism_level.
+
+    Returns
+    -------
+    dict
+        Keys: fill_model, slippage_bps, execution_timing, participation_rate,
+              liquidity_filter_present, fill_realism_level, findings.
+    """
+    fill_model = assumptions.get("fill_model")
+    slippage = _get_float(assumptions, "slippage_bps", "slippage")
+    execution_timing = assumptions.get("execution_timing")
+    participation_rate = _get_float(assumptions, "participation_rate")
+    liquidity_filter = assumptions.get("liquidity_filter")
+    turnover = _get_float(metrics, "turnover", "annual_turnover")
+    trade_count = _get_float(metrics, "trade_count", "num_trades", "n_trades", "total_trades")
+
+    liquidity_filter_present = liquidity_filter is not None
+    findings: list[dict] = []
+
+    # ------------------------------------------------------------------ #
+    # Fill model checks
+    # ------------------------------------------------------------------ #
+    if fill_model is None:
+        # M8 already creates a missing_fill_model issue; capture in JSON for completeness.
+        findings.append({
+            "code": "missing_fill_model",
+            "severity": "medium",
+            "message": "fill_model not specified — execution assumption is ambiguous.",
+            "suggested_check": (
+                "Add fill_model to assumptions_json (e.g. 'vwap', 'open', 'arrival')."
+            ),
+        })
+    else:
+        fm = str(fill_model).lower()
+
+        # Same-bar fill — worst-case look-ahead risk.
+        if fm in _SAME_BAR_FILLS:
+            findings.append({
+                "code": "same_bar_fill",
+                "severity": "high",
+                "message": (
+                    f"fill_model='{fill_model}' fills within the same bar as signal "
+                    "generation — strong same-bar execution risk that may not be "
+                    "achievable in practice."
+                ),
+                "suggested_check": (
+                    "Use next-bar, next-open, or arrival-price fill models to avoid "
+                    "same-bar execution. Same-bar fills may represent a form of "
+                    "look-ahead bias in the backtest."
+                ),
+            })
+
+        # Same-close fill — already checked in M8 via close_fill_model; replicate in JSON.
+        elif fm in _CLOSE_FILLS:
+            findings.append({
+                "code": "same_close_fill",
+                "severity": "medium",
+                "message": (
+                    f"fill_model='{fill_model}' may execute at the closing price used "
+                    "to generate the signal, which is difficult to achieve in practice."
+                ),
+                "suggested_check": (
+                    "Consider next-open, VWAP, or arrival-price fills. "
+                    "If close fills are intentional, document the rationale."
+                ),
+            })
+
+        # Mid fill without slippage.
+        if fm in _MID_FILLS and slippage is None:
+            findings.append({
+                "code": "mid_fill_no_slippage",
+                "severity": "medium",
+                "message": (
+                    f"fill_model='{fill_model}' (mid-price) with no slippage_bps — "
+                    "mid-price fills are rarely achievable; the bid-ask spread is a "
+                    "minimum cost that should be modelled explicitly."
+                ),
+                "suggested_check": (
+                    "Add slippage_bps to account for the half-spread when using "
+                    "mid-price fills (e.g. 1–3 bps for liquid equities)."
+                ),
+            })
+
+        # Missing slippage for non-close fills (informational).
+        if slippage is None and fm not in (_CLOSE_FILLS | _SAME_BAR_FILLS):
+            findings.append({
+                "code": "missing_slippage",
+                "severity": "low",
+                "message": "slippage_bps not specified in assumptions_json.",
+                "suggested_check": (
+                    "Add slippage_bps (e.g. 1–5 bps for liquid equities) to "
+                    "assumptions_json to make execution friction explicit."
+                ),
+            })
+
+        # High trade count with simplistic fill model.
+        if (
+            trade_count is not None
+            and trade_count > 500
+            and fm in _SIMPLE_FILLS
+        ):
+            findings.append({
+                "code": "high_trade_count_simple_fill",
+                "severity": "low",
+                "message": (
+                    f"trade_count={int(trade_count)} is high with fill_model='{fill_model}' — "
+                    "market impact may be underestimated for high-frequency strategies."
+                ),
+                "suggested_check": (
+                    "Consider adding a market-impact model (e.g. linear or square-root "
+                    "impact) for strategies with very high trade counts."
+                ),
+            })
+
+    # ------------------------------------------------------------------ #
+    # Participation rate checks
+    # ------------------------------------------------------------------ #
+    if participation_rate is not None:
+        if participation_rate > 0.5:
+            findings.append({
+                "code": "high_participation_rate",
+                "severity": "high",
+                "message": (
+                    f"participation_rate={participation_rate:.0%} is very high — "
+                    "strategies trading more than 50% of daily volume may face "
+                    "significant market impact in live execution."
+                ),
+                "suggested_check": (
+                    "Reduce participation_rate to ≤20% or add an explicit market-"
+                    "impact model. Verify position sizes are achievable without "
+                    "moving the market."
+                ),
+            })
+        elif participation_rate > 0.2:
+            findings.append({
+                "code": "elevated_participation_rate",
+                "severity": "medium",
+                "message": (
+                    f"participation_rate={participation_rate:.0%} is above 20% — "
+                    "may face material market impact at scale."
+                ),
+                "suggested_check": (
+                    "Verify that position sizes are achievable without significant "
+                    "market impact at this participation rate."
+                ),
+            })
+
+    # ------------------------------------------------------------------ #
+    # Liquidity filter check (high turnover without filter)
+    # ------------------------------------------------------------------ #
+    if not liquidity_filter_present and turnover is not None and turnover > 1.5:
+        findings.append({
+            "code": "missing_liquidity_filter",
+            "severity": "medium",
+            "message": (
+                f"No liquidity_filter specified alongside turnover={turnover:.1f}× — "
+                "high-turnover strategies may inadvertently include illiquid names."
+            ),
+            "suggested_check": (
+                "Add a liquidity_filter (e.g. minimum average_daily_volume) to the "
+                "universe or assumptions to exclude names that cannot be traded at scale."
+            ),
+        })
+
+    # ------------------------------------------------------------------ #
+    # Missing execution_timing (informational)
+    # ------------------------------------------------------------------ #
+    if execution_timing is None:
+        findings.append({
+            "code": "missing_execution_timing",
+            "severity": "low",
+            "message": "execution_timing not specified in assumptions_json.",
+            "suggested_check": (
+                "Specify execution_timing (e.g. 'open', 'close', 'intraday_vwap') "
+                "to make the timing of execution explicit and auditable."
+            ),
+        })
+
+    # ------------------------------------------------------------------ #
+    # Compute fill_realism_level
+    # ------------------------------------------------------------------ #
+    # Unknown when fill_model is missing (can't assess without it).
+    if fill_model is None:
+        fill_level = "unknown"
+    else:
+        has_high = any(f["severity"] == "high" for f in findings)
+        medium_count = sum(1 for f in findings if f["severity"] == "medium")
+
+        if has_high:
+            fill_level = "weak"
+        elif medium_count >= 2:
+            fill_level = "review"
+        elif medium_count == 1:
+            fill_level = "review"
+        elif slippage is not None and execution_timing is not None:
+            fill_level = "strong"
+        else:
+            fill_level = "acceptable"
+
+    return {
+        "fill_model": fill_model,
+        "slippage_bps": slippage,
+        "execution_timing": execution_timing,
+        "participation_rate": participation_rate,
+        "liquidity_filter_present": liquidity_filter_present,
+        "fill_realism_level": fill_level,
+        "findings": findings,
+    }
+
+
+# ---------------------------------------------------------------------------
+# M13 — Fragility summary
+# ---------------------------------------------------------------------------
+
+def _build_fragility_summary(
+    cost_sensitivity: dict,
+    fill_realism: dict,
+) -> dict:
+    """K. Roll cost sensitivity and fill realism into an overall fragility summary."""
+    cost_level = cost_sensitivity.get("cost_fragility_level", "unknown")
+    fill_level = fill_realism.get("fill_realism_level", "unknown")
+
+    # Overall fragility: worst of the two dimensions.
+    if cost_level == "high" or fill_level == "weak":
+        overall = "high"
+    elif cost_level == "medium" or fill_level == "review":
+        overall = "medium"
+    elif cost_level == "low" and fill_level in ("strong", "acceptable"):
+        overall = "low"
+    elif cost_level == "unknown" and fill_level == "unknown":
+        overall = "unknown"
+    else:
+        # Partial data: one known, one unknown — be conservative.
+        known_levels = [l for l in (cost_level, fill_level) if l != "unknown"]
+        if any(l in ("high", "medium") for l in known_levels):
+            overall = max(known_levels, key=lambda l: {"high": 3, "medium": 2, "low": 1}.get(l, 0))
+        else:
+            overall = "unknown"
+
+    key_concerns: list[str] = []
+    if cost_level == "high":
+        key_concerns.append(
+            "Cost sensitivity is estimated to be high — reported Sharpe may drop "
+            "below 1.0 at realistic transaction cost levels."
+        )
+    elif cost_level == "medium":
+        key_concerns.append(
+            "Cost sensitivity is estimated to be moderate — performance may be "
+            "materially impacted at higher transaction cost levels."
+        )
+    if fill_level == "weak":
+        key_concerns.append(
+            "Fill realism is weak — execution assumptions may significantly "
+            "overstate achievable returns in live trading."
+        )
+    elif fill_level == "review":
+        key_concerns.append(
+            "Fill realism requires review — one or more execution assumptions "
+            "may be optimistic relative to live trading conditions."
+        )
+
+    return {
+        "overall_fragility": overall,
+        "cost_fragility_level": cost_level,
+        "fill_realism_level": fill_level,
+        "key_concerns": key_concerns,
+    }
+
+
+# ---------------------------------------------------------------------------
+# M13 — Issues derived from sensitivity analysis
+# ---------------------------------------------------------------------------
+
+def _issues_from_cost_sensitivity(
+    cost_sensitivity: dict,
+    issues: list[AuditIssue],
+) -> None:
+    """Create BacktestIssue records for high/medium cost fragility findings."""
+    level = cost_sensitivity.get("cost_fragility_level", "unknown")
+    turnover = cost_sensitivity.get("turnover")
+    base_sharpe = cost_sensitivity.get("base_sharpe")
+    scenarios = cost_sensitivity.get("scenarios", [])
+
+    # Find the 10-bps and 25-bps adjusted Sharpe values for evidence.
+    sharpe_at_10: float | None = next(
+        (s["adjusted_sharpe"] for s in scenarios if s["cost_bps"] == 10.0), None
+    )
+    sharpe_at_25: float | None = next(
+        (s["adjusted_sharpe"] for s in scenarios if s["cost_bps"] == 25.0), None
+    )
+
+    if level == "high":
+        issues.append(AuditIssue(
+            issue_type="high_cost_fragility",
+            severity="high",
+            title="Strategy may be fragile to realistic transaction costs",
+            description=(
+                f"Cost sensitivity analysis (estimate only) suggests the Sharpe ratio "
+                f"may drop below 1.0 at 10 bps of transaction cost "
+                f"(estimated Sharpe at 10 bps: {sharpe_at_10:.2f} vs base {base_sharpe:.2f}). "
+                f"Turnover of {turnover:.1f}× amplifies the impact of cost assumptions. "
+                "These are approximations — not a full re-backtest."
+            ) if (sharpe_at_10 is not None and base_sharpe is not None and turnover is not None)
+            else (
+                "Cost sensitivity analysis suggests high fragility to transaction costs. "
+                "These are estimates only — not a full re-backtest."
+            ),
+            evidence_json={
+                "cost_fragility_level": "high",
+                "turnover": turnover,
+                "base_sharpe": base_sharpe,
+                "estimated_sharpe_at_10bps": sharpe_at_10,
+                "estimated_sharpe_at_25bps": sharpe_at_25,
+            },
+            suggested_check=(
+                "Re-run the backtest with explicit cost assumptions of 10–25 bps to "
+                "verify whether the strategy remains viable under realistic cost levels. "
+                "Consider reducing turnover or improving signal-to-noise ratio."
+            ),
+        ))
+    elif level == "medium":
+        issues.append(AuditIssue(
+            issue_type="medium_cost_fragility",
+            severity="medium",
+            title="Strategy may be moderately sensitive to transaction costs",
+            description=(
+                f"Cost sensitivity analysis (estimate only) suggests the Sharpe ratio "
+                f"may drop below 1.0 at 25 bps of transaction cost "
+                f"(estimated Sharpe at 25 bps: {sharpe_at_25:.2f} vs base {base_sharpe:.2f}). "
+                "These are approximations — not a full re-backtest."
+            ) if (sharpe_at_25 is not None and base_sharpe is not None)
+            else (
+                "Cost sensitivity analysis suggests moderate fragility to transaction costs. "
+                "These are estimates only — not a full re-backtest."
+            ),
+            evidence_json={
+                "cost_fragility_level": "medium",
+                "turnover": turnover,
+                "base_sharpe": base_sharpe,
+                "estimated_sharpe_at_25bps": sharpe_at_25,
+            },
+            suggested_check=(
+                "Consider re-running the backtest with 25 bps cost assumptions. "
+                "For strategies with moderate turnover, 10–25 bps is a reasonable "
+                "range for realistic transaction costs."
+            ),
+        ))
+
+
+def _issues_from_fill_realism(
+    fill_realism: dict,
+    issues: list[AuditIssue],
+) -> None:
+    """Create BacktestIssue records for NEW M13 fill realism findings.
+
+    M8's _check_fill_model already handles missing_fill_model, close_fill_model,
+    and open-fill-without-slippage.  This function creates issues only for
+    NEW issue types not covered by M8.
+    """
+    # Issue types M8 already handles — skip to avoid duplicates.
+    _M8_COVERED = {"missing_fill_model", "same_close_fill", "close_fill_model"}
+
+    fill_model = fill_realism.get("fill_model")
+    findings = fill_realism.get("findings", [])
+
+    for finding in findings:
+        code = finding["code"]
+        if code in _M8_COVERED:
+            continue  # Already covered by M8 checks.
+
+        if code == "same_bar_fill":
+            issues.append(AuditIssue(
+                issue_type="same_bar_fill",
+                severity="high",
+                title="Same-bar fill model — strong execution bias risk",
+                description=finding["message"],
+                evidence_json={"fill_model": fill_model},
+                suggested_check=finding["suggested_check"],
+            ))
+        elif code == "mid_fill_no_slippage":
+            issues.append(AuditIssue(
+                issue_type="mid_fill_no_slippage",
+                severity="medium",
+                title="Mid-price fill without slippage modelled",
+                description=finding["message"],
+                evidence_json={"fill_model": fill_model, "slippage_bps": None},
+                suggested_check=finding["suggested_check"],
+            ))
+        elif code == "high_participation_rate":
+            issues.append(AuditIssue(
+                issue_type="high_participation_rate",
+                severity="high",
+                title="Very high participation rate assumption",
+                description=finding["message"],
+                evidence_json={
+                    "participation_rate": fill_realism.get("participation_rate"),
+                    "threshold": 0.5,
+                },
+                suggested_check=finding["suggested_check"],
+            ))
+        elif code == "elevated_participation_rate":
+            issues.append(AuditIssue(
+                issue_type="elevated_participation_rate",
+                severity="medium",
+                title="Elevated participation rate assumption",
+                description=finding["message"],
+                evidence_json={
+                    "participation_rate": fill_realism.get("participation_rate"),
+                    "threshold": 0.2,
+                },
+                suggested_check=finding["suggested_check"],
+            ))
+        elif code == "missing_liquidity_filter":
+            issues.append(AuditIssue(
+                issue_type="missing_liquidity_filter",
+                severity="medium",
+                title="No liquidity filter with high turnover",
+                description=finding["message"],
+                evidence_json={
+                    "liquidity_filter_present": False,
+                    "turnover": fill_realism.get("fill_model"),  # captured indirectly
+                },
+                suggested_check=finding["suggested_check"],
+            ))
+        elif code == "missing_execution_timing":
+            issues.append(AuditIssue(
+                issue_type="missing_execution_timing",
+                severity="low",
+                title="Execution timing not specified",
+                description=finding["message"],
+                evidence_json={"execution_timing": None},
+                suggested_check=finding["suggested_check"],
+            ))
+        elif code == "high_trade_count_simple_fill":
+            issues.append(AuditIssue(
+                issue_type="high_trade_count_simple_fill",
+                severity="low",
+                title="High trade count with simplistic fill model",
+                description=finding["message"],
+                evidence_json={"fill_model": fill_model},
+                suggested_check=finding["suggested_check"],
+            ))
+        # missing_slippage is informational in the JSON only — not a separate issue.
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -693,7 +1334,7 @@ def run_backtest_audit(
     Returns
     -------
     AuditResult
-        Dataclass with all issues, scores, status, and summary.
+        Dataclass with all issues, scores, status, summary, and M13 JSON blobs.
         Ready to be persisted to the DB by the calling route.
     """
     assumptions: dict = run.assumptions_json or {}
@@ -702,7 +1343,9 @@ def run_backtest_audit(
 
     issues: list[AuditIssue] = []
 
-    # Run all checks.
+    # ------------------------------------------------------------------
+    # M8 checks
+    # ------------------------------------------------------------------
     _check_transaction_costs(assumptions, metrics, issues)
     _check_fill_model(assumptions, issues)
     _check_borrow_costs(assumptions, issues)
@@ -712,14 +1355,30 @@ def run_backtest_audit(
     _check_drawdown(metrics, issues)
     _check_metric_plausibility(metrics, issues)
 
+    # ------------------------------------------------------------------
+    # M13 sensitivity analyses (computed before issues so results feed issues)
+    # ------------------------------------------------------------------
+    cost_sensitivity = _analyze_cost_sensitivity(assumptions, metrics)
+    fill_realism = _analyze_fill_realism(assumptions, metrics)
+    fragility_summary = _build_fragility_summary(cost_sensitivity, fill_realism)
+
+    # Create issues from M13 analyses.
+    _issues_from_cost_sensitivity(cost_sensitivity, issues)
+    _issues_from_fill_realism(fill_realism, issues)
+
+    # ------------------------------------------------------------------
     # Sort issues most-severe first for consistent output.
+    # ------------------------------------------------------------------
     _sev_rank = {s: i for i, s in enumerate(_SEVERITY_ORDER)}
     issues.sort(key=lambda x: _sev_rank.get(x.severity, len(_SEVERITY_ORDER)))
 
+    # ------------------------------------------------------------------
     # Compute scores.
+    # ------------------------------------------------------------------
     trust_score = _compute_trust_score(issues)
     cost_realism_score = _compute_subscore(issues, "cost_realism_score")
     fill_realism_score = _compute_subscore(issues, "fill_realism_score")
+    liquidity_realism_score = _compute_subscore(issues, "liquidity_realism_score")
     borrow_realism_score = _compute_subscore(issues, "borrow_realism_score")
     data_quality_score = _compute_subscore(issues, "data_quality_score")
 
@@ -729,14 +1388,16 @@ def run_backtest_audit(
     return AuditResult(
         issues=issues,
         trust_score=trust_score,
-        # lookahead_risk_score and liquidity_realism_score are reserved for v2.
-        # No checks map to them in v1, so they remain at 100.
+        # lookahead_risk_score reserved for a future check (no checks map to it yet).
         lookahead_risk_score=100,
         cost_realism_score=cost_realism_score,
         fill_realism_score=fill_realism_score,
-        liquidity_realism_score=100,
+        liquidity_realism_score=liquidity_realism_score,
         borrow_realism_score=borrow_realism_score,
         data_quality_score=data_quality_score,
         overall_status=status,
         summary=summary,
+        cost_sensitivity_json=cost_sensitivity,
+        fill_realism_json=fill_realism,
+        fragility_summary_json=fragility_summary,
     )

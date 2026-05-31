@@ -4,6 +4,7 @@ import type {
   BacktestAudit,
   BacktestIssue,
   BacktestStatus,
+  CostSensitivityScenario,
   DataEvidenceSummary,
   StrategyDetail as StrategyDetailType,
   StrategyRun,
@@ -376,7 +377,108 @@ function AuditTrailPanel({ strategyId }: { strategyId: string }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// M13 sub-components for BacktestAuditPanel
+// ---------------------------------------------------------------------------
+
+function fragilityLevelBadge(level: string | null | undefined): string {
+  switch (level) {
+    case "high":
+    case "weak":
+      return "border-fidelity-low/30 bg-fidelity-low/10 text-fidelity-low";
+    case "medium":
+    case "review":
+      return "border-fidelity-medium/30 bg-fidelity-medium/10 text-fidelity-medium";
+    case "low":
+    case "strong":
+    case "acceptable":
+      return "border-fidelity-high/30 bg-fidelity-high/10 text-fidelity-high";
+    default:
+      return "border-border bg-bg-600 text-text-muted";
+  }
+}
+
+/** Inline Sharpe value coloured by threshold. */
+function SharpeValue({ v }: { v: number | null }) {
+  if (v === null) return <span className="text-text-muted">—</span>;
+  const cls = v < 0 ? "text-fidelity-low" : v < 1.0 ? "text-fidelity-medium" : "text-fidelity-high";
+  return <span className={cls}>{v.toFixed(2)}</span>;
+}
+
+/** Compact table of cost scenarios. */
+function CostSensitivityTable({ scenarios, baseSharpe, baseReturn }: {
+  scenarios: CostSensitivityScenario[];
+  baseSharpe: number | null;
+  baseReturn: number | null;
+}) {
+  const standard = [5, 10, 15, 25, 50];
+  const filtered = scenarios.filter((s) => standard.includes(s.cost_bps));
+
+  if (filtered.length === 0) return null;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-2xs font-mono">
+        <thead>
+          <tr className="border-b border-border/50">
+            <th className="py-1 pr-3 text-text-muted font-normal">Cost</th>
+            <th className="py-1 pr-3 text-text-muted font-normal">Adj. Return</th>
+            <th className="py-1 pr-3 text-text-muted font-normal">Adj. Sharpe</th>
+            <th className="py-1 text-text-muted font-normal">ΔSharpe</th>
+          </tr>
+        </thead>
+        <tbody>
+          {/* Baseline row */}
+          <tr className="border-b border-border/30">
+            <td className="py-1 pr-3 text-text-muted">base</td>
+            <td className="py-1 pr-3 text-text-secondary">
+              {baseReturn !== null ? `${(baseReturn * 100).toFixed(1)}%` : "—"}
+            </td>
+            <td className="py-1 pr-3">
+              <SharpeValue v={baseSharpe} />
+            </td>
+            <td className="py-1 text-text-muted">—</td>
+          </tr>
+          {filtered.map((s) => (
+            <tr key={s.cost_bps} className="border-b border-border/20 last:border-0">
+              <td className="py-1 pr-3 text-text-secondary">{s.cost_bps} bps</td>
+              <td className="py-1 pr-3 text-text-secondary">
+                {s.adjusted_annual_return !== null
+                  ? `${(s.adjusted_annual_return * 100).toFixed(1)}%`
+                  : "—"}
+              </td>
+              <td className="py-1 pr-3">
+                <SharpeValue v={s.adjusted_sharpe} />
+              </td>
+              <td className="py-1">
+                {s.sharpe_delta !== null ? (
+                  <span className={s.sharpe_delta < 0 ? "text-fidelity-low" : "text-fidelity-high"}>
+                    {s.sharpe_delta > 0 ? "+" : ""}{s.sharpe_delta.toFixed(2)}
+                  </span>
+                ) : (
+                  <span className="text-text-muted">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function BacktestAuditPanel({ audit }: { audit: BacktestAudit }) {
+  const [showCostDetail, setShowCostDetail] = useState(false);
+  const [showFillDetail, setShowFillDetail] = useState(false);
+
+  const cs = audit.cost_sensitivity_json;
+  const fr = audit.fill_realism_json;
+  const fs = audit.fragility_summary_json;
+
+  const hasCostData = cs !== null && cs.scenarios.length > 0;
+  const hasFillData = fr !== null;
+  const hasFragility = fs !== null;
+
   return (
     <div className="mt-3 rounded-control border border-border bg-bg-800 p-3 space-y-3">
       {/* Header: trust score + status */}
@@ -399,20 +501,150 @@ function BacktestAuditPanel({ audit }: { audit: BacktestAudit }) {
       {/* Summary */}
       <p className="text-xs text-text-secondary leading-relaxed">{audit.summary}</p>
 
+      {/* M13: Fragility summary key concerns */}
+      {hasFragility && fs!.key_concerns.length > 0 && (
+        <div className="rounded-control border border-fidelity-medium/20 bg-fidelity-medium/5 px-2.5 py-2 space-y-1">
+          <p className="caption text-fidelity-medium">Fragility concerns</p>
+          {fs!.key_concerns.map((concern, i) => (
+            <p key={i} className="font-mono text-2xs text-fidelity-medium leading-relaxed">
+              • {concern}
+            </p>
+          ))}
+        </div>
+      )}
+
       {/* Subscores */}
-      <div className="grid grid-cols-4 gap-2 rounded-control border border-border/50 bg-bg-700 px-3 py-2">
+      <div className="grid grid-cols-5 gap-1.5 rounded-control border border-border/50 bg-bg-700 px-3 py-2">
         {[
           { label: "Cost", value: audit.cost_realism_score },
           { label: "Fill", value: audit.fill_realism_score },
+          { label: "Liquidity", value: audit.liquidity_realism_score },
           { label: "Borrow", value: audit.borrow_realism_score },
           { label: "Data", value: audit.data_quality_score },
         ].map(({ label, value }) => (
           <div key={label} className="text-center">
-            <p className="caption mb-0.5">{label}</p>
+            <p className="caption mb-0.5 truncate text-2xs">{label}</p>
             <p className={`mono-num text-sm font-semibold ${trustColor(value)}`}>{value}</p>
           </div>
         ))}
       </div>
+
+      {/* M13: Cost Sensitivity section */}
+      {hasCostData && (
+        <div className="rounded-control border border-border/50 bg-bg-700">
+          <button
+            className="flex w-full items-center justify-between px-3 py-2"
+            onClick={() => setShowCostDetail((v) => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <p className="caption">Cost Sensitivity</p>
+              {cs!.cost_fragility_level !== "unknown" && (
+                <span className={`rounded-chip border px-1.5 py-0.5 font-mono text-2xs ${fragilityLevelBadge(cs!.cost_fragility_level)}`}>
+                  {cs!.cost_fragility_level}
+                </span>
+              )}
+            </div>
+            <span className="font-mono text-2xs text-text-muted/60">
+              {showCostDetail ? "▲" : "▼"}
+            </span>
+          </button>
+          {showCostDetail && (
+            <div className="border-t border-border/50 px-3 py-2 space-y-2">
+              <p className="font-mono text-2xs text-text-muted italic">
+                Estimated only — not a full re-backtest. Treat values as indicative.
+              </p>
+              <CostSensitivityTable
+                scenarios={cs!.scenarios}
+                baseSharpe={cs!.base_sharpe}
+                baseReturn={cs!.base_annual_return}
+              />
+              {cs!.warnings.slice(1).map((w, i) => (
+                <p key={i} className="font-mono text-2xs text-text-muted">
+                  ⚠ {w}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* M13: Fill Realism section */}
+      {hasFillData && (
+        <div className="rounded-control border border-border/50 bg-bg-700">
+          <button
+            className="flex w-full items-center justify-between px-3 py-2"
+            onClick={() => setShowFillDetail((v) => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <p className="caption">Fill Realism</p>
+              {fr!.fill_realism_level !== "unknown" && (
+                <span className={`rounded-chip border px-1.5 py-0.5 font-mono text-2xs ${fragilityLevelBadge(fr!.fill_realism_level)}`}>
+                  {fr!.fill_realism_level}
+                </span>
+              )}
+              {fr!.fill_model && (
+                <span className="font-mono text-2xs text-text-muted">
+                  model: {fr!.fill_model}
+                </span>
+              )}
+            </div>
+            <span className="font-mono text-2xs text-text-muted/60">
+              {showFillDetail ? "▲" : "▼"}
+            </span>
+          </button>
+          {showFillDetail && (
+            <div className="border-t border-border/50 px-3 py-2 space-y-1.5">
+              {fr!.findings.length === 0 ? (
+                <p className="font-mono text-2xs text-fidelity-high">
+                  ✓ No fill realism concerns noted
+                </p>
+              ) : (
+                fr!.findings
+                  .filter((f) => f.code !== "missing_slippage")
+                  .map((f, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span
+                        className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                          f.severity === "high" || f.severity === "critical"
+                            ? "bg-fidelity-low"
+                            : f.severity === "medium"
+                              ? "bg-fidelity-medium"
+                              : "bg-text-muted"
+                        }`}
+                      />
+                      <p
+                        className={`font-mono text-2xs leading-relaxed ${
+                          f.severity === "high" || f.severity === "critical"
+                            ? "text-fidelity-low"
+                            : f.severity === "medium"
+                              ? "text-fidelity-medium"
+                              : "text-text-muted"
+                        }`}
+                      >
+                        {f.message}
+                      </p>
+                    </div>
+                  ))
+              )}
+              {fr!.slippage_bps !== null && (
+                <p className="font-mono text-2xs text-text-muted">
+                  slippage: {fr!.slippage_bps} bps
+                </p>
+              )}
+              {fr!.execution_timing && (
+                <p className="font-mono text-2xs text-text-muted">
+                  execution timing: {fr!.execution_timing}
+                </p>
+              )}
+              {fr!.participation_rate !== null && (
+                <p className="font-mono text-2xs text-text-muted">
+                  participation rate: {(fr!.participation_rate * 100).toFixed(0)}%
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Issues */}
       {audit.issues.length === 0 ? (
