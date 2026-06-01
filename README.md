@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (888 tests)
+│   └── tests/              Pytest tests (901 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,100 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M24: API Key Foundation + SDK Auth
+## Current milestone — M25: SDK Ingestion Reliability v1
+
+**Status: complete.**
+
+### M25 deliverables
+
+- **New DB table** `sdk_ingestion_batches` (migration `0014_m25_sdk_ingestion_batches.py`):
+
+  | Column | Type | Notes |
+  |---|---|---|
+  | `id` | UUID PK | |
+  | `strategy_id` | UUID FK strategies CASCADE | |
+  | `idempotency_key` | String 255, unique | caller-supplied or auto-generated |
+  | `request_hash` | String 64 | SHA-256 of bundle payload, excluding `idempotency_key` field |
+  | `status` | String 20 | `pending` \| `completed` \| `failed` |
+  | `response_json` | JSON, nullable | stored response on success |
+  | `error_json` | JSON, nullable | stored error info on failure |
+  | `created_at` | DateTime | |
+  | `updated_at` | DateTime | |
+
+- **Idempotency behavior**:
+  - Same key + same payload → replay stored response (`idempotency_status="replayed"`).
+  - Same key + different payload → 409 Conflict.
+  - Failed batch → allow retry (status reset to `pending`, fresh attempt made).
+
+- **Idempotency key sources** (header takes precedence):
+  - `Idempotency-Key` HTTP header.
+  - `idempotency_key` field in JSON body.
+
+- **`request_hash`**: SHA-256 of bundle payload with the `idempotency_key` field excluded before hashing.
+
+- **Response fields added** to `EvidenceBundleResponse`:
+  - `idempotency_key` — key used for this request.
+  - `idempotency_status` — `new` | `replayed` | `retried_after_failure`.
+  - `ingestion_batch_id` — UUID of the `sdk_ingestion_batches` row.
+
+- **SDK retry** (`sdk/python/quantfidelity/client.py`):
+  - `ingest_evidence_bundle(strategy_id, bundle, *, retry=True, max_retries=3, backoff_seconds=0.5, idempotency_key=None, buffer_on_failure=False)`.
+  - Retry on: connection errors, timeouts, 502/503/504. Exponential backoff (`backoff_seconds × 2^attempt`).
+  - No retry on: 400, 401, 403, 404, 409, 422.
+  - When `retry=True`, an idempotency key is auto-generated (UUID4) if not supplied, ensuring safe retries.
+
+- **`buffer_on_failure=True`**: when all retries are exhausted, writes the bundle to `~/.quantfidelity/buffer.jsonl` instead of raising. No API key is stored in the buffer file.
+
+- **New `buffer.py`** (`sdk/python/quantfidelity/buffer.py`): `LocalBuffer` class with:
+  - `add(strategy_id, bundle_dict, idempotency_key)` — appends a JSONL record.
+  - `list_records()` — returns all buffered records.
+  - `clear()` — removes all records.
+  - `flush(client)` — sends each record via the client, removes successes, keeps failures.
+
+- **New client convenience methods**:
+  - `client.buffer_evidence_bundle(strategy_id, bundle)` — force-buffer without attempting server.
+  - `client.flush_buffer()` — flush all buffered records; returns `{"flushed": N, "failed": N, "remaining": N}`.
+  - `client.list_buffered()` — returns list of buffered records.
+  - `client.clear_buffer()` — removes all buffered records.
+
+- **CLI additions** (`qf` command):
+  - `qf ingest --idempotency-key <key>` — pass an explicit idempotency key.
+  - `qf ingest --buffer-on-failure` — buffer locally if server is unreachable.
+  - `qf buffer list` — show buffered records.
+  - `qf buffer flush [--base-url URL]` — flush buffered records to server.
+  - `qf buffer clear [--yes]` — clear buffer (requires `--yes` confirmation flag).
+
+- **Frontend**: optional idempotency key field added to the Evidence Bundle Ingestion panel in `StrategyDetail.tsx`. When filled, the value is sent as the `Idempotency-Key` header. Response panel shows `idempotency_status` and `ingestion_batch_id`.
+
+- **13 new backend tests** (`tests/test_ingestion_reliability_m25.py`):
+  ingestion without key still works, batch created on ingestion with key, replay returns stored
+  response, replay sets `idempotency_status=replayed`, replay does not duplicate run, different
+  payload same key → 409, key from body works, header takes precedence over body,
+  request_hash excludes idempotency_key field, failed batch allows retry,
+  `idempotency_status=new` on first request, batch stores no raw API key, batch stores response_json.
+
+- **21 new SDK tests** (`sdk/python/tests/test_reliability_m25.py`):
+  idempotency key sent as header, retry=True generates key, no key when retry=False,
+  retries on 503 then succeeds, no retry on 400/401/409, retries on connection error then
+  buffers, buffer add creates record, buffer does not store API key, list_records empty,
+  list_records returns added, clear removes all, flush sends and removes successful,
+  flush preserves failed records, client buffer_on_failure writes to buffer,
+  client list_buffered, client clear_buffer, CLI ingest passes idempotency key,
+  CLI buffer list empty, CLI buffer clear with yes flag.
+
+- **Backend total: 901 passed, 1 skipped.**
+- **SDK total: 131 passed.**
+- **Zero TypeScript errors**, clean build (61 modules).
+
+### What M25 does NOT build (by design)
+
+- No async server workers, Redis/Celery, or distributed job queues.
+- No pandas/numpy helpers or DataFrames-to-dict conversion utilities.
+- No PyPI publishing of the SDK.
+
+---
+
+## Previously completed — M24: API Key Foundation + SDK Auth
 
 **Status: complete.**
 
@@ -205,9 +298,9 @@ the backend alongside the frontend to see it connected.
   - Timeline events emitted for create and revoke.
   - Key hash stored, raw key NOT stored in DB.
   - `last_used_at` updated on authenticated request.
-- **Backend total: 888 passed, 1 skipped.**
+- **Backend total at M24: 888 passed, 1 skipped.**
 - **Zero TypeScript errors**, clean build (61 modules).
-- **SDK tests: 110 passed.**
+- **SDK tests at M24: 110 passed.**
 
 ### What M24 does NOT build (by design)
 

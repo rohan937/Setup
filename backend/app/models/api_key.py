@@ -15,6 +15,7 @@ from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.project import Project
+    from app.models.sdk_ingestion_batch import SdkIngestionBatch
 
 
 class ApiKey(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -58,6 +59,10 @@ class ApiKey(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     project: Mapped["Project | None"] = relationship(
         "Project", back_populates="api_keys"
+    )
+    # M25: SDK ingestion batches linked to this key.
+    sdk_ingestion_batches: Mapped[list["SdkIngestionBatch"]] = relationship(  # noqa: F821
+        "SdkIngestionBatch", back_populates="api_key"
     )
 
     def __repr__(self) -> str:

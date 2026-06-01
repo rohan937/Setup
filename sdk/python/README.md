@@ -51,6 +51,66 @@ print(f"Created: {result['created_count']}")
 
 ---
 
+## Safe retries & idempotency
+
+### Auto-retry with idempotency key
+
+```python
+client.ingest_evidence_bundle(strategy_id, bundle, retry=True)
+```
+
+`retry=True` (the default) auto-generates a UUID idempotency key and retries up to 3 times
+on connection errors and 5xx responses (502/503/504). Backoff starts at 0.5 s and doubles
+each attempt.
+
+### Manual idempotency key
+
+```python
+result = client.ingest_evidence_bundle(
+    strategy_id, bundle, idempotency_key="backtest-q1-2024"
+)
+```
+
+- Same key + same payload → replays stored response (`idempotency_status="replayed"`).
+- Same key + different payload → 409 Conflict.
+
+### Offline buffer
+
+If the server is unreachable and you don't want to lose the bundle:
+
+```python
+result = client.ingest_evidence_bundle(
+    strategy_id, bundle, buffer_on_failure=True
+)
+```
+
+The bundle is written to `~/.quantfidelity/buffer.jsonl`.  Later, flush buffered records:
+
+```python
+result = client.flush_buffer()
+# {"flushed": 2, "failed": 0, "remaining": 0}
+
+client.list_buffered()  # see what's buffered
+client.clear_buffer()   # remove all
+```
+
+### CLI
+
+```bash
+qf ingest --strategy-id <uuid> --file bundle.json --idempotency-key my-key
+qf ingest --strategy-id <uuid> --file bundle.json --buffer-on-failure
+
+qf buffer list
+qf buffer flush --base-url http://localhost:8000
+qf buffer clear --yes
+```
+
+### Note
+
+The buffer **never** stores API keys.  `api_key` is resolved from the client at flush time.
+
+---
+
 ## API key authentication
 
 ### Create a key
@@ -262,12 +322,11 @@ from quantfidelity.exceptions import (
 
 ---
 
-## Known limitations (M24)
+## Known limitations (M25)
 
 - **No async support** — synchronous `requests` only.  Async variant planned for a future milestone.
 - **No PyPI publish** — local editable install only.  `pip install quantfidelity` does not work yet.
 - **No automatic Git detection** — `git_commit` and `branch_name` must be supplied manually.
-- **No retry/offline buffering** — connection errors raise immediately.
 - **No pandas/numpy helpers** — DataFrames must be converted to `list[dict]` before passing as rows.
 
 ---

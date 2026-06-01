@@ -1435,6 +1435,8 @@ function IngestionPanel({
   setBundleLoading,
   bundleError,
   setBundleError,
+  idempotencyKey,
+  setIdempotencyKey,
   onSuccess,
 }: {
   strategyId: string;
@@ -1446,6 +1448,8 @@ function IngestionPanel({
   setBundleLoading: (v: boolean) => void;
   bundleError: string | null;
   setBundleError: (v: string | null) => void;
+  idempotencyKey: string;
+  setIdempotencyKey: (v: string) => void;
   onSuccess: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1473,6 +1477,9 @@ function IngestionPanel({
     } catch {
       setBundleError("Invalid JSON — please fix the payload before ingesting.");
       return;
+    }
+    if (idempotencyKey.trim()) {
+      (parsed as Record<string, unknown>).idempotency_key = idempotencyKey.trim();
     }
     setBundleLoading(true);
     try {
@@ -1520,6 +1527,25 @@ function IngestionPanel({
             placeholder='{\n  "strategy_run": { "run_name": "...", "run_type": "backtest" }\n}'
             className="w-full resize-y rounded border border-border bg-bg-900 p-3 font-mono text-xs text-teal-300 placeholder:text-text-muted/40 focus:border-cyan-600 focus:outline-none"
           />
+
+          {/* Idempotency key */}
+          <div className="mt-3">
+            <label className="mb-1 block font-mono text-2xs text-text-muted/70">
+              Idempotency Key{" "}
+              <span className="text-text-muted/40">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={idempotencyKey}
+              onChange={(e) => setIdempotencyKey(e.target.value)}
+              placeholder="e.g. backtest-q1-2024-run1"
+              spellCheck={false}
+              className="w-full rounded border border-border bg-bg-900 px-3 py-1.5 font-mono text-xs text-teal-300 placeholder:text-text-muted/40 focus:border-cyan-600 focus:outline-none"
+            />
+            <p className="mt-1 font-mono text-2xs text-text-muted/50">
+              Use idempotency keys for safe retries from SDK/CI.
+            </p>
+          </div>
 
           {/* Action buttons */}
           <div className="mt-3 flex items-center gap-3">
@@ -1711,6 +1737,8 @@ export default function StrategyDetail() {
   const [bundleResult, setBundleResult] = useState<EvidenceBundleResponse | null>(null);
   const [bundleLoading, setBundleLoading] = useState(false);
   const [bundleError, setBundleError] = useState<string | null>(null);
+  // M25: idempotency key for safe retries
+  const [idempotencyKey, setIdempotencyKey] = useState("");
 
   async function handleGenerateReport() {
     if (!id) return;
@@ -2152,6 +2180,8 @@ export default function StrategyDetail() {
         setBundleLoading={setBundleLoading}
         bundleError={bundleError}
         setBundleError={setBundleError}
+        idempotencyKey={idempotencyKey}
+        setIdempotencyKey={setIdempotencyKey}
         onSuccess={() => setRefreshKey((k) => k + 1)}
       />
     </div>

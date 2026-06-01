@@ -82,6 +82,12 @@ class Strategy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="StrategyReliabilityScore.generated_at.desc()",
     )
+    # M25: SDK ingestion batches for idempotency tracking.
+    sdk_ingestion_batches: Mapped[list["SdkIngestionBatch"]] = relationship(  # noqa: F821
+        "SdkIngestionBatch",
+        back_populates="strategy",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<Strategy slug={self.slug!r} status={self.status!r}>"

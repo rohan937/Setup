@@ -131,6 +131,7 @@ class EvidenceBundleRequest(BaseModel):
     dataset_snapshot: EvidenceBundleDatasetSnapshotSection | None = None
     strategy_run: EvidenceBundleRunSection | None = None
     actions: EvidenceBundleActions | None = None
+    idempotency_key: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -162,5 +163,8 @@ class EvidenceBundleResponse(BaseModel):
     summary: str
     timeline_events_created: int
     generated_at: datetime
+    idempotency_key: str | None = None
+    idempotency_status: str | None = None  # "new" | "replayed" | "retried_after_failure" | "none"
+    ingestion_batch_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}

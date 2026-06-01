@@ -1,4 +1,4 @@
-"""Evidence endpoints (M21, M22).
+"""Evidence endpoints (M21, M22, M25).
 
 GET /api/evidence/coverage — evidence coverage matrix for all strategies.
 POST /api/strategies/{strategy_id}/evidence-bundles — ingest an evidence bundle.
@@ -12,10 +12,13 @@ Design rules:
 """
 from __future__ import annotations
 
+import hashlib
+import json as json_lib
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key_if_enabled
@@ -23,6 +26,7 @@ from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.organization import Organization
 from app.models.project import Project
+from app.models.sdk_ingestion_batch import SdkIngestionBatch
 from app.models.strategy import Strategy
 from app.schemas.evidence_coverage import (
     EvidenceCoverageCell,
@@ -88,6 +92,14 @@ def _get_default_org(db: Session) -> Organization:
     if org is None:
         raise HTTPException(status_code=500, detail="No organization found in database")
     return org
+
+
+def _compute_request_hash(bundle: EvidenceBundleRequest) -> str:
+    """Compute a deterministic SHA-256 hash of the bundle payload (excluding idempotency_key)."""
+    payload = bundle.model_dump(exclude={"idempotency_key"})
+    return hashlib.sha256(
+        json_lib.dumps(payload, sort_keys=True, default=str).encode()
+    ).hexdigest()
 
 
 def _build_bundle_response(result: EvidenceBundleResult) -> EvidenceBundleResponse:
@@ -224,6 +236,7 @@ def ingest_bundle(
     bundle: EvidenceBundleRequest,
     db: Session = Depends(get_db),
     api_key: ApiKey | None = Depends(require_api_key_if_enabled),
+    idempotency_key_header: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> EvidenceBundleResponse:
     """Ingest a structured evidence bundle for a strategy in a single transaction.
 
@@ -233,6 +246,7 @@ def ingest_bundle(
 
     Returns 404 if the strategy does not exist.
     Returns 422 on validation errors.
+    Returns 409 if the idempotency key was already used with a different payload.
     Returns 500 on unexpected errors (transaction is rolled back).
     """
     strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
@@ -245,6 +259,70 @@ def ingest_bundle(
 
     org = _get_default_org(db)
 
+    # Resolve idempotency key (header takes precedence over body)
+    idem_key = idempotency_key_header or bundle.idempotency_key
+    now = datetime.now(timezone.utc)
+    existing_batch: SdkIngestionBatch | None = None
+    batch_prior_status: str | None = None
+
+    if idem_key:
+        request_hash = _compute_request_hash(bundle)
+
+        existing_batch = (
+            db.query(SdkIngestionBatch)
+            .filter(
+                SdkIngestionBatch.strategy_id == strategy_id,
+                SdkIngestionBatch.idempotency_key == idem_key,
+            )
+            .first()
+        )
+
+        if existing_batch is not None:
+            if existing_batch.status == "completed" and existing_batch.request_hash == request_hash:
+                # REPLAY: return stored response unchanged
+                stored = dict(existing_batch.response_json or {})
+                stored["idempotency_status"] = "replayed"
+                stored["idempotency_key"] = idem_key
+                stored["ingestion_batch_id"] = str(existing_batch.id)
+                return EvidenceBundleResponse(**stored)
+            elif existing_batch.status == "completed":
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency key already used with a different payload.",
+                )
+            elif existing_batch.status == "received":
+                raise HTTPException(
+                    status_code=409,
+                    detail="Ingestion already in progress for this idempotency key.",
+                )
+            elif existing_batch.status == "failed":
+                # Allow retry: reset to received
+                batch_prior_status = "failed"
+                existing_batch.status = "received"
+                existing_batch.request_hash = request_hash
+                existing_batch.error_json = None
+                existing_batch.received_at = now
+                db.flush()
+        else:
+            # Create new batch record
+            org_id_str: str | None = None
+            if project is not None:
+                org_id_str = str(project.organization_id) if project.organization_id else None
+            api_key_id_val = uuid.UUID(str(api_key.id)) if api_key is not None else None
+            batch = SdkIngestionBatch(
+                strategy_id=strategy_id,
+                organization_id=org_id_str,
+                project_id=str(project.id) if project is not None else None,
+                idempotency_key=idem_key,
+                request_hash=request_hash,
+                status="received",
+                received_at=now,
+                api_key_id=api_key_id_val,
+            )
+            db.add(batch)
+            db.flush()
+            existing_batch = batch
+
     try:
         result = ingest_evidence_bundle(
             strategy_id=strategy_id,
@@ -254,16 +332,43 @@ def ingest_bundle(
             project_id=project.id,
         )
     except ValueError as exc:
+        if idem_key and existing_batch is not None:
+            existing_batch.status = "failed"
+            existing_batch.error_json = {"detail": str(exc)}
+            db.flush()
+            db.commit()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
+        if idem_key and existing_batch is not None:
+            existing_batch.status = "failed"
+            existing_batch.error_json = {"detail": str(exc)}
+            try:
+                db.flush()
+            except Exception:
+                pass
         db.rollback()
         raise HTTPException(
             status_code=500,
             detail=f"Evidence bundle ingestion failed: {exc}",
         ) from exc
 
+    bundle_response = _build_bundle_response(result)
+
+    # Attach idempotency metadata and persist the batch record
+    if idem_key and existing_batch is not None:
+        bundle_response.idempotency_key = idem_key
+        bundle_response.idempotency_status = (
+            "retried_after_failure" if batch_prior_status == "failed" else "new"
+        )
+        bundle_response.ingestion_batch_id = existing_batch.id
+        existing_batch.status = "completed"
+        existing_batch.completed_at = datetime.now(timezone.utc)
+        existing_batch.response_json = bundle_response.model_dump(mode="json")
+        existing_batch.created_object_refs_json = bundle_response.model_dump(mode="json").get("objects")
+        db.flush()
+
     db.commit()
-    return _build_bundle_response(result)
+    return bundle_response
 
 
 @router.get("/evidence/coverage", response_model=EvidenceCoverageMatrixResponse)

@@ -31,6 +31,7 @@ Quick start::
 
 from importlib.metadata import PackageNotFoundError, version
 
+from quantfidelity.buffer import LocalBuffer
 from quantfidelity.bundle import EvidenceBundle
 from quantfidelity.client import QuantFidelityClient
 from quantfidelity.exceptions import (
@@ -43,6 +44,7 @@ from quantfidelity.exceptions import (
 __all__ = [
     "QuantFidelityClient",
     "EvidenceBundle",
+    "LocalBuffer",
     "QuantFidelityError",
     "QuantFidelityConnectionError",
     "QuantFidelityAPIError",

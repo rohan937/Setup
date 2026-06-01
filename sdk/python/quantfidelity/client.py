@@ -19,6 +19,8 @@ Usage::
 from __future__ import annotations
 
 import json
+import time
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from quantfidelity.exceptions import (
@@ -28,6 +30,11 @@ from quantfidelity.exceptions import (
 
 if TYPE_CHECKING:
     from quantfidelity.bundle import EvidenceBundle
+
+# Status codes that are non-retryable (client errors)
+_NO_RETRY_STATUSES = {400, 401, 403, 404, 409, 422}
+# Status codes that are retryable (server/rate-limit errors)
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
 class QuantFidelityClient:
@@ -44,6 +51,9 @@ class QuantFidelityClient:
         ``None`` for local development (no authentication required).
     timeout:
         Request timeout in seconds.  Defaults to 30.
+    buffer_path:
+        Path for the offline buffer file.  Defaults to
+        ``~/.quantfidelity/buffer.jsonl``.
     """
 
     def __init__(
@@ -52,10 +62,13 @@ class QuantFidelityClient:
         *,
         api_key: str | None = None,
         timeout: int | float = 30,
+        buffer_path: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
+        self._buffer_path = buffer_path
+        self._buffer = None
 
         try:
             import requests as _requests
@@ -69,6 +82,14 @@ class QuantFidelityClient:
     # ------------------------------------------------------------------ #
     # Internal helpers                                                     #
     # ------------------------------------------------------------------ #
+
+    @property
+    def _get_buffer(self):
+        """Lazy-initialise and return the local buffer."""
+        if self._buffer is None:
+            from quantfidelity.buffer import LocalBuffer
+            self._buffer = LocalBuffer(path=self._buffer_path)
+        return self._buffer
 
     def _headers(self) -> dict[str, str]:
         headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -139,6 +160,12 @@ class QuantFidelityClient:
         self,
         strategy_id: str,
         bundle: "EvidenceBundle | dict[str, Any]",
+        *,
+        idempotency_key: str | None = None,
+        retry: bool = True,
+        max_retries: int = 3,
+        backoff_seconds: float = 0.5,
+        buffer_on_failure: bool = False,
     ) -> dict[str, Any]:
         """Submit an evidence bundle to QuantFidelity.
 
@@ -151,33 +178,197 @@ class QuantFidelityClient:
         bundle:
             An :class:`~quantfidelity.bundle.EvidenceBundle` instance or a
             plain ``dict`` matching the ``EvidenceBundleRequest`` schema.
+        idempotency_key:
+            Optional idempotency key for the request.  When ``retry=True``
+            and no key is supplied, one is auto-generated.
+        retry:
+            Whether to retry on transient errors.  Defaults to ``True``.
+        max_retries:
+            Maximum number of attempts (including the first).  Only used
+            when ``retry=True``.
+        backoff_seconds:
+            Base backoff time in seconds.  Actual sleep is
+            ``backoff_seconds * 2 ** attempt``.
+        buffer_on_failure:
+            If ``True``, save the bundle to the local offline buffer when
+            all attempts fail, instead of raising.
 
         Returns
         -------
         dict
-            Parsed ``EvidenceBundleResponse`` JSON with keys:
-            ``strategy_id``, ``created_count``, ``reused_count``,
-            ``actions_run``, ``objects``, ``alerts_generated``,
-            ``warnings``, ``summary``, ``timeline_events_created``,
-            ``generated_at``.
+            Parsed ``EvidenceBundleResponse`` JSON, or
+            ``{"buffered": True, "buffer_id": ..., "error": ...}`` if
+            ``buffer_on_failure=True`` and all attempts failed.
 
         Raises
         ------
         QuantFidelityConnectionError
-            If the server cannot be reached.
+            If the server cannot be reached and ``buffer_on_failure=False``.
         QuantFidelityAPIError
-            If the server returns a non-2xx response.
+            If the server returns a non-2xx response and
+            ``buffer_on_failure=False``.
         """
+        # Auto-generate idempotency key when retrying
+        if retry and idempotency_key is None:
+            idempotency_key = str(uuid.uuid4())
+
         # Accept both EvidenceBundle instances and plain dicts
         try:
             payload = bundle.to_dict()  # type: ignore[union-attr]
         except AttributeError:
             payload = dict(bundle)  # type: ignore[arg-type]
 
-        return self._post(
-            f"/api/strategies/{strategy_id}/evidence-bundles",
-            payload,
+        url = self._url(f"/api/strategies/{strategy_id}/evidence-bundles")
+        attempts = max_retries if retry else 1
+        last_exc: Exception | None = None
+
+        for attempt in range(attempts):
+            # Sleep between retries with exponential backoff
+            if attempt > 0:
+                time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+
+            # Build per-request headers (with optional idempotency key)
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self._api_key:
+                headers["Authorization"] = f"Bearer {self._api_key}"
+            if idempotency_key:
+                headers["Idempotency-Key"] = idempotency_key
+
+            try:
+                resp = self._requests.post(
+                    url,
+                    data=json.dumps(payload, default=str),
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+            except self._requests.exceptions.ConnectionError as exc:
+                last_exc = QuantFidelityConnectionError(
+                    f"Cannot connect to QuantFidelity at {self._base_url}: {exc}"
+                )
+                # Retry on connection error
+                continue
+            except self._requests.exceptions.Timeout as exc:
+                last_exc = QuantFidelityConnectionError(
+                    f"Request timed out after {self._timeout}s (POST {url})"
+                )
+                continue
+
+            if resp.ok:
+                try:
+                    return resp.json()
+                except Exception:
+                    return {"raw": resp.text}
+
+            # Determine whether to retry based on status code
+            try:
+                response_json = resp.json()
+            except Exception:
+                response_json = None
+
+            api_exc = QuantFidelityAPIError(
+                status_code=resp.status_code,
+                response_text=resp.text,
+                response_json=response_json,
+            )
+
+            if resp.status_code in _NO_RETRY_STATUSES:
+                # Non-retryable: raise immediately
+                raise api_exc
+
+            # Retryable status: save and continue
+            last_exc = api_exc
+
+        # All attempts exhausted
+        if buffer_on_failure and last_exc is not None:
+            from quantfidelity.buffer import LocalBuffer
+            buf = LocalBuffer(path=self._buffer_path)
+            record = buf.add(
+                base_url=self._base_url,
+                strategy_id=strategy_id,
+                payload=payload,
+                idempotency_key=idempotency_key,
+                error=str(last_exc),
+            )
+            return {
+                "buffered": True,
+                "buffer_id": record["buffer_id"],
+                "error": str(last_exc),
+            }
+
+        if last_exc is not None:
+            raise last_exc
+
+        # Should not reach here
+        raise QuantFidelityConnectionError(  # pragma: no cover
+            f"Unexpected error during ingest to {url}"
         )
+
+    def buffer_evidence_bundle(
+        self,
+        strategy_id: str,
+        bundle: "EvidenceBundle | dict[str, Any]",
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Buffer a bundle locally without attempting to send it first.
+
+        Parameters
+        ----------
+        strategy_id:
+            UUID string of the target strategy.
+        bundle:
+            An :class:`~quantfidelity.bundle.EvidenceBundle` instance or a
+            plain ``dict``.
+        idempotency_key:
+            Optional idempotency key.  Auto-generated if not provided.
+
+        Returns
+        -------
+        dict
+            The buffered record including ``buffer_id``.
+        """
+        try:
+            payload = bundle.to_dict()  # type: ignore[union-attr]
+        except AttributeError:
+            payload = dict(bundle)  # type: ignore[arg-type]
+
+        idem = idempotency_key or str(uuid.uuid4())
+        from quantfidelity.buffer import LocalBuffer
+        buf = LocalBuffer(path=self._buffer_path)
+        return buf.add(
+            base_url=self._base_url,
+            strategy_id=strategy_id,
+            payload=payload,
+            idempotency_key=idem,
+        )
+
+    def flush_buffer(self, *, max_items: int | None = None) -> dict[str, Any]:
+        """Attempt to resend all buffered records.
+
+        Returns
+        -------
+        dict
+            ``{"flushed": N, "failed": M, "remaining": K}``
+        """
+        from quantfidelity.buffer import LocalBuffer
+        buf = LocalBuffer(path=self._buffer_path)
+        return buf.flush(self, max_items=max_items)
+
+    def list_buffered(self) -> list[dict[str, Any]]:
+        """Return all records currently in the local offline buffer."""
+        from quantfidelity.buffer import LocalBuffer
+        return LocalBuffer(path=self._buffer_path).list_records()
+
+    def clear_buffer(self) -> int:
+        """Remove all records from the local offline buffer.
+
+        Returns
+        -------
+        int
+            Number of records removed.
+        """
+        from quantfidelity.buffer import LocalBuffer
+        return LocalBuffer(path=self._buffer_path).clear()
 
     def get_evidence_bundle_example(self, strategy_id: str) -> dict[str, Any]:
         """Fetch an example evidence bundle payload for a strategy.
