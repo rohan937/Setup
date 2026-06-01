@@ -75,6 +75,12 @@ class UniverseSnapshot(Base):
         back_populates="universe_snapshot",
         foreign_keys="[StrategyRun.universe_snapshot_id]",
     )
+    # M17: signal snapshots linked to this universe snapshot.
+    signal_snapshots: Mapped[list["SignalSnapshot"]] = relationship(  # noqa: F821
+        "SignalSnapshot",
+        back_populates="universe_snapshot",
+        order_by="SignalSnapshot.created_at.desc()",
+    )
 
     def __repr__(self) -> str:
         return (

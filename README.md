@@ -161,7 +161,214 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M16: Universe Snapshotting + Coverage Evidence
+## Current milestone — M17: Signal Snapshotting + Signal Coverage Evidence
+
+**Status: complete.**
+
+### M17 deliverables
+
+- **Migration `0010_m17_signal_snapshots.py`** — adds `signal_snapshots` table and
+  `signal_snapshot_id` FK column on `strategy_runs`.
+  `signal_snapshots` columns: `id` (UUID PK), `strategy_id` (FK strategies CASCADE),
+  `strategy_version_id` (FK strategy_versions SET NULL, nullable),
+  `universe_snapshot_id` (FK universe_snapshots SET NULL, nullable),
+  `label` (String 255), `signal_name` (String 255, nullable),
+  `source_type` (String 100, default `manual_json`), `source_filename` (String 512, nullable),
+  `rows_json` (JSON — full verbatim row payload), `row_count` (Integer),
+  `symbol_count` (Integer), `symbols_json` (JSON — sorted distinct symbols, NOT full rows_json),
+  `min_timestamp`, `max_timestamp` (String 100, nullable), `signal_value_count` (Integer),
+  `missing_signal_count` (Integer), `mean_value`, `min_value`, `max_value`, `stddev_value`
+  (Float nullable), `signal_hash` (String 64, SHA-256, indexed), `quality_score` (Integer),
+  `metadata_json` (JSON nullable), `created_at`, `updated_at`.
+  Indexes: strategy_id, version_id, universe_snapshot_id, signal_hash, created_at.
+  `strategy_runs.signal_snapshot_id` — nullable UUID FK to `signal_snapshots` (SET NULL), indexed.
+  18 total ORM tables.
+- **`EventType.signal_snapshot_logged`** added to `constants.py`.
+- **`app/models/signal_snapshot.py`** — new `SignalSnapshot` ORM model. Linked to `Strategy`
+  (CASCADE delete), `StrategyVersion` (SET NULL), `UniverseSnapshot` (SET NULL). `strategy_runs`
+  back-populated. Strategy, StrategyVersion, UniverseSnapshot, and StrategyRun models all updated
+  with `signal_snapshots` / `signal_snapshot` relationships.
+- **`app/services/signal_snapshots.py`** — deterministic service. No AI, no live data:
+  - `_is_numeric(v)` — finite int/float only; bools and NaN/Inf excluded.
+  - `_parse_timestamp(ts)` — tries ISO 8601 date and datetime formats, returns canonical string.
+  - `normalize_signal_rows(rows, signal_column)` — validates list-of-dicts input.
+  - `compute_signal_hash(rows, metadata, signal_column)` — SHA-256. Rows sorted by
+    `(symbol, timestamp, signal_column_value)` before hashing. Same rows in any insertion order
+    always produce the same 64-char hex hash.
+  - `SignalSummary` dataclass + `summarize_signal_snapshot(rows, signal_column)` — computes
+    `row_count`, `symbol_count`, `symbols_json` (sorted distinct), `min/max_timestamp`,
+    `signal_value_count`, `missing_signal_count`, `mean/min/max/stddev_value`, and
+    `quality_score` (starts at 100, deductions: −8 to −40 for missing/non-numeric signals,
+    −15 for >5% duplicate symbol+timestamp keys, −10 for invalid timestamps, −5 for zero
+    variance with ≥10 rows; clamped 0–100).
+  - `SignalComparisonResult` dataclass + `compare_signal_snapshots(...)` — full comparison:
+    set-based symbol overlap (overlap_ratio, jaccard_similarity), `row_count_delta` always
+    computed (unconditionally), quality_score_delta, keyed row-level changes when both
+    symbol+timestamp fields are present. Hedged language throughout.
+- **Schemas** (`app/schemas/strategy.py`) extended:
+  - `SignalSnapshotCreate` — input schema (strategy_version_id and universe_snapshot_id both
+    optional; label, source_type, signal_name, source_filename, signal_column, rows list,
+    metadata_json optional dict).
+  - `SignalSnapshotSummary` — lightweight evidence embedded in run responses (id, label,
+    signal_name, row_count, symbol_count, signal_value_count, missing_signal_count,
+    quality_score, mean_value, stddev_value, created_at).
+  - `SignalSnapshotRead` — summary output without rows_json blob (used in list responses).
+  - `SignalSnapshotDetail` — extends Read with `rows_json` payload.
+  - `SignalRowChangeOut` — single changed row in comparison response.
+  - `SignalComparisonResponse` — full comparison response (all counts, ratios,
+    highlighted_changes, deterministic_explanation).
+  - `StrategyVersionOut` — extended with `signal_snapshot_count: int = 0`.
+  - `StrategyRunCreate` — extended with `signal_snapshot_id: uuid.UUID | None = None`.
+  - `StrategyRunOut` — extended with `signal_snapshot_id` and
+    `signal_snapshot: SignalSnapshotSummary | None`.
+  - `StrategyDetailOut` — extended with `signal_snapshots: list[SignalSnapshotRead]`.
+- **4 new API endpoints** + 3 updated:
+  - `POST /api/strategies/{strategy_id}/signal-snapshots` — validates strategy and optional
+    FK links (version and universe snapshot ownership), normalizes rows, rejects empty list
+    (422), computes hash + stats + quality score, stores verbatim rows_json, emits
+    `signal_snapshot_logged` audit timeline event → 201 `SignalSnapshotRead`. No rows_json blob
+    in response.
+  - `GET  /api/strategies/{strategy_id}/signal-snapshots` — list newest-first; optional
+    `version_id` filter. No rows_json in list response.
+  - `GET  /api/strategies/{strategy_id}/signal-snapshots/compare?snapshot_a_id=…&snapshot_b_id=…`
+    — registered BEFORE the list route (literal `/compare` matched first). Read-only
+    comparison → 200 `SignalComparisonResponse`. No timeline event.
+  - `GET  /api/signal-snapshots/{snapshot_id}` — full detail with rows_json payload → 200.
+  - `POST /api/strategies/{strategy_id}/runs` updated — accepts `signal_snapshot_id`; validates
+    snapshot exists (404) and belongs to same strategy (400); validates version consistency if
+    both are specified; attaches `signal_snapshot` summary to response.
+  - `GET  /api/strategies/{strategy_id}/runs` updated — eagerly loads `signal_snapshot` via
+    `selectinload`.
+  - `GET  /api/strategies/{strategy_id}` updated — eagerly loads `signal_snapshots`,
+    computes per-version `signal_snapshot_count`, includes `signal_snapshots` in
+    `StrategyDetailOut`.
+- **80 new backend tests** — `tests/test_signal_m17.py` across 12 test classes:
+  - `TestNormalizeSignalRows` — valid input, non-list rejected, non-dict rows rejected, empty
+    list allowed.
+  - `TestComputeSignalHash` — 64-char hex, determinism across row orderings, different rows
+    produce different hash, custom signal column, metadata changes hash.
+  - `TestSummarizeSignalSnapshot` — row_count, symbol_count, signal_value_count,
+    missing_signal_count, mean/min/max/stddev, quality_score deductions (missing signals,
+    duplicates, invalid timestamps, zero variance), symbols_json sorted distinct.
+  - `TestCompareSignalSnapshots` — identical, different, B superset, empty, overlap_ratio,
+    jaccard_similarity, row_count_delta always set (not conditional on is_same),
+    quality_score_delta, keyed row changes.
+  - `TestCreateSignalSnapshot` — 201, hash determinism, stats correct, timeline event, version
+    link, universe link, wrong version → 404, wrong universe → 404, empty rows → 422.
+  - `TestListSignalSnapshots` — empty, returns created, newest-first, version_id filter,
+    404, no rows_json blob.
+  - `TestGetSignalSnapshot` — rows_json present, all fields, 404.
+  - `TestCompareSignalSnapshotsRoute` — response fields, A not found → 404, B not found → 404,
+    wrong strategy → 404, missing params → 422.
+  - `TestRunSignalSnapshotLinkage` — run with snapshot, run without, wrong strategy → 400,
+    nonexistent → 404, summary fields in response.
+  - `TestListRunsSignalEvidence` — embedded in list, null for unlinked.
+  - `TestStrategyDetailSignalSnapshots` — included in detail, version count, no blob.
+  - `TestVersionsSignalSnapshotCount` — in version list, zero for new version.
+- **Frontend types** (`frontend/src/types/index.ts`):
+  - `StrategyVersion` extended with `signal_snapshot_count: number`.
+  - `SignalSnapshotSummary`, `SignalSnapshotRead`, `SignalSnapshotDetail` interfaces.
+  - `SignalSnapshotCreateRequest`, `SignalRowChange`, `SignalComparisonResponse` interfaces.
+  - `StrategyRun` extended with `signal_snapshot_id: string | null` and
+    `signal_snapshot: SignalSnapshotSummary | null`.
+  - `StrategyDetail.signal_snapshots: SignalSnapshotRead[]` field added.
+  - `StrategyRunCreateRequest.signal_snapshot_id?: string` field added.
+- **API client** (`frontend/src/lib/api.ts`):
+  - `createSignalSnapshot()`, `getSignalSnapshots()`, `getSignalSnapshot()`,
+    `compareSignalSnapshots()`.
+- **`SignalSnapshotDrawer.tsx`** — right-panel drawer for logging a signal snapshot.
+  Fields: label (required), signal_name (optional), strategy_version_id (optional dropdown),
+  universe_snapshot_id (optional dropdown), source_type (select), source_filename,
+  signal_column (defaults to `"signal"`), rows JSON textarea (validated as non-empty array of
+  objects), metadata_json (optional JSON textarea). Follows same quant-terminal pattern as
+  `UniverseSnapshotDrawer.tsx`.
+- **`RunLogDrawer.tsx` updated** — accepts optional `signalSnapshots?: SignalSnapshotRead[]`
+  prop. When signal snapshots are available, shows a "Signal Evidence (optional)" selector
+  block with quality_score and symbol_count displayed per option. Preview shows quality score
+  (colored by threshold), symbol count, and row count. Selected `signal_snapshot_id` included
+  in run payload.
+- **`StrategyDetail.tsx` updated**:
+  - Imports `SignalSnapshotDrawer`, `SignalSnapshotRead`, `SignalSnapshotSummary`.
+  - `SignalEvidenceChip` — inline chip on run rows showing quality_score (colored by
+    threshold), signal_name, label, symbol count, mean, and stddev when a signal snapshot is
+    linked.
+  - `SignalEvidencePanel` — section card showing all signal snapshots (up to 5, with "+ N more"
+    overflow), each with quality score (colored), symbol count, row count, signal name, source
+    type, hash prefix, date. "+ Log Signal" header button. Empty state with guidance text.
+  - `+ Log Signal` button added to header actions bar.
+  - `SignalSnapshotDrawer` wired up; calls `setRefreshKey((k) => k + 1)` on creation.
+  - `RunLogDrawer` receives `signalSnapshots={strategy.signal_snapshots}`.
+  - Signal snapshot evidence chip shown per run row when `r.signal_snapshot` is non-null.
+  - Panel inserted between Universe Evidence and Version & Config Evidence sections.
+- **625 total passing tests** (1 skipped), zero TypeScript errors, clean production build.
+
+### What M17 does NOT build (by design)
+
+- Signal analytics, factor attribution, or alpha decomposition.
+- Live market data ingestion or real-time signal feeds.
+- Automated signal generation or AI-driven signal quality checks.
+- SDK ingestion hooks or external data connectors.
+- Signal comparison UI (compare endpoint available via API; frontend panel is future work).
+- Deployment evidence or live drift attribution.
+
+### Verify with curl
+
+```bash
+# Log a signal snapshot
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/signal-snapshots \
+  -H "Content-Type: application/json" \
+  -d '{
+    "label": "momentum-12m-2024-Q1",
+    "signal_name": "momentum_12m",
+    "source_type": "manual_json",
+    "rows": [
+      {"symbol": "AAPL", "timestamp": "2024-01-01", "signal": 0.52},
+      {"symbol": "MSFT", "timestamp": "2024-01-01", "signal": 0.78},
+      {"symbol": "GOOG", "timestamp": "2024-01-01", "signal": 0.34}
+    ]
+  }' | python3 -m json.tool
+# Response: id, label, row_count=3, symbol_count=3, signal_hash (64-char SHA-256),
+#   quality_score, mean_value, min_value, max_value, stddev_value, created_at, ...
+
+# List signal snapshots (newest first)
+curl "http://localhost:8000/api/strategies/<strategy_id>/signal-snapshots" \
+  | python3 -m json.tool
+
+# Filter by version
+curl "http://localhost:8000/api/strategies/<strategy_id>/signal-snapshots?version_id=<version_id>" \
+  | python3 -m json.tool
+
+# Get full detail (includes rows_json payload)
+curl "http://localhost:8000/api/signal-snapshots/<snapshot_id>" | python3 -m json.tool
+
+# Compare two signal snapshots (read-only, no audit event)
+curl "http://localhost:8000/api/strategies/<strategy_id>/signal-snapshots/compare?\
+snapshot_a_id=<snap_a>&snapshot_b_id=<snap_b>" | python3 -m json.tool
+# Response: is_same_signals, added_symbols, removed_symbols, overlap_ratio, jaccard_similarity,
+#   row_count_delta, quality_score_delta, changed_rows, highlighted_changes,
+#   deterministic_explanation
+
+# Log a run linked to a signal snapshot
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "run_name": "Momentum Backtest Q1 2024",
+    "run_type": "backtest",
+    "signal_snapshot_id": "<snapshot_id>",
+    "metrics_json": {"sharpe": 1.4}
+  }' | python3 -m json.tool
+# Response includes "signal_snapshot": { "id": ..., "label": ..., "quality_score": ..., ... }
+```
+
+> **M17 note:** Signal hash is SHA-256 of rows sorted by `(symbol, timestamp, signal_value)` +
+> optional metadata. Two snapshots with identical signal values in any insertion order always
+> produce the same hash. Quality score starts at 100 and deducts for missing/non-numeric
+> signals, duplicate keys, invalid timestamps, and zero variance. Language is hedged
+> ("observed", "noted", "may suggest") and never makes causal claims.
+
+---
+
+## Previously completed — M16: Universe Snapshotting + Coverage Evidence
 
 **Status: complete.**
 

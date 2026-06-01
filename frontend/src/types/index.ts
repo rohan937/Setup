@@ -52,6 +52,8 @@ export interface StrategyVersion {
   config_snapshot_count: number;
   /** M16: number of universe snapshots linked to this version. */
   universe_snapshot_count: number;
+  /** M17: number of signal snapshots linked to this version. */
+  signal_snapshot_count: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +209,118 @@ export interface UniverseComparisonResponse {
   deterministic_explanation: string;
 }
 
+// ---------------------------------------------------------------------------
+// Signal snapshots (M17)
+// ---------------------------------------------------------------------------
+
+/** Lightweight signal evidence embedded in strategy run responses. */
+export interface SignalSnapshotSummary {
+  id: string;
+  label: string;
+  signal_name: string | null;
+  row_count: number;
+  symbol_count: number;
+  signal_value_count: number;
+  missing_signal_count: number;
+  quality_score: number;
+  mean_value: number | null;
+  stddev_value: number | null;
+  created_at: string;
+}
+
+/** Signal snapshot summary row — no rows_json blob. */
+export interface SignalSnapshotRead {
+  id: string;
+  strategy_id: string;
+  strategy_version_id: string | null;
+  universe_snapshot_id: string | null;
+  label: string;
+  signal_name: string | null;
+  source_type: string;
+  source_filename: string | null;
+  row_count: number;
+  symbol_count: number;
+  symbols_json: string[];
+  min_timestamp: string | null;
+  max_timestamp: string | null;
+  signal_value_count: number;
+  missing_signal_count: number;
+  mean_value: number | null;
+  min_value: number | null;
+  max_value: number | null;
+  stddev_value: number | null;
+  signal_hash: string;
+  quality_score: number;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Full signal snapshot including the rows_json payload. */
+export interface SignalSnapshotDetail extends SignalSnapshotRead {
+  rows_json: Record<string, unknown>[];
+}
+
+export interface SignalSnapshotCreateRequest {
+  strategy_version_id?: string;
+  universe_snapshot_id?: string;
+  label: string;
+  signal_name?: string;
+  source_type?: string;
+  source_filename?: string;
+  signal_column?: string;
+  /** Required; must be a non-empty array of objects. */
+  rows: Record<string, unknown>[];
+  metadata_json?: Record<string, unknown>;
+}
+
+export interface SignalRowChange {
+  symbol: string | null;
+  timestamp: string | null;
+  /** "added" | "removed" | "changed" */
+  change_type: string;
+  old_value: number | null;
+  new_value: number | null;
+  delta: number | null;
+}
+
+export interface SignalComparisonResponse {
+  snapshot_a_id: string;
+  snapshot_b_id: string;
+  snapshot_a_label: string;
+  snapshot_b_label: string;
+  snapshot_a_row_count: number;
+  snapshot_b_row_count: number;
+  snapshot_a_symbol_count: number;
+  snapshot_b_symbol_count: number;
+  is_same_snapshot: boolean;
+  row_count_delta: number;
+  symbol_count_delta: number;
+  added_count: number;
+  removed_count: number;
+  common_symbols_count: number;
+  overlap_ratio: number;
+  mean_value_delta: number | null;
+  min_value_delta: number | null;
+  max_value_delta: number | null;
+  stddev_value_delta: number | null;
+  quality_score_delta: number;
+  missing_signal_delta: number;
+  keyed_comparison_available: boolean;
+  added_rows_count: number;
+  removed_rows_count: number;
+  changed_rows_count: number;
+  /** Capped at 20. */
+  examples: SignalRowChange[];
+  /** Capped at 50. */
+  added_symbols: string[];
+  /** Capped at 50. */
+  removed_symbols: string[];
+  highlighted_changes: string[];
+  deterministic_explanation: string;
+  warnings: string[];
+}
+
 export interface StrategyRun {
   id: string;
   strategy_id: string;
@@ -215,6 +329,8 @@ export interface StrategyRun {
   dataset_snapshot_id: string | null;
   /** M16: nullable FK to a linked universe snapshot. */
   universe_snapshot_id: string | null;
+  /** M17: nullable FK to a linked signal snapshot. */
+  signal_snapshot_id: string | null;
   run_name: string;
   run_type: string;
   status: string;
@@ -232,6 +348,8 @@ export interface StrategyRun {
   dataset_snapshot: DataEvidenceSummary | null;
   /** M16: lightweight universe evidence — null when no snapshot is linked. */
   universe_snapshot: UniverseSnapshotSummary | null;
+  /** M17: lightweight signal evidence — null when no signal snapshot is linked. */
+  signal_snapshot: SignalSnapshotSummary | null;
 }
 
 export interface StrategyDetail extends Strategy {
@@ -241,6 +359,8 @@ export interface StrategyDetail extends Strategy {
   config_snapshots: StrategyConfigSnapshotRead[];
   /** M16: universe snapshots linked to this strategy, newest-first. */
   universe_snapshots: UniverseSnapshotRead[];
+  /** M17: signal snapshots linked to this strategy, newest-first. */
+  signal_snapshots: SignalSnapshotRead[];
 }
 
 export interface StrategyCreateRequest {
@@ -258,6 +378,8 @@ export interface StrategyRunCreateRequest {
   dataset_snapshot_id?: string;
   /** M16: optional link to a universe snapshot (must belong to same strategy). */
   universe_snapshot_id?: string;
+  /** M17: optional link to a signal snapshot (must belong to same strategy). */
+  signal_snapshot_id?: string;
   run_name: string;
   run_type: string;
   status?: string;

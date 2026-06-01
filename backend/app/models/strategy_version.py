@@ -43,6 +43,12 @@ class StrategyVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="strategy_version",
         order_by="UniverseSnapshot.created_at.desc()",
     )
+    # M17: signal snapshots linked to this version.
+    signal_snapshots: Mapped[list["SignalSnapshot"]] = relationship(  # noqa: F821
+        "SignalSnapshot",
+        back_populates="strategy_version",
+        order_by="SignalSnapshot.created_at.desc()",
+    )
 
     def __repr__(self) -> str:
         return f"<StrategyVersion label={self.version_label!r}>"

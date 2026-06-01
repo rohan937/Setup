@@ -68,6 +68,13 @@ class Strategy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="UniverseSnapshot.created_at.desc()",
     )
+    # M17: signal snapshots for this strategy.
+    signal_snapshots: Mapped[list["SignalSnapshot"]] = relationship(  # noqa: F821
+        "SignalSnapshot",
+        back_populates="strategy",
+        cascade="all, delete-orphan",
+        order_by="SignalSnapshot.created_at.desc()",
+    )
 
     def __repr__(self) -> str:
         return f"<Strategy slug={self.slug!r} status={self.status!r}>"

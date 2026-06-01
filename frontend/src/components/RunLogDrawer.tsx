@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Dataset, DatasetSnapshotRead, StrategyRunCreateRequest, StrategyVersion, UniverseSnapshotRead } from "@/types";
+import type { Dataset, DatasetSnapshotRead, SignalSnapshotRead, StrategyRunCreateRequest, StrategyVersion, UniverseSnapshotRead } from "@/types";
 import { createStrategyRun, getDatasets, getDatasetSnapshots } from "@/lib/api";
 
 const RUN_TYPES = ["backtest", "research", "paper", "live"] as const;
@@ -21,6 +21,8 @@ interface Props {
   versions?: StrategyVersion[];
   /** M16: available universe snapshots for the universe snapshot selector. */
   universeSnapshots?: UniverseSnapshotRead[];
+  /** M17: available signal snapshots for the signal evidence selector. */
+  signalSnapshots?: SignalSnapshotRead[];
   onClose: () => void;
   onLogged: () => void;
 }
@@ -58,7 +60,7 @@ function healthColor(score: number): string {
   return "text-fidelity-low";
 }
 
-export default function RunLogDrawer({ open, strategyId, versions = [], universeSnapshots = [], onClose, onLogged }: Props) {
+export default function RunLogDrawer({ open, strategyId, versions = [], universeSnapshots = [], signalSnapshots = [], onClose, onLogged }: Props) {
   const [runName, setRunName] = useState("");
   // M15: version selector
   const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -83,6 +85,9 @@ export default function RunLogDrawer({ open, strategyId, versions = [], universe
 
   // M16: universe snapshot selector state
   const [selectedUniverseSnapshotId, setSelectedUniverseSnapshotId] = useState<string>("");
+
+  // M17: signal snapshot selector state
+  const [selectedSignalSnapshotId, setSelectedSignalSnapshotId] = useState<string>("");
 
   // Load datasets when drawer opens.
   useEffect(() => {
@@ -123,6 +128,7 @@ export default function RunLogDrawer({ open, strategyId, versions = [], universe
     setSelectedSnapshotId("");
     setSnapshots([]);
     setSelectedUniverseSnapshotId("");
+    setSelectedSignalSnapshotId("");
     setError(null);
     setSubmitting(false);
   }
@@ -171,6 +177,8 @@ export default function RunLogDrawer({ open, strategyId, versions = [], universe
       ...(selectedVersionId && { strategy_version_id: selectedVersionId }),
       // M16: include universe snapshot id when selected
       ...(selectedUniverseSnapshotId && { universe_snapshot_id: selectedUniverseSnapshotId }),
+      // M17: include signal snapshot id when selected
+      ...(selectedSignalSnapshotId && { signal_snapshot_id: selectedSignalSnapshotId }),
     };
 
     try {
@@ -389,6 +397,39 @@ export default function RunLogDrawer({ open, strategyId, versions = [], universe
                     </span>
                     <span className="font-mono text-2xs text-text-muted/60" title={us.universe_hash}>
                       hash: {us.universe_hash.slice(0, 8)}…
+                    </span>
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          )}
+
+          {/* M17: Signal Snapshot selector */}
+          {signalSnapshots.length > 0 && (
+            <div className="space-y-2 rounded-control border border-border/60 bg-bg-700 p-3">
+              <p className="caption text-text-secondary">Signal Evidence (optional)</p>
+              <select
+                value={selectedSignalSnapshotId}
+                onChange={(e) => setSelectedSignalSnapshotId(e.target.value)}
+                className={selectCls}
+              >
+                <option value="">— no signal snapshot linked —</option>
+                {signalSnapshots.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label} · quality {s.quality_score}/100 · {s.symbol_count} symbols
+                  </option>
+                ))}
+              </select>
+              {selectedSignalSnapshotId && (() => {
+                const ss = signalSnapshots.find((s) => s.id === selectedSignalSnapshotId);
+                return ss ? (
+                  <div className="flex items-center gap-3 pt-0.5">
+                    <span className="font-mono text-2xs text-text-muted">quality</span>
+                    <span className={`mono-num text-sm font-semibold ${healthColor(ss.quality_score)}`}>
+                      {ss.quality_score}/100
+                    </span>
+                    <span className="font-mono text-2xs text-text-muted">
+                      · {ss.symbol_count} symbols · {ss.row_count} rows
                     </span>
                   </div>
                 ) : null;

@@ -23,6 +23,10 @@ import type {
   ReportDetail,
   ReportFilters,
   ReportListResponse,
+  SignalComparisonResponse,
+  SignalSnapshotCreateRequest,
+  SignalSnapshotDetail,
+  SignalSnapshotRead,
   Strategy,
   StrategyConfigSnapshotCreateRequest,
   StrategyConfigSnapshotDetail,
@@ -404,5 +408,45 @@ export async function compareUniverseSnapshots(
 ): Promise<UniverseComparisonResponse> {
   return request<UniverseComparisonResponse>(
     `/api/strategies/${strategyId}/universe-snapshots/compare?snapshot_a_id=${snapshotAId}&snapshot_b_id=${snapshotBId}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Signal snapshots (M17)
+// ---------------------------------------------------------------------------
+
+export async function createSignalSnapshot(
+  strategyId: string,
+  data: SignalSnapshotCreateRequest,
+): Promise<SignalSnapshotRead> {
+  return request<SignalSnapshotRead>(
+    `/api/strategies/${strategyId}/signal-snapshots`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export async function getSignalSnapshots(
+  strategyId: string,
+  versionId?: string,
+): Promise<SignalSnapshotRead[]> {
+  const qs = versionId ? `?version_id=${versionId}` : "";
+  return request<SignalSnapshotRead[]>(
+    `/api/strategies/${strategyId}/signal-snapshots${qs}`,
+  );
+}
+
+export async function getSignalSnapshot(
+  snapshotId: string,
+): Promise<SignalSnapshotDetail> {
+  return request<SignalSnapshotDetail>(`/api/signal-snapshots/${snapshotId}`);
+}
+
+export async function compareSignalSnapshots(
+  strategyId: string,
+  snapshotAId: string,
+  snapshotBId: string,
+): Promise<SignalComparisonResponse> {
+  return request<SignalComparisonResponse>(
+    `/api/strategies/${strategyId}/signal-snapshots/compare?snapshot_a_id=${snapshotAId}&snapshot_b_id=${snapshotBId}`,
   );
 }

@@ -19,6 +19,12 @@
   GET  /api/strategies/{strategy_id}/universe-snapshots
   GET  /api/strategies/{strategy_id}/universe-snapshots/compare
   GET  /api/universe-snapshots/{snapshot_id}
+
+  M17 signal snapshot endpoints:
+  POST /api/strategies/{strategy_id}/signal-snapshots
+  GET  /api/strategies/{strategy_id}/signal-snapshots
+  GET  /api/strategies/{strategy_id}/signal-snapshots/compare
+  GET  /api/signal-snapshots/{snapshot_id}
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ from app.models.data_quality_issue import DataQualityIssue
 from app.models.dataset import Dataset
 from app.models.dataset_snapshot import DatasetSnapshot
 from app.models.project import Project
+from app.models.signal_snapshot import SignalSnapshot
 from app.models.strategy import Strategy
 from app.models.strategy_config_snapshot import StrategyConfigSnapshot
 from app.models.strategy_run import StrategyRun
@@ -49,6 +56,12 @@ from app.schemas.strategy import (
     ConfigComparisonSectionOut,
     ConfigKeyChangeOut,
     DataEvidenceSummary,
+    SignalComparisonResponse,
+    SignalRowChangeOut,
+    SignalSnapshotCreate,
+    SignalSnapshotDetail,
+    SignalSnapshotRead,
+    SignalSnapshotSummary,
     StrategyConfigSnapshotCreate,
     StrategyConfigSnapshotDetail,
     StrategyConfigSnapshotRead,
@@ -77,6 +90,12 @@ from app.services.universe_snapshots import (
     compare_universe_snapshots,
     compute_universe_hash,
     normalize_symbols,
+)
+from app.services.signal_snapshots import (
+    compare_signal_snapshots,
+    compute_signal_hash,
+    normalize_signal_rows,
+    summarize_signal_snapshot,
 )
 
 router = APIRouter(tags=["strategies"])
@@ -187,11 +206,29 @@ def _build_universe_summary(us: "UniverseSnapshot") -> UniverseSnapshotSummary:
     )
 
 
+def _build_signal_summary(ss: "SignalSnapshot") -> SignalSnapshotSummary:
+    """Build a lightweight SignalSnapshotSummary from a loaded signal snapshot."""
+    return SignalSnapshotSummary(
+        id=ss.id,
+        label=ss.label,
+        signal_name=ss.signal_name,
+        row_count=ss.row_count,
+        symbol_count=ss.symbol_count,
+        signal_value_count=ss.signal_value_count,
+        missing_signal_count=ss.missing_signal_count,
+        quality_score=ss.quality_score,
+        mean_value=ss.mean_value,
+        stddev_value=ss.stddev_value,
+        created_at=ss.created_at,
+    )
+
+
 def _build_run_out(run: StrategyRun) -> StrategyRunOut:
-    """Build StrategyRunOut from a run that may have .snapshot / .universe_snapshot loaded.
+    """Build StrategyRunOut from a run that may have .snapshot / .universe_snapshot / .signal_snapshot loaded.
 
     If run.snapshot is None (no link or not loaded), dataset_snapshot is None.
     If run.universe_snapshot is None, universe_snapshot is None.
+    If run.signal_snapshot is None, signal_snapshot is None.
     """
     evidence: DataEvidenceSummary | None = None
     if run.snapshot is not None:
@@ -201,12 +238,17 @@ def _build_run_out(run: StrategyRun) -> StrategyRunOut:
     if run.universe_snapshot is not None:
         uni_evidence = _build_universe_summary(run.universe_snapshot)
 
+    sig_evidence: SignalSnapshotSummary | None = None
+    if run.signal_snapshot is not None:
+        sig_evidence = _build_signal_summary(run.signal_snapshot)
+
     return StrategyRunOut(
         id=run.id,
         strategy_id=run.strategy_id,
         strategy_version_id=run.strategy_version_id,
         dataset_snapshot_id=run.dataset_snapshot_id,
         universe_snapshot_id=run.universe_snapshot_id,
+        signal_snapshot_id=run.signal_snapshot_id,
         run_name=run.run_name,
         run_type=run.run_type,
         status=run.status,
@@ -222,6 +264,7 @@ def _build_run_out(run: StrategyRun) -> StrategyRunOut:
         updated_at=run.updated_at,
         dataset_snapshot=evidence,
         universe_snapshot=uni_evidence,
+        signal_snapshot=sig_evidence,
     )
 
 
@@ -383,8 +426,11 @@ def get_strategy(
             .selectinload(DatasetSnapshot.issues),
             selectinload(Strategy.runs)
             .selectinload(StrategyRun.universe_snapshot),
+            selectinload(Strategy.runs)
+            .selectinload(StrategyRun.signal_snapshot),
             selectinload(Strategy.config_snapshots),
             selectinload(Strategy.universe_snapshots),
+            selectinload(Strategy.signal_snapshots),
         )
         .filter(Strategy.id == strategy_id)
         .first()
@@ -422,13 +468,22 @@ def get_strategy(
                 version_uni_counts.get(us.strategy_version_id, 0) + 1
             )
 
-    # Build version list with both counts, newest-first.
+    # Compute per-version signal_snapshot_count.
+    version_sig_counts: dict[uuid.UUID, int] = {}
+    for ss in (strategy.signal_snapshots or []):
+        if ss.strategy_version_id is not None:
+            version_sig_counts[ss.strategy_version_id] = (
+                version_sig_counts.get(ss.strategy_version_id, 0) + 1
+            )
+
+    # Build version list with all counts, newest-first.
     sorted_versions = sorted(strategy.versions, key=lambda v: v.created_at, reverse=True)
     version_outs: list[StrategyVersionOut] = []
     for v in sorted_versions:
         vout = StrategyVersionOut.model_validate(v)
         vout.config_snapshot_count = version_config_counts.get(v.id, 0)
         vout.universe_snapshot_count = version_uni_counts.get(v.id, 0)
+        vout.signal_snapshot_count = version_sig_counts.get(v.id, 0)
         version_outs.append(vout)
 
     return StrategyDetailOut(
@@ -453,6 +508,10 @@ def get_strategy(
         universe_snapshots=[
             UniverseSnapshotRead.model_validate(us)
             for us in strategy.universe_snapshots
+        ],
+        signal_snapshots=[
+            SignalSnapshotRead.model_validate(ss)
+            for ss in strategy.signal_snapshots
         ],
     )
 
@@ -545,6 +604,42 @@ def create_strategy_run(
                 detail="Universe snapshot does not belong to this strategy",
             )
 
+    # M17: Validate signal_snapshot_id when provided.
+    sig_snap: SignalSnapshot | None = None
+    if body.signal_snapshot_id is not None:
+        sig_snap = (
+            db.query(SignalSnapshot)
+            .filter(SignalSnapshot.id == body.signal_snapshot_id)
+            .first()
+        )
+        if sig_snap is None:
+            raise HTTPException(status_code=404, detail="Signal snapshot not found")
+        if sig_snap.strategy_id != strategy_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Signal snapshot does not belong to this strategy",
+            )
+        # Version mismatch check: if both run and signal have versions, they must match
+        if (
+            body.strategy_version_id is not None
+            and sig_snap.strategy_version_id is not None
+            and sig_snap.strategy_version_id != body.strategy_version_id
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Signal snapshot is linked to a different strategy version than the run",
+            )
+        # Universe mismatch check
+        if (
+            body.universe_snapshot_id is not None
+            and sig_snap.universe_snapshot_id is not None
+            and sig_snap.universe_snapshot_id != body.universe_snapshot_id
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Signal snapshot is linked to a different universe snapshot than the run",
+            )
+
     # Auto-set completed_at when status is completed and no value was supplied
     completed_at = body.completed_at
     if body.status == RunStatus.completed and completed_at is None:
@@ -555,6 +650,7 @@ def create_strategy_run(
         strategy_version_id=body.strategy_version_id,
         dataset_snapshot_id=body.dataset_snapshot_id,
         universe_snapshot_id=body.universe_snapshot_id,
+        signal_snapshot_id=body.signal_snapshot_id,
         run_name=body.run_name,
         run_type=body.run_type,
         status=body.status,
@@ -596,6 +692,9 @@ def create_strategy_run(
             "universe_snapshot_id": str(body.universe_snapshot_id) if body.universe_snapshot_id else None,
             "universe_snapshot_label": uni_snap.label if uni_snap else None,
             "universe_symbol_count": uni_snap.symbol_count if uni_snap else None,
+            "signal_snapshot_id": str(body.signal_snapshot_id) if body.signal_snapshot_id else None,
+            "signal_snapshot_label": sig_snap.label if sig_snap else None,
+            "signal_row_count": sig_snap.row_count if sig_snap else None,
             "strategy_name": strategy.name,
         },
     )
@@ -606,6 +705,7 @@ def create_strategy_run(
     # Attach the already-loaded objects so _build_run_out can build evidence.
     run.snapshot = snap  # type: ignore[assignment]
     run.universe_snapshot = uni_snap  # type: ignore[assignment]
+    run.signal_snapshot = sig_snap  # type: ignore[assignment]
 
     return _build_run_out(run)
 
@@ -713,6 +813,7 @@ def list_strategy_runs(
             selectinload(StrategyRun.snapshot).selectinload(DatasetSnapshot.dataset),
             selectinload(StrategyRun.snapshot).selectinload(DatasetSnapshot.issues),
             selectinload(StrategyRun.universe_snapshot),
+            selectinload(StrategyRun.signal_snapshot),
         )
         .filter(StrategyRun.strategy_id == strategy_id)
         .order_by(StrategyRun.created_at.desc())
@@ -806,6 +907,7 @@ def create_strategy_version(
     vout = StrategyVersionOut.model_validate(version)
     vout.config_snapshot_count = 0
     vout.universe_snapshot_count = 0
+    vout.signal_snapshot_count = 0
     return vout
 
 
@@ -857,12 +959,22 @@ def list_strategy_versions(
         .group_by(UniverseSnapshot.strategy_version_id)
         .all()
     )
+    sig_counts: dict = dict(
+        db.query(
+            SignalSnapshot.strategy_version_id,
+            func.count(SignalSnapshot.id),
+        )
+        .filter(SignalSnapshot.strategy_version_id.in_(version_ids))
+        .group_by(SignalSnapshot.strategy_version_id)
+        .all()
+    )
 
     results: list[StrategyVersionOut] = []
     for v in versions:
         vout = StrategyVersionOut.model_validate(v)
         vout.config_snapshot_count = config_counts.get(v.id, 0)
         vout.universe_snapshot_count = uni_counts.get(v.id, 0)
+        vout.signal_snapshot_count = sig_counts.get(v.id, 0)
         results.append(vout)
     return results
 
@@ -1336,3 +1448,335 @@ def get_universe_snapshot(
         raise HTTPException(status_code=404, detail="Universe snapshot not found")
 
     return UniverseSnapshotDetail.model_validate(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# M17: GET /api/strategies/{strategy_id}/signal-snapshots/compare
+# NOTE: registered BEFORE the list route (/signal-snapshots) so the literal
+# "/compare" segment is matched before any query-only /signal-snapshots handler.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/signal-snapshots/compare",
+    response_model=SignalComparisonResponse,
+)
+def compare_signal_snapshots_route(
+    strategy_id: uuid.UUID,
+    snapshot_a_id: uuid.UUID = Query(..., description="ID of the baseline signal snapshot (A)"),
+    snapshot_b_id: uuid.UUID = Query(..., description="ID of the comparison signal snapshot (B)"),
+    db: Session = Depends(get_db),
+) -> SignalComparisonResponse:
+    """Deterministically compare two signal snapshots belonging to this strategy.
+
+    Read-only — no audit event is emitted.
+    Returns set-based diff for symbols, keyed row-level changes (when available),
+    distribution delta, quality delta, and hedged highlighted changes.
+    Language is hedged throughout — no causal claims are made.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    snap_a = (
+        db.query(SignalSnapshot)
+        .filter(
+            SignalSnapshot.id == snapshot_a_id,
+            SignalSnapshot.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if snap_a is None:
+        raise HTTPException(status_code=404, detail="Signal snapshot A not found")
+
+    snap_b = (
+        db.query(SignalSnapshot)
+        .filter(
+            SignalSnapshot.id == snapshot_b_id,
+            SignalSnapshot.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if snap_b is None:
+        raise HTTPException(status_code=404, detail="Signal snapshot B not found")
+
+    # Extract signal_column from metadata_json if stored there, else default "signal"
+    sig_col_a = (snap_a.metadata_json or {}).get("signal_column", "signal")
+    sig_col_b = (snap_b.metadata_json or {}).get("signal_column", "signal")
+
+    snap_a_data = {
+        "symbols_json": snap_a.symbols_json or [],
+        "rows_json": snap_a.rows_json or [],
+        "row_count": snap_a.row_count,
+        "symbol_count": snap_a.symbol_count,
+        "mean_value": snap_a.mean_value,
+        "min_value": snap_a.min_value,
+        "max_value": snap_a.max_value,
+        "stddev_value": snap_a.stddev_value,
+        "quality_score": snap_a.quality_score,
+        "missing_signal_count": snap_a.missing_signal_count,
+        "signal_hash": snap_a.signal_hash,
+        "signal_column": sig_col_a,
+    }
+    snap_b_data = {
+        "symbols_json": snap_b.symbols_json or [],
+        "rows_json": snap_b.rows_json or [],
+        "row_count": snap_b.row_count,
+        "symbol_count": snap_b.symbol_count,
+        "mean_value": snap_b.mean_value,
+        "min_value": snap_b.min_value,
+        "max_value": snap_b.max_value,
+        "stddev_value": snap_b.stddev_value,
+        "quality_score": snap_b.quality_score,
+        "missing_signal_count": snap_b.missing_signal_count,
+        "signal_hash": snap_b.signal_hash,
+        "signal_column": sig_col_b,
+    }
+
+    result = compare_signal_snapshots(
+        snap_a_id=str(snap_a.id),
+        snap_b_id=str(snap_b.id),
+        snap_a_label=snap_a.label,
+        snap_b_label=snap_b.label,
+        snap_a_data=snap_a_data,
+        snap_b_data=snap_b_data,
+    )
+
+    return SignalComparisonResponse(
+        snapshot_a_id=snap_a.id,
+        snapshot_b_id=snap_b.id,
+        snapshot_a_label=result.snapshot_a_label,
+        snapshot_b_label=result.snapshot_b_label,
+        snapshot_a_row_count=result.snapshot_a_row_count,
+        snapshot_b_row_count=result.snapshot_b_row_count,
+        snapshot_a_symbol_count=result.snapshot_a_symbol_count,
+        snapshot_b_symbol_count=result.snapshot_b_symbol_count,
+        is_same_snapshot=result.is_same_snapshot,
+        row_count_delta=result.row_count_delta,
+        symbol_count_delta=result.symbol_count_delta,
+        added_count=result.added_count,
+        removed_count=result.removed_count,
+        common_symbols_count=result.common_symbols_count,
+        overlap_ratio=result.overlap_ratio,
+        mean_value_delta=result.mean_value_delta,
+        min_value_delta=result.min_value_delta,
+        max_value_delta=result.max_value_delta,
+        stddev_value_delta=result.stddev_value_delta,
+        quality_score_delta=result.quality_score_delta,
+        missing_signal_delta=result.missing_signal_delta,
+        keyed_comparison_available=result.keyed_comparison_available,
+        added_rows_count=result.added_rows_count,
+        removed_rows_count=result.removed_rows_count,
+        changed_rows_count=result.changed_rows_count,
+        examples=[
+            SignalRowChangeOut(
+                symbol=ex.symbol,
+                timestamp=ex.timestamp,
+                change_type=ex.change_type,
+                old_value=ex.old_value,
+                new_value=ex.new_value,
+                delta=ex.delta,
+            )
+            for ex in result.examples
+        ],
+        added_symbols=result.added_symbols,
+        removed_symbols=result.removed_symbols,
+        highlighted_changes=result.highlighted_changes,
+        deterministic_explanation=result.deterministic_explanation,
+        warnings=result.warnings,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M17: POST /api/strategies/{strategy_id}/signal-snapshots
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/strategies/{strategy_id}/signal-snapshots",
+    response_model=SignalSnapshotRead,
+    status_code=201,
+)
+def create_signal_snapshot(
+    strategy_id: uuid.UUID,
+    body: SignalSnapshotCreate,
+    db: Session = Depends(get_db),
+) -> SignalSnapshotRead:
+    """Create a signal snapshot for a strategy.
+
+    rows must be a non-empty JSON array of objects.
+    Computes summary statistics, quality score, and a deterministic signal_hash.
+    If strategy_version_id is provided it must belong to this strategy.
+    If universe_snapshot_id is provided it must belong to this strategy.
+    Emits an audit timeline event on success.
+    """
+    strategy = (
+        db.query(Strategy)
+        .options(selectinload(Strategy.project))
+        .filter(Strategy.id == strategy_id)
+        .first()
+    )
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    # Validate rows
+    if not body.rows:
+        raise HTTPException(
+            status_code=422,
+            detail="rows must be a non-empty list of objects",
+        )
+
+    # Validate row objects
+    try:
+        normalize_signal_rows(body.rows, body.signal_column)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    # Validate strategy_version_id belongs to this strategy when provided.
+    if body.strategy_version_id is not None:
+        version = (
+            db.query(StrategyVersion)
+            .filter(
+                StrategyVersion.id == body.strategy_version_id,
+                StrategyVersion.strategy_id == strategy_id,
+            )
+            .first()
+        )
+        if version is None:
+            raise HTTPException(status_code=404, detail="Strategy version not found")
+
+    # Validate universe_snapshot_id belongs to this strategy when provided.
+    if body.universe_snapshot_id is not None:
+        uni_snap_ref = (
+            db.query(UniverseSnapshot)
+            .filter(
+                UniverseSnapshot.id == body.universe_snapshot_id,
+                UniverseSnapshot.strategy_id == strategy_id,
+            )
+            .first()
+        )
+        if uni_snap_ref is None:
+            raise HTTPException(status_code=404, detail="Universe snapshot not found")
+
+    # Compute stats and hash
+    summary = summarize_signal_snapshot(body.rows, body.signal_column)
+    signal_hash = compute_signal_hash(body.rows, body.metadata_json, body.signal_column)
+
+    # Store signal_column in metadata_json if not default
+    stored_meta = dict(body.metadata_json) if body.metadata_json else {}
+    if body.signal_column and body.signal_column != "signal":
+        stored_meta["signal_column"] = body.signal_column
+    metadata_to_store = stored_meta if stored_meta else None
+
+    snapshot = SignalSnapshot(
+        strategy_id=strategy_id,
+        strategy_version_id=body.strategy_version_id,
+        universe_snapshot_id=body.universe_snapshot_id,
+        label=body.label,
+        signal_name=body.signal_name,
+        source_type=body.source_type,
+        source_filename=body.source_filename,
+        rows_json=body.rows,
+        row_count=summary.row_count,
+        symbol_count=summary.symbol_count,
+        symbols_json=summary.symbols,
+        min_timestamp=summary.min_timestamp,
+        max_timestamp=summary.max_timestamp,
+        signal_value_count=summary.signal_value_count,
+        missing_signal_count=summary.missing_signal_count,
+        mean_value=summary.mean_value,
+        min_value=summary.min_value,
+        max_value=summary.max_value,
+        stddev_value=summary.stddev_value,
+        signal_hash=signal_hash,
+        quality_score=summary.quality_score,
+        metadata_json=metadata_to_store,
+    )
+    db.add(snapshot)
+    db.flush()
+
+    event = AuditTimelineEvent(
+        organization_id=strategy.project.organization_id,
+        project_id=strategy.project_id,
+        strategy_id=strategy_id,
+        event_type=EventType.signal_snapshot_logged,
+        title=f"Signal snapshot logged: {snapshot.label}",
+        description=(
+            f"Signal snapshot '{snapshot.label}' logged for strategy '{strategy.name}'. "
+            f"Source: {snapshot.source_type}. "
+            f"Rows: {snapshot.row_count}. Symbols: {snapshot.symbol_count}. "
+            f"Quality: {snapshot.quality_score}/100."
+        ),
+        source_type="signal_snapshot",
+        source_id=str(snapshot.id),
+        severity=Severity.info,
+        metadata_json={
+            "snapshot_label": snapshot.label,
+            "source_type": snapshot.source_type,
+            "signal_hash": signal_hash,
+            "row_count": snapshot.row_count,
+            "symbol_count": snapshot.symbol_count,
+            "quality_score": snapshot.quality_score,
+            "signal_name": snapshot.signal_name,
+            "strategy_name": strategy.name,
+        },
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(snapshot)
+
+    return SignalSnapshotRead.model_validate(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# M17: GET /api/strategies/{strategy_id}/signal-snapshots
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/signal-snapshots",
+    response_model=list[SignalSnapshotRead],
+)
+def list_signal_snapshots(
+    strategy_id: uuid.UUID,
+    version_id: uuid.UUID | None = Query(default=None, description="Filter by strategy_version_id"),
+    db: Session = Depends(get_db),
+) -> list[SignalSnapshotRead]:
+    """List signal snapshots for a strategy, newest-first.
+
+    Pass ``version_id`` to filter by a specific strategy version.
+    The rows_json payload is not included; use the detail endpoint for that.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    q = db.query(SignalSnapshot).filter(
+        SignalSnapshot.strategy_id == strategy_id
+    )
+    if version_id is not None:
+        q = q.filter(SignalSnapshot.strategy_version_id == version_id)
+
+    snapshots = q.order_by(SignalSnapshot.created_at.desc()).all()
+    return [SignalSnapshotRead.model_validate(s) for s in snapshots]
+
+
+# ---------------------------------------------------------------------------
+# M17: GET /api/signal-snapshots/{snapshot_id}
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/signal-snapshots/{snapshot_id}",
+    response_model=SignalSnapshotDetail,
+)
+def get_signal_snapshot(
+    snapshot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> SignalSnapshotDetail:
+    """Return full signal snapshot detail including the rows_json payload."""
+    snapshot = (
+        db.query(SignalSnapshot)
+        .filter(SignalSnapshot.id == snapshot_id)
+        .first()
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Signal snapshot not found")
+
+    return SignalSnapshotDetail.model_validate(snapshot)

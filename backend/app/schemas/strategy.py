@@ -59,6 +59,23 @@ class UniverseSnapshotCreate(BaseModel):
     metadata_json: dict[str, Any] | None = None
 
 
+class SignalSnapshotCreate(BaseModel):
+    """Request body for POST /api/strategies/{strategy_id}/signal-snapshots (M17)."""
+
+    strategy_version_id: uuid.UUID | None = None
+    universe_snapshot_id: uuid.UUID | None = None
+    label: Annotated[str, StringConstraints(min_length=1, max_length=255, strip_whitespace=True)]
+    signal_name: str | None = Field(default=None, max_length=255)
+    source_type: str = "manual_json"
+    source_filename: str | None = Field(default=None, max_length=512)
+    # Column name for signal values within each row dict; default "signal"
+    signal_column: str = "signal"
+    # Required; must be a non-empty JSON array of objects.
+    rows: list[dict[str, Any]]
+    # Optional metadata dict; stored verbatim.
+    metadata_json: dict[str, Any] | None = None
+
+
 class StrategyRunCreate(BaseModel):
     """Request body for POST /api/strategies/{strategy_id}/runs."""
 
@@ -67,6 +84,8 @@ class StrategyRunCreate(BaseModel):
     dataset_snapshot_id: uuid.UUID | None = None
     # M16: optional link to a universe snapshot (must belong to the same strategy).
     universe_snapshot_id: uuid.UUID | None = None
+    # M17: optional link to a signal snapshot (must belong to the same strategy).
+    signal_snapshot_id: uuid.UUID | None = None
     run_name: Annotated[str, StringConstraints(min_length=1, max_length=255, strip_whitespace=True)]
     # See constants.RunType for valid values.  Required.
     run_type: str
@@ -170,6 +189,102 @@ class UniverseComparisonResponse(BaseModel):
     deterministic_explanation: str
 
 
+class SignalSnapshotSummary(BaseModel):
+    """Lightweight signal evidence embedded in strategy run responses (M17)."""
+
+    id: uuid.UUID
+    label: str
+    signal_name: str | None
+    row_count: int
+    symbol_count: int
+    signal_value_count: int
+    missing_signal_count: int
+    quality_score: int
+    mean_value: float | None
+    stddev_value: float | None
+    created_at: datetime
+
+
+class SignalSnapshotRead(BaseModel):
+    """Signal snapshot summary — no rows_json blob (used in list responses)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    strategy_id: uuid.UUID
+    strategy_version_id: uuid.UUID | None
+    universe_snapshot_id: uuid.UUID | None
+    label: str
+    signal_name: str | None
+    source_type: str
+    source_filename: str | None
+    row_count: int
+    symbol_count: int
+    symbols_json: list[str]
+    min_timestamp: str | None
+    max_timestamp: str | None
+    signal_value_count: int
+    missing_signal_count: int
+    mean_value: float | None
+    min_value: float | None
+    max_value: float | None
+    stddev_value: float | None
+    signal_hash: str
+    quality_score: int
+    metadata_json: dict[str, Any] | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SignalSnapshotDetail(SignalSnapshotRead):
+    """Full signal snapshot including the rows_json payload."""
+
+    rows_json: list[dict[str, Any]]
+
+
+class SignalRowChangeOut(BaseModel):
+    symbol: str | None
+    timestamp: str | None
+    change_type: str  # "added" | "removed" | "changed"
+    old_value: float | None = None
+    new_value: float | None = None
+    delta: float | None = None
+
+
+class SignalComparisonResponse(BaseModel):
+    snapshot_a_id: uuid.UUID
+    snapshot_b_id: uuid.UUID
+    snapshot_a_label: str
+    snapshot_b_label: str
+    snapshot_a_row_count: int
+    snapshot_b_row_count: int
+    snapshot_a_symbol_count: int
+    snapshot_b_symbol_count: int
+    is_same_snapshot: bool
+    row_count_delta: int
+    symbol_count_delta: int
+    added_count: int
+    removed_count: int
+    common_symbols_count: int
+    overlap_ratio: float
+    mean_value_delta: float | None
+    min_value_delta: float | None
+    max_value_delta: float | None
+    stddev_value_delta: float | None
+    quality_score_delta: int
+    missing_signal_delta: int
+    keyed_comparison_available: bool
+    added_rows_count: int
+    removed_rows_count: int
+    changed_rows_count: int
+    examples: list[SignalRowChangeOut]
+    added_symbols: list[str]
+    removed_symbols: list[str]
+    highlighted_changes: list[str]
+    deterministic_explanation: str
+    warnings: list[str]
+
+
 class StrategyVersionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -187,6 +302,8 @@ class StrategyVersionOut(BaseModel):
     config_snapshot_count: int = 0
     # M16: universe snapshot count for this version
     universe_snapshot_count: int = 0
+    # M17: signal snapshot count for this version
+    signal_snapshot_count: int = 0
 
 
 class StrategyConfigSnapshotRead(BaseModel):
@@ -255,6 +372,8 @@ class StrategyRunOut(BaseModel):
     dataset_snapshot_id: uuid.UUID | None = None
     # M16: nullable FK to a linked universe snapshot.
     universe_snapshot_id: uuid.UUID | None = None
+    # M17: nullable FK to a linked signal snapshot.
+    signal_snapshot_id: uuid.UUID | None = None
     run_name: str
     run_type: str
     status: str
@@ -272,6 +391,8 @@ class StrategyRunOut(BaseModel):
     dataset_snapshot: DataEvidenceSummary | None = None
     # M16: universe evidence summary — None when no universe snapshot is linked.
     universe_snapshot: UniverseSnapshotSummary | None = None
+    # M17: signal evidence summary — None when no signal snapshot is linked.
+    signal_snapshot: SignalSnapshotSummary | None = None
 
 
 class StrategyListItemOut(BaseModel):
@@ -299,6 +420,8 @@ class StrategyDetailOut(StrategyListItemOut):
     config_snapshots: list[StrategyConfigSnapshotRead] = []
     # M16: recent universe snapshots, newest-first.
     universe_snapshots: list[UniverseSnapshotRead] = []
+    # M17: recent signal snapshots, newest-first.
+    signal_snapshots: list[SignalSnapshotRead] = []
 
 
 # Keep the plain StrategyOut for any internal callers that still use it.

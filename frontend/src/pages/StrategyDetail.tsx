@@ -7,6 +7,8 @@ import type {
   CostSensitivityScenario,
   DataEvidenceSummary,
   ReportDetail,
+  SignalSnapshotRead,
+  SignalSnapshotSummary,
   StrategyConfigSnapshotRead,
   StrategyDetail as StrategyDetailType,
   StrategyRun,
@@ -20,6 +22,7 @@ import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
+import SignalSnapshotDrawer from "@/components/SignalSnapshotDrawer";
 import UniverseSnapshotDrawer from "@/components/UniverseSnapshotDrawer";
 import VersionCreateDrawer from "@/components/VersionCreateDrawer";
 
@@ -296,6 +299,108 @@ function UniverseEvidencePanel({
             {universeSnapshots.length > 5 && (
               <p className="font-mono text-2xs text-text-muted/60 pt-1">
                 + {universeSnapshots.length - 5} more snapshot{universeSnapshots.length - 5 !== 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Signal evidence helpers (M17)
+// ---------------------------------------------------------------------------
+
+function SignalEvidenceChip({ sig }: { sig: SignalSnapshotSummary }) {
+  return (
+    <div className="mt-2 rounded-control border border-accent-500/20 bg-accent-500/5 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div className="flex items-center gap-1.5">
+          <span className="caption">signal</span>
+          <span className={`mono-num text-sm font-semibold ${healthColor(sig.quality_score)}`}>
+            {sig.quality_score}/100
+          </span>
+        </div>
+        {sig.signal_name && (
+          <span className="font-mono text-2xs text-accent-300">{sig.signal_name}</span>
+        )}
+        <span className="font-mono text-2xs text-text-secondary">{sig.label}</span>
+        <span className="font-mono text-2xs text-text-muted">
+          {sig.symbol_count} symbol{sig.symbol_count !== 1 ? "s" : ""}
+        </span>
+        {sig.mean_value !== null && (
+          <span className="font-mono text-2xs text-text-muted">
+            mean: {sig.mean_value.toFixed(3)}
+          </span>
+        )}
+        {sig.stddev_value !== null && (
+          <span className="font-mono text-2xs text-text-muted">
+            σ: {sig.stddev_value.toFixed(3)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SignalEvidencePanel({
+  signalSnapshots,
+  onLogSignal,
+}: {
+  signalSnapshots: SignalSnapshotRead[];
+  onLogSignal: () => void;
+}) {
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <p className="caption">Signal Evidence</p>
+        <button
+          onClick={onLogSignal}
+          className="rounded-control border border-border px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+        >
+          + Log Signal
+        </button>
+      </div>
+      <div className="p-4">
+        {signalSnapshots.length === 0 ? (
+          <p className="font-mono text-2xs text-text-muted">
+            No signal snapshots logged yet. Log a snapshot to track signal distributions and coverage over time.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {signalSnapshots.slice(0, 5).map((ss) => (
+              <div key={ss.id} className="flex items-start justify-between gap-3 rounded-control border border-border/60 bg-bg-800 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-xs text-text-secondary">{ss.label}</p>
+                  <div className="mt-0.5 flex flex-wrap gap-3 font-mono text-2xs text-text-muted">
+                    <span className={`mono-num font-semibold ${healthColor(ss.quality_score)}`}>
+                      quality: {ss.quality_score}/100
+                    </span>
+                    <span className="mono-num text-accent-300">
+                      {ss.symbol_count} symbols
+                    </span>
+                    <span>{ss.row_count} rows</span>
+                    {ss.signal_name && (
+                      <span className="text-accent-300/80">{ss.signal_name}</span>
+                    )}
+                    {ss.source_type && <span>{ss.source_type}</span>}
+                    <span
+                      className="text-text-muted/50 cursor-default"
+                      title={ss.signal_hash}
+                    >
+                      hash: {ss.signal_hash.slice(0, 8)}…
+                    </span>
+                  </div>
+                </div>
+                <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
+                  {fmtDateShort(ss.created_at)}
+                </span>
+              </div>
+            ))}
+            {signalSnapshots.length > 5 && (
+              <p className="font-mono text-2xs text-text-muted/60 pt-1">
+                + {signalSnapshots.length - 5} more snapshot{signalSnapshots.length - 5 !== 1 ? "s" : ""}
               </p>
             )}
           </div>
@@ -956,6 +1061,9 @@ export default function StrategyDetail() {
   // M16: universe snapshot drawer state
   const [universeSnapshotDrawerOpen, setUniverseSnapshotDrawerOpen] = useState(false);
 
+  // M17: signal snapshot drawer state
+  const [signalSnapshotDrawerOpen, setSignalSnapshotDrawerOpen] = useState(false);
+
   // M8: backtest audit state — keyed by run id.
   const [audits, setAudits] = useState<Record<string, BacktestAudit>>({});
   const [auditingRunId, setAuditingRunId] = useState<string | null>(null);
@@ -1081,6 +1189,12 @@ export default function StrategyDetail() {
             + Log Universe
           </button>
           <button
+            onClick={() => setSignalSnapshotDrawerOpen(true)}
+            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Log Signal
+          </button>
+          <button
             onClick={() => setRunDrawerOpen(true)}
             className="rounded-control bg-accent-500 px-3.5 py-2 font-mono text-xs font-medium text-text-inverse hover:bg-accent-600"
           >
@@ -1094,6 +1208,7 @@ export default function StrategyDetail() {
         strategyId={id!}
         versions={strategy.versions}
         universeSnapshots={strategy.universe_snapshots}
+        signalSnapshots={strategy.signal_snapshots}
         onClose={() => setRunDrawerOpen(false)}
         onLogged={() => {
           setRunDrawerOpen(false);
@@ -1122,6 +1237,16 @@ export default function StrategyDetail() {
         strategyId={id!}
         versions={strategy.versions}
         onClose={() => setUniverseSnapshotDrawerOpen(false)}
+        onCreated={() => setRefreshKey((k) => k + 1)}
+      />
+
+      {/* M17: Signal Snapshot drawer */}
+      <SignalSnapshotDrawer
+        open={signalSnapshotDrawerOpen}
+        strategyId={id!}
+        versions={strategy.versions}
+        universeSnapshots={strategy.universe_snapshots}
+        onClose={() => setSignalSnapshotDrawerOpen(false)}
         onCreated={() => setRefreshKey((k) => k + 1)}
       />
 
@@ -1197,6 +1322,12 @@ export default function StrategyDetail() {
         onLogUniverse={() => setUniverseSnapshotDrawerOpen(true)}
       />
 
+      {/* M17: Signal Evidence panel */}
+      <SignalEvidencePanel
+        signalSnapshots={strategy.signal_snapshots}
+        onLogSignal={() => setSignalSnapshotDrawerOpen(true)}
+      />
+
       {/* M15: Version & Config Evidence */}
       <VersionConfigSection
         versions={strategy.versions}
@@ -1245,6 +1376,11 @@ export default function StrategyDetail() {
                   {/* M16: Universe evidence chip */}
                   {r.universe_snapshot && (
                     <UniverseEvidenceChip uni={r.universe_snapshot} />
+                  )}
+
+                  {/* M17: Signal evidence chip */}
+                  {r.signal_snapshot && (
+                    <SignalEvidenceChip sig={r.signal_snapshot} />
                   )}
 
                   <div className="mt-2 flex flex-wrap gap-4 font-mono text-2xs text-text-muted">

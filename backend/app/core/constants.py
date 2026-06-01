@@ -69,6 +69,7 @@ class EventType(StrEnum):
     report_generated = "report_generated"
     strategy_config_snapshot_logged = "strategy_config_snapshot_logged"
     universe_snapshot_logged = "universe_snapshot_logged"
+    signal_snapshot_logged = "signal_snapshot_logged"
 
 
 class Severity(StrEnum):

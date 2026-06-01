@@ -90,6 +90,18 @@ class StrategyRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="strategy_runs",
         foreign_keys="[StrategyRun.universe_snapshot_id]",
     )
+    # M17: optional link to a signal snapshot.
+    signal_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("signal_snapshots.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    signal_snapshot: Mapped["SignalSnapshot | None"] = relationship(  # noqa: F821
+        "SignalSnapshot",
+        back_populates="strategy_runs",
+        foreign_keys="[StrategyRun.signal_snapshot_id]",
+    )
     # M8: backtest audit records for this run (at most one in practice — POST replaces).
     backtest_audits: Mapped[list["BacktestAudit"]] = relationship(  # noqa: F821
         "BacktestAudit",
