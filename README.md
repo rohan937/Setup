@@ -27,9 +27,9 @@ QuantFidelity/
 │   │   ├── api/            Routers: health, meta, projects, strategies, timeline, datasets, reports
 │   │   ├── models/         SQLAlchemy ORM models (17 tables)
 │   │   ├── schemas/        Pydantic response models
-│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots)
+│   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (545 tests)
+│   └── tests/              Pytest tests (740 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,128 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M18: Strategy Reliability Score Engine v1
+## Current milestone — M19: Reliability Score History + Evidence Trend Panel
+
+**Status: complete.**
+
+### M19 deliverables
+
+- **3 new API endpoints** (`app/api/routes/strategies.py`) — all registered in safe order
+  (literal paths before parameterised sub-paths) to avoid Starlette routing conflicts:
+  - `GET /api/strategies/{id}/reliability-scores/compare?score_a_id=…&score_b_id=…` —
+    deterministic comparison of any two stored reliability scores belonging to the same strategy.
+    Validates both scores exist (404) and belong to the strategy (400). Returns full
+    `ReliabilityScoreComparisonResponse`. No timeline event (read-only). Registered BEFORE the
+    history list endpoint.
+  - `GET /api/strategies/{id}/reliability-scores` — paginated history list, newest-first.
+    Returns `StrategyReliabilityScoreHistoryResponse` envelope (`total`, `limit`, `offset`,
+    `items`). Supports `limit` and `offset` query params.
+  - `GET /api/strategies/{id}/reliability-score/trend` — latest vs. previous score comparison.
+    Returns `ReliabilityScoreTrendResponse` with `has_trend`, `message`, `latest`, `previous`,
+    and a full `comparison` object. Returns `has_trend: false` (with informative message) when
+    fewer than 2 scores exist. Registered BEFORE the existing single-score GET endpoint.
+- **`compare_reliability_scores(score_a, score_b)` service function** added to
+  `app/services/strategy_reliability.py`. Deterministic — no AI, no live data, no external calls:
+  - Computes `overall_delta` (score_b − score_a) and `status_changed` flag.
+  - `ReliabilityComponentDelta` per component: `score_a`, `score_b`, `delta` (None when either
+    is null), `became_available` (None → value), `became_null` (value → None).
+  - `EvidenceCountDelta` per evidence count key present in either score.
+  - Evidence change sets: `resolved_missing_evidence` (was missing, now addressed),
+    `still_missing_evidence` (missing in both), `newly_available_evidence` (newly missing in B).
+  - `highlighted_changes`: bullets for components where `|delta| ≥ 3.0` points.
+  - `deterministic_explanation`: hedged prose ("changed from", "improved alongside", "may
+    reflect") — no causal language. Ends with "This is a deterministic score comparison based
+    on stored evidence snapshots, not a causal claim."
+- **Three new dataclasses** in the service: `ReliabilityComponentDelta`, `EvidenceCountDelta`,
+  `ReliabilityComparisonResult` (list fields use `field(default_factory=list)`).
+  `TYPE_CHECKING` guard prevents circular import of the ORM model at runtime.
+- **New schemas** (`app/schemas/strategy.py`):
+  `StrategyReliabilityScoreHistoryResponse`, `ReliabilityComponentDelta`, `EvidenceCountDelta`,
+  `ReliabilityScoreComparisonResponse`, `ReliabilityScoreTrendResponse`.
+- **44 new backend tests** — `tests/test_reliability_m19.py` across 5 test classes:
+  - `TestCompareReliabilityScoresService` (15 tests): `SimpleNamespace` mock objects — no DB
+    needed. overall_delta, became_available/became_null flags, evidence count deltas,
+    resolved/still/newly missing evidence, self-comparison zero deltas, explanation language
+    (no causal phrases: "caused", "because", "due to"), highlighted changes threshold (≥ 3.0).
+  - `TestReliabilityScoreHistory` (8 tests): history newest-first, limit/offset pagination,
+    404 unknown strategy, all envelope fields present.
+  - `TestReliabilityScoreCompareEndpoint` (9 tests): success, 404 unknown strategy/score,
+    cross-strategy score rejection (400), self-comparison, no timeline event created,
+    explanation avoids causal phrases.
+  - `TestReliabilityScoreTrend` (8 tests): 404 unknown, not-enough-history (0 and 1 scores),
+    has_trend with 2+ scores, latest/previous populated correctly, no timeline event,
+    comparison uses prev=A/latest=B, 3 scores uses newest two.
+  - 4 additional edge-case tests.
+- **740 total backend tests** (696 prior M2–M18 + 44 new), 1 skipped.
+- **Frontend types** (`frontend/src/types/index.ts`):
+  `StrategyReliabilityScoreHistoryResponse`, `ReliabilityComponentDelta`, `EvidenceCountDelta`,
+  `ReliabilityScoreComparisonResponse`, `ReliabilityScoreTrendResponse` interfaces added.
+- **Frontend API** (`frontend/src/lib/api.ts`):
+  `getStrategyReliabilityScoreHistory()`, `compareStrategyReliabilityScores()`,
+  `getStrategyReliabilityScoreTrend()` added.
+- **Extended `ReliabilityPanel`** (`frontend/src/pages/StrategyDetail.tsx`):
+  - `ScoreSparkline` — div-bar visualization (no chart library) of the last N scores,
+    colour-coded by range (≥75 green, ≥55 amber, <55 red, null gray). Shown when ≥ 2 scores.
+  - `ScoreHistoryStrip` — table of up to 5 most-recent scores: When / Score / Status /
+    Activity / Data / Backtest / Signal columns.
+  - `TrendSection` — overall delta with ▲/▼/≈ indicator, status-change arrow if changed,
+    component movers grid (`|delta| ≥ 1.0`), resolved evidence list (green), still-missing
+    list (amber), `deterministic_explanation` in italic.
+  - `deltaColor()` and `deltaSign()` helpers (e.g. ▲ +3.2 / ▼ −1.8 / ≈).
+  - `scoreHistory` and `scoreTrend` state. `loadReliabilityHistory()` loads last 10 scores
+    on page load and derives a synthetic `ReliabilityScoreTrendResponse` from the two most-recent
+    items — no extra API call on load.
+- **Zero TypeScript errors**, clean production build (59 modules, ≈349 kB JS bundle).
+
+### What M19 does NOT build (by design)
+
+- Full comparison UI panel (compare endpoint available via API; the `comparison` field in the
+  synthetic trend built from history is `null` — no extra round-trip on page load).
+- AI-driven trend explanations, predictions, or anomaly detection.
+- Live score refresh, streaming, or polling.
+- Email, Slack, or webhook notifications when reliability score changes.
+- Live drift attribution or execution-side score contributions.
+- Per-component score history charts or time-series visualizations beyond the sparkline.
+
+### Verify with curl
+
+```bash
+# First, compute at least two reliability scores for a strategy:
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/reliability-score \
+  | python3 -m json.tool
+
+# List reliability score history (paginated, newest first)
+curl "http://localhost:8000/api/strategies/<strategy_id>/reliability-scores?limit=10" \
+  | python3 -m json.tool
+# Response: { "total": N, "limit": 10, "offset": 0, "items": [...] }
+
+# Compare two stored scores
+curl "http://localhost:8000/api/strategies/<strategy_id>/reliability-scores/compare?\
+score_a_id=<older_score_id>&score_b_id=<newer_score_id>" | python3 -m json.tool
+# Response: overall_score_a, overall_score_b, overall_delta, status_a, status_b, status_changed,
+#   component_deltas[{component, label, score_a, score_b, delta, became_available, became_null}],
+#   evidence_count_deltas, newly_available_evidence, resolved_missing_evidence,
+#   still_missing_evidence, highlighted_changes, deterministic_explanation
+
+# Trend: latest vs previous score
+curl "http://localhost:8000/api/strategies/<strategy_id>/reliability-score/trend" \
+  | python3 -m json.tool
+# Response: { "has_trend": true, "message": "...", "latest": {...}, "previous": {...},
+#   "comparison": { "overall_delta": ..., "component_deltas": [...], ... } }
+
+# Trend when only one score exists:
+# Response: { "has_trend": false, "message": "Not enough history. Compute at least two
+#   reliability scores to see trend.", "latest": {...}, "previous": null, "comparison": null }
+```
+
+> **M19 note:** Score comparisons are deterministic — based on stored evidence snapshots, not
+> live recalculation. Language in `deterministic_explanation` is explicitly hedged ("changed
+> from", "improved alongside", "may reflect") and ends with "not a causal claim." No AI,
+> no live data, no external calls.
+
+---
+
+## Previously completed — M18: Strategy Reliability Score Engine v1
 
 **Status: complete.**
 

@@ -57,6 +57,10 @@ from app.schemas.strategy import (
     ConfigComparisonSectionOut,
     ConfigKeyChangeOut,
     DataEvidenceSummary,
+    EvidenceCountDelta as _EvidenceCountDelta,
+    ReliabilityComponentDelta as _ReliabilityComponentDelta,
+    ReliabilityScoreComparisonResponse,
+    ReliabilityScoreTrendResponse,
     SignalComparisonResponse,
     SignalRowChangeOut,
     SignalSnapshotCreate,
@@ -69,6 +73,7 @@ from app.schemas.strategy import (
     StrategyCreate,
     StrategyDetailOut,
     StrategyListItemOut,
+    StrategyReliabilityScoreHistoryResponse,
     StrategyReliabilityScoreRead,
     StrategyRunCreate,
     StrategyRunOut,
@@ -80,7 +85,10 @@ from app.schemas.strategy import (
     UniverseSnapshotRead,
     UniverseSnapshotSummary,
 )
-from app.services.strategy_reliability import compute_reliability_score
+from app.services.strategy_reliability import (
+    compare_reliability_scores,
+    compute_reliability_score,
+)
 from app.schemas.timeline import TimelineEventOut, TimelineListResponse
 from app.services.config_snapshots import (
     compare_config_snapshots,
@@ -559,6 +567,242 @@ def get_strategy(
             if latest_rel_score is not None
             else None
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# M19: GET /api/strategies/{strategy_id}/reliability-scores/compare
+# NOTE: registered BEFORE /reliability-scores (history) so the literal
+# '/compare' segment is matched before any future parameterised sub-path.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/reliability-scores/compare",
+    response_model=ReliabilityScoreComparisonResponse,
+)
+def compare_strategy_reliability_score_pair(
+    strategy_id: uuid.UUID,
+    score_a_id: uuid.UUID = Query(..., description="Earlier (baseline) score ID"),
+    score_b_id: uuid.UUID = Query(..., description="Later (current) score ID"),
+    db: Session = Depends(get_db),
+) -> ReliabilityScoreComparisonResponse:
+    """Compare two reliability score rows for the same strategy.
+
+    Score A is the baseline (older); score B is the current (newer).
+    Returns structured deltas, evidence changes, and a deterministic explanation.
+    No timeline event created — this is a read-only comparison.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    score_a = (
+        db.query(StrategyReliabilityScore)
+        .filter(
+            StrategyReliabilityScore.id == score_a_id,
+            StrategyReliabilityScore.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if score_a is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Score A ({score_a_id}) not found for this strategy",
+        )
+
+    score_b = (
+        db.query(StrategyReliabilityScore)
+        .filter(
+            StrategyReliabilityScore.id == score_b_id,
+            StrategyReliabilityScore.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if score_b is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Score B ({score_b_id}) not found for this strategy",
+        )
+
+    result = compare_reliability_scores(score_a, score_b)
+
+    return ReliabilityScoreComparisonResponse(
+        score_a_id=result.score_a_id,
+        score_b_id=result.score_b_id,
+        score_a_generated_at=result.score_a_generated_at,
+        score_b_generated_at=result.score_b_generated_at,
+        overall_score_a=result.overall_score_a,
+        overall_score_b=result.overall_score_b,
+        overall_delta=result.overall_delta,
+        status_a=result.status_a,
+        status_b=result.status_b,
+        status_changed=result.status_changed,
+        component_deltas=[
+            _ReliabilityComponentDelta(
+                component=d.component,
+                label=d.label,
+                score_a=d.score_a,
+                score_b=d.score_b,
+                delta=d.delta,
+                became_available=d.became_available,
+                became_null=d.became_null,
+            )
+            for d in result.component_deltas
+        ],
+        evidence_count_deltas=[
+            _EvidenceCountDelta(
+                key=e.key,
+                count_a=e.count_a,
+                count_b=e.count_b,
+                delta=e.delta,
+            )
+            for e in result.evidence_count_deltas
+        ],
+        newly_available_evidence=result.newly_available_evidence,
+        resolved_missing_evidence=result.resolved_missing_evidence,
+        still_missing_evidence=result.still_missing_evidence,
+        highlighted_changes=result.highlighted_changes,
+        deterministic_explanation=result.deterministic_explanation,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M19: GET /api/strategies/{strategy_id}/reliability-scores  (history)
+# NOTE: registered AFTER /compare so 'compare' is matched as a literal.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/reliability-scores",
+    response_model=StrategyReliabilityScoreHistoryResponse,
+)
+def get_strategy_reliability_score_history(
+    strategy_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> StrategyReliabilityScoreHistoryResponse:
+    """Return the reliability score history for a strategy, newest-first.
+
+    Each item is a full score row including all component scores and evidence
+    metadata.  Use ``limit`` and ``offset`` for pagination.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    q = db.query(StrategyReliabilityScore).filter(
+        StrategyReliabilityScore.strategy_id == strategy_id
+    )
+    total: int = q.count()
+    items = (
+        q.order_by(StrategyReliabilityScore.generated_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return StrategyReliabilityScoreHistoryResponse(
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[StrategyReliabilityScoreRead.model_validate(s) for s in items],
+    )
+
+
+# ---------------------------------------------------------------------------
+# M19: GET /api/strategies/{strategy_id}/reliability-score/trend
+# NOTE: registered BEFORE the plain /reliability-score GET so the '/trend'
+# literal is matched before any future sub-path of reliability-score.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/reliability-score/trend",
+    response_model=ReliabilityScoreTrendResponse,
+)
+def get_strategy_reliability_score_trend(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> ReliabilityScoreTrendResponse:
+    """Return the latest vs. previous reliability score comparison.
+
+    ``has_trend`` is False when fewer than two scores exist — no fake data.
+    When two or more scores exist, returns the latest score, the previous score,
+    and a deterministic comparison between them (previous=A, latest=B).
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    scores = (
+        db.query(StrategyReliabilityScore)
+        .filter(StrategyReliabilityScore.strategy_id == strategy_id)
+        .order_by(StrategyReliabilityScore.generated_at.desc())
+        .limit(2)
+        .all()
+    )
+
+    if len(scores) < 2:
+        return ReliabilityScoreTrendResponse(
+            has_trend=False,
+            message=(
+                "Not enough history. Compute at least two reliability scores "
+                "to see trend."
+            ),
+            latest=StrategyReliabilityScoreRead.model_validate(scores[0])
+            if scores
+            else None,
+            previous=None,
+            comparison=None,
+        )
+
+    latest_score, prev_score = scores[0], scores[1]
+    result = compare_reliability_scores(prev_score, latest_score)
+
+    comparison_out = ReliabilityScoreComparisonResponse(
+        score_a_id=result.score_a_id,
+        score_b_id=result.score_b_id,
+        score_a_generated_at=result.score_a_generated_at,
+        score_b_generated_at=result.score_b_generated_at,
+        overall_score_a=result.overall_score_a,
+        overall_score_b=result.overall_score_b,
+        overall_delta=result.overall_delta,
+        status_a=result.status_a,
+        status_b=result.status_b,
+        status_changed=result.status_changed,
+        component_deltas=[
+            _ReliabilityComponentDelta(
+                component=d.component,
+                label=d.label,
+                score_a=d.score_a,
+                score_b=d.score_b,
+                delta=d.delta,
+                became_available=d.became_available,
+                became_null=d.became_null,
+            )
+            for d in result.component_deltas
+        ],
+        evidence_count_deltas=[
+            _EvidenceCountDelta(
+                key=e.key,
+                count_a=e.count_a,
+                count_b=e.count_b,
+                delta=e.delta,
+            )
+            for e in result.evidence_count_deltas
+        ],
+        newly_available_evidence=result.newly_available_evidence,
+        resolved_missing_evidence=result.resolved_missing_evidence,
+        still_missing_evidence=result.still_missing_evidence,
+        highlighted_changes=result.highlighted_changes,
+        deterministic_explanation=result.deterministic_explanation,
+    )
+
+    return ReliabilityScoreTrendResponse(
+        has_trend=True,
+        message="Trend available. Comparing previous score to latest score.",
+        latest=StrategyReliabilityScoreRead.model_validate(latest_score),
+        previous=StrategyReliabilityScoreRead.model_validate(prev_score),
+        comparison=comparison_out,
     )
 
 

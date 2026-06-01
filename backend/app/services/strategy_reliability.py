@@ -1,16 +1,22 @@
-"""M18: Deterministic per-strategy reliability scoring service.
+"""M18/M19: Deterministic per-strategy reliability scoring and comparison service.
 
 Aggregates all evidence collected so far (runs, dataset snapshots, backtest
 audits, config/universe/signal snapshots, open alerts, reports) into a single
-reliability score.  No AI, no live data, no external calls.
+reliability score.  M19 adds score-to-score comparison for trend analysis.
+No AI, no live data, no external calls.
 """
 
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from app.models.strategy_reliability_score import StrategyReliabilityScore
 
 from app.core.constants import ReliabilityScoreStatus
 from app.models.alert import Alert
@@ -431,3 +437,307 @@ def compute_reliability_score(strategy_id: str, db: Session) -> dict:
         "suggested_checks_json": suggested_checks if suggested_checks else None,
         "generated_at": now,
     }
+
+
+# ---------------------------------------------------------------------------
+# M19: Deterministic score comparison
+# ---------------------------------------------------------------------------
+
+# Human-readable names for component keys (used in explanation text).
+_COMPONENT_DISPLAY_NAMES: dict[str, str] = {
+    "strategy_activity_score": "Activity",
+    "data_evidence_score": "Data Evidence",
+    "backtest_trust_score": "Backtest Trust",
+    "config_evidence_score": "Config",
+    "universe_evidence_score": "Universe",
+    "signal_evidence_score": "Signal",
+    "alert_penalty_score": "Alert Penalty",
+    "report_coverage_score": "Report Coverage",
+}
+
+_ALL_COMPONENTS = list(_COMPONENT_DISPLAY_NAMES.keys())
+
+
+@dataclass
+class ReliabilityComponentDelta:
+    """Per-component change between two reliability score rows."""
+    component: str
+    label: str
+    score_a: float | None
+    score_b: float | None
+    delta: float | None        # score_b - score_a; None if either is None
+    became_available: bool     # was None → now has value
+    became_null: bool          # had value → now None
+
+
+@dataclass
+class EvidenceCountDelta:
+    """Change in an evidence count field between two score rows."""
+    key: str
+    count_a: int | None
+    count_b: int | None
+    delta: int | None
+
+
+@dataclass
+class ReliabilityComparisonResult:
+    """Structured result of comparing two StrategyReliabilityScore rows (M19)."""
+    score_a_id: uuid.UUID
+    score_b_id: uuid.UUID
+    score_a_generated_at: datetime
+    score_b_generated_at: datetime
+    overall_score_a: float | None
+    overall_score_b: float | None
+    overall_delta: float | None
+    status_a: str
+    status_b: str
+    status_changed: bool
+    component_deltas: list[ReliabilityComponentDelta] = field(default_factory=list)
+    evidence_count_deltas: list[EvidenceCountDelta] = field(default_factory=list)
+    newly_available_evidence: list[str] = field(default_factory=list)
+    resolved_missing_evidence: list[str] = field(default_factory=list)
+    still_missing_evidence: list[str] = field(default_factory=list)
+    highlighted_changes: list[str] = field(default_factory=list)
+    deterministic_explanation: str = ""
+
+
+def _build_comparison_explanation(
+    score_a: "StrategyReliabilityScore",
+    score_b: "StrategyReliabilityScore",
+    overall_delta: float | None,
+    component_deltas: list[ReliabilityComponentDelta],
+    resolved_missing: list[str],
+    still_missing: list[str],
+) -> str:
+    """Build a deterministic, evidence-based explanation string.
+
+    Uses hedged language: 'changed from', 'improved alongside', 'may reflect'.
+    No causal claims. No AI language.
+    """
+    parts: list[str] = []
+
+    # --- Overall score description ---
+    a_score = score_a.overall_score
+    b_score = score_b.overall_score
+    if a_score is None and b_score is None:
+        parts.append(
+            "Both score snapshots have insufficient evidence for an overall score."
+        )
+    elif a_score is None and b_score is not None:
+        parts.append(
+            f"Reliability score became available at {b_score:.1f}/100 "
+            f"(previously insufficient evidence)."
+        )
+    elif a_score is not None and b_score is None:
+        parts.append(
+            f"Reliability score declined to insufficient evidence "
+            f"(was {a_score:.1f}/100)."
+        )
+    else:
+        assert a_score is not None and b_score is not None
+        delta = b_score - a_score
+        if abs(delta) < 0.05:
+            parts.append(
+                f"Overall reliability score unchanged at {b_score:.1f}/100."
+            )
+        elif delta > 0:
+            parts.append(
+                f"Reliability score improved from {a_score:.1f} to {b_score:.1f} "
+                f"({delta:+.1f} points)."
+            )
+        else:
+            parts.append(
+                f"Reliability score declined from {a_score:.1f} to {b_score:.1f} "
+                f"({delta:+.1f} points)."
+            )
+
+    # --- Top component movers ---
+    movers = [
+        d for d in component_deltas
+        if d.delta is not None and abs(d.delta) >= 1.0
+    ]
+    movers.sort(key=lambda x: abs(x.delta), reverse=True)  # type: ignore[arg-type]
+    if movers:
+        top3 = movers[:3]
+        mover_strs = [
+            f"{d.label} {d.delta:+.1f}" for d in top3
+        ]
+        parts.append(
+            f"Largest component changes alongside this comparison: "
+            f"{', '.join(mover_strs)}."
+        )
+
+    # --- Evidence notes ---
+    if resolved_missing:
+        resolved_preview = "; ".join(resolved_missing[:2])
+        parts.append(
+            f"{len(resolved_missing)} previously missing evidence item(s) noted as "
+            f"addressed: {resolved_preview}."
+        )
+    if still_missing:
+        parts.append(
+            f"{len(still_missing)} evidence gap(s) remain unchanged."
+        )
+
+    # --- Components that became available ---
+    newly_avail_comps = [
+        d.label for d in component_deltas if d.became_available
+    ]
+    if newly_avail_comps:
+        parts.append(
+            f"Components now scored (were previously N/A): "
+            f"{', '.join(newly_avail_comps)}."
+        )
+
+    # --- Status change ---
+    if score_a.status != score_b.status:
+        parts.append(
+            f"Status changed from '{score_a.status.replace('_', ' ')}' "
+            f"to '{score_b.status.replace('_', ' ')}'."
+        )
+
+    parts.append(
+        "This is a deterministic score comparison based on stored evidence snapshots, "
+        "not a causal claim."
+    )
+
+    return " ".join(parts)
+
+
+def compare_reliability_scores(
+    score_a: "StrategyReliabilityScore",
+    score_b: "StrategyReliabilityScore",
+) -> ReliabilityComparisonResult:
+    """Deterministically compare two stored StrategyReliabilityScore rows.
+
+    Score A is the earlier (baseline) snapshot; score B is the later (current).
+    Returns a structured ReliabilityComparisonResult with deltas, evidence
+    changes, and a plain-English explanation.
+
+    No AI, no live data, no external calls.
+    """
+    # --- Overall delta ---
+    if score_a.overall_score is not None and score_b.overall_score is not None:
+        overall_delta: float | None = round(
+            score_b.overall_score - score_a.overall_score, 1
+        )
+    else:
+        overall_delta = None
+
+    status_changed = score_a.status != score_b.status
+
+    # --- Component deltas ---
+    component_deltas: list[ReliabilityComponentDelta] = []
+    for key in _ALL_COMPONENTS:
+        val_a: float | None = getattr(score_a, key, None)
+        val_b: float | None = getattr(score_b, key, None)
+
+        if val_a is not None and val_b is not None:
+            delta: float | None = round(val_b - val_a, 1)
+            became_available = False
+            became_null = False
+        elif val_a is None and val_b is not None:
+            delta = None
+            became_available = True
+            became_null = False
+        elif val_a is not None and val_b is None:
+            delta = None
+            became_available = False
+            became_null = True
+        else:
+            delta = None
+            became_available = False
+            became_null = False
+
+        component_deltas.append(
+            ReliabilityComponentDelta(
+                component=key,
+                label=_COMPONENT_DISPLAY_NAMES.get(key, key),
+                score_a=val_a,
+                score_b=val_b,
+                delta=delta,
+                became_available=became_available,
+                became_null=became_null,
+            )
+        )
+
+    # --- Evidence count deltas ---
+    evidence_count_deltas: list[EvidenceCountDelta] = []
+    counts_a: dict = score_a.evidence_counts_json or {}
+    counts_b: dict = score_b.evidence_counts_json or {}
+    all_keys = sorted(set(counts_a) | set(counts_b))
+    for k in all_keys:
+        ca = counts_a.get(k)
+        cb = counts_b.get(k)
+        delta_count: int | None = None
+        if ca is not None and cb is not None:
+            delta_count = cb - ca
+        evidence_count_deltas.append(
+            EvidenceCountDelta(
+                key=k,
+                count_a=ca,
+                count_b=cb,
+                delta=delta_count,
+            )
+        )
+
+    # --- Missing evidence analysis ---
+    missing_a: list[str] = score_a.missing_evidence_json or []
+    missing_b: list[str] = score_b.missing_evidence_json or []
+    set_a = set(missing_a)
+    set_b = set(missing_b)
+
+    resolved_missing_evidence = sorted(set_a - set_b)      # was missing, now absent from list
+    still_missing_evidence = sorted(set_a & set_b)          # missing in both
+    newly_available_evidence = sorted(set_b - set_a)        # appeared as missing in B
+
+    # --- Highlighted changes ---
+    highlighted: list[str] = []
+    significant_movers = [
+        d for d in component_deltas
+        if d.delta is not None and abs(d.delta) >= 3.0
+    ]
+    significant_movers.sort(key=lambda x: abs(x.delta), reverse=True)  # type: ignore[arg-type]
+    for d in significant_movers[:4]:
+        direction = "▲" if (d.delta or 0) > 0 else "▼"
+        highlighted.append(f"{direction} {d.label}: {d.delta:+.1f}")
+
+    if status_changed:
+        highlighted.append(
+            f"Status: {score_a.status.replace('_', ' ')} → {score_b.status.replace('_', ' ')}"
+        )
+
+    if resolved_missing_evidence:
+        highlighted.append(
+            f"{len(resolved_missing_evidence)} evidence gap(s) addressed"
+        )
+
+    # --- Deterministic explanation ---
+    explanation = _build_comparison_explanation(
+        score_a=score_a,
+        score_b=score_b,
+        overall_delta=overall_delta,
+        component_deltas=component_deltas,
+        resolved_missing=resolved_missing_evidence,
+        still_missing=still_missing_evidence,
+    )
+
+    return ReliabilityComparisonResult(
+        score_a_id=score_a.id,
+        score_b_id=score_b.id,
+        score_a_generated_at=score_a.generated_at,
+        score_b_generated_at=score_b.generated_at,
+        overall_score_a=score_a.overall_score,
+        overall_score_b=score_b.overall_score,
+        overall_delta=overall_delta,
+        status_a=score_a.status,
+        status_b=score_b.status,
+        status_changed=status_changed,
+        component_deltas=component_deltas,
+        evidence_count_deltas=evidence_count_deltas,
+        newly_available_evidence=newly_available_evidence,
+        resolved_missing_evidence=resolved_missing_evidence,
+        still_missing_evidence=still_missing_evidence,
+        highlighted_changes=highlighted,
+        deterministic_explanation=explanation,
+    )

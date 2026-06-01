@@ -986,3 +986,63 @@ export interface StrategyReliabilityScoreListResponse {
   total: number;
   items: StrategyReliabilityScore[];
 }
+
+// ---------------------------------------------------------------------------
+// M19: Reliability score history + comparison types
+// ---------------------------------------------------------------------------
+
+export interface StrategyReliabilityScoreHistoryResponse {
+  total: number;
+  limit: number;
+  offset: number;
+  items: StrategyReliabilityScore[];
+}
+
+export interface ReliabilityComponentDelta {
+  component: string;
+  label: string;
+  score_a: number | null;
+  score_b: number | null;
+  /** score_b - score_a; null if either side is null */
+  delta: number | null;
+  /** Was null in A, now has a value in B */
+  became_available: boolean;
+  /** Had a value in A, now null in B */
+  became_null: boolean;
+}
+
+export interface EvidenceCountDelta {
+  key: string;
+  count_a: number | null;
+  count_b: number | null;
+  delta: number | null;
+}
+
+export interface ReliabilityScoreComparisonResponse {
+  score_a_id: string;
+  score_b_id: string;
+  score_a_generated_at: string;
+  score_b_generated_at: string;
+  overall_score_a: number | null;
+  overall_score_b: number | null;
+  /** overall_score_b - overall_score_a; null if either is null */
+  overall_delta: number | null;
+  status_a: string;
+  status_b: string;
+  status_changed: boolean;
+  component_deltas: ReliabilityComponentDelta[];
+  evidence_count_deltas: EvidenceCountDelta[];
+  newly_available_evidence: string[];
+  resolved_missing_evidence: string[];
+  still_missing_evidence: string[];
+  highlighted_changes: string[];
+  deterministic_explanation: string;
+}
+
+export interface ReliabilityScoreTrendResponse {
+  has_trend: boolean;
+  message: string;
+  latest: StrategyReliabilityScore | null;
+  previous: StrategyReliabilityScore | null;
+  comparison: ReliabilityScoreComparisonResponse | null;
+}

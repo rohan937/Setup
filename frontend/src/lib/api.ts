@@ -20,6 +20,8 @@ import type {
   DatasetSnapshotDetail,
   DatasetSnapshotRead,
   Project,
+  ReliabilityScoreComparisonResponse,
+  ReliabilityScoreTrendResponse,
   ReportDetail,
   ReportFilters,
   ReportListResponse,
@@ -33,6 +35,7 @@ import type {
   StrategyConfigSnapshotRead,
   StrategyDetail,
   StrategyReliabilityScore,
+  StrategyReliabilityScoreHistoryResponse,
   StrategyReliabilityScoreListResponse,
   StrategyRun,
   StrategyCreateRequest,
@@ -491,5 +494,43 @@ export async function getReliabilityScores(params?: {
   const q = qs.toString();
   return request<StrategyReliabilityScoreListResponse>(
     `/api/reliability-scores${q ? `?${q}` : ""}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reliability Score History + Comparison (M19)
+// ---------------------------------------------------------------------------
+
+/** Get the reliability score history for a strategy, newest-first. */
+export async function getStrategyReliabilityScoreHistory(
+  strategyId: string,
+  params?: { limit?: number; offset?: number },
+): Promise<StrategyReliabilityScoreHistoryResponse> {
+  const qs = new URLSearchParams();
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return request<StrategyReliabilityScoreHistoryResponse>(
+    `/api/strategies/${strategyId}/reliability-scores${q ? `?${q}` : ""}`,
+  );
+}
+
+/** Deterministically compare two reliability score rows for a strategy. */
+export async function compareStrategyReliabilityScores(
+  strategyId: string,
+  scoreAId: string,
+  scoreBId: string,
+): Promise<ReliabilityScoreComparisonResponse> {
+  return request<ReliabilityScoreComparisonResponse>(
+    `/api/strategies/${strategyId}/reliability-scores/compare?score_a_id=${scoreAId}&score_b_id=${scoreBId}`,
+  );
+}
+
+/** Get latest-vs-previous trend for a strategy (has_trend=false if < 2 scores). */
+export async function getStrategyReliabilityScoreTrend(
+  strategyId: string,
+): Promise<ReliabilityScoreTrendResponse> {
+  return request<ReliabilityScoreTrendResponse>(
+    `/api/strategies/${strategyId}/reliability-score/trend`,
   );
 }

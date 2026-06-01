@@ -6,6 +6,8 @@ import type {
   BacktestStatus,
   CostSensitivityScenario,
   DataEvidenceSummary,
+  ReliabilityScoreComparisonResponse,
+  ReliabilityScoreTrendResponse,
   ReportDetail,
   SignalSnapshotRead,
   SignalSnapshotSummary,
@@ -18,7 +20,14 @@ import type {
   UniverseSnapshotRead,
   UniverseSnapshotSummary,
 } from "@/types";
-import { computeStrategyReliabilityScore, generateStrategyReport, getStrategy, getStrategyTimeline, runBacktestAudit } from "@/lib/api";
+import {
+  computeStrategyReliabilityScore,
+  generateStrategyReport,
+  getStrategy,
+  getStrategyReliabilityScoreHistory,
+  getStrategyTimeline,
+  runBacktestAudit,
+} from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import RunLogDrawer from "@/components/RunLogDrawer";
@@ -138,7 +147,7 @@ function DataEvidenceChip({ ev }: { ev: DataEvidenceSummary }) {
 }
 
 // ---------------------------------------------------------------------------
-// M18: Strategy Reliability panel
+// M18/M19: Strategy Reliability panel (with history + trend)
 // ---------------------------------------------------------------------------
 
 function reliabilityStatusBadge(status: string): string {
@@ -168,6 +177,20 @@ function timeAgo(isoStr: string): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+function deltaColor(delta: number | null): string {
+  if (delta === null) return "text-text-muted";
+  if (delta > 0.05) return "text-green-400";
+  if (delta < -0.05) return "text-red-400";
+  return "text-text-muted";
+}
+
+function deltaSign(delta: number | null): string {
+  if (delta === null) return "—";
+  if (delta > 0.05) return `▲ +${delta.toFixed(1)}`;
+  if (delta < -0.05) return `▼ ${delta.toFixed(1)}`;
+  return "≈";
+}
+
 const COMPONENT_LABELS: Record<string, string> = {
   strategy_activity_score: "Activity",
   data_evidence_score: "Data Evidence",
@@ -179,15 +202,200 @@ const COMPONENT_LABELS: Record<string, string> = {
   report_coverage_score: "Report Coverage",
 };
 
+// Lightweight score sparkline using div bars (no chart library).
+function ScoreSparkline({ scores }: { scores: (number | null)[] }) {
+  if (scores.length === 0) return null;
+  return (
+    <div className="flex items-end gap-0.5 h-6">
+      {scores.map((s, i) => {
+        const pct = s != null ? Math.max(4, (s / 100) * 100) : 4;
+        return (
+          <div
+            key={i}
+            className={`flex-1 rounded-sm transition-all ${
+              s == null ? "bg-border/50" : s >= 75 ? "bg-green-500/60" : s >= 55 ? "bg-yellow-400/60" : "bg-red-400/60"
+            }`}
+            style={{ height: `${pct}%` }}
+            title={s != null ? `${s.toFixed(1)}` : "N/A"}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// Score history row strip: up to 5 most-recent scores, newest first.
+function ScoreHistoryStrip({ items }: { items: StrategyReliabilityScore[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <p className="caption mb-1.5">Score History</p>
+      <div className="overflow-x-auto">
+        <table className="w-full font-mono text-2xs">
+          <thead>
+            <tr className="border-b border-border/50">
+              <th className="pb-1 text-left text-text-muted font-normal pr-3">When</th>
+              <th className="pb-1 text-right text-text-muted font-normal pr-3">Score</th>
+              <th className="pb-1 text-right text-text-muted font-normal pr-3">Status</th>
+              <th className="pb-1 text-right text-text-muted font-normal pr-3">Activity</th>
+              <th className="pb-1 text-right text-text-muted font-normal pr-3">Data</th>
+              <th className="pb-1 text-right text-text-muted font-normal pr-3">Backtest</th>
+              <th className="pb-1 text-right text-text-muted font-normal">Signal</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/30">
+            {items.slice(0, 5).map((item) => (
+              <tr key={item.id}>
+                <td className="py-1 pr-3 text-text-muted whitespace-nowrap">
+                  {timeAgo(item.generated_at)}
+                </td>
+                <td className={`py-1 pr-3 text-right tabular-nums ${scoreComponentColor(item.overall_score)}`}>
+                  {item.overall_score != null ? item.overall_score.toFixed(1) : "—"}
+                </td>
+                <td className="py-1 pr-3 text-right">
+                  <span className={`rounded px-1 py-0.5 text-2xs ${reliabilityStatusBadge(item.status)}`}>
+                    {item.status.replace(/_/g, " ")}
+                  </span>
+                </td>
+                <td className={`py-1 pr-3 text-right tabular-nums ${scoreComponentColor(item.strategy_activity_score)}`}>
+                  {item.strategy_activity_score != null ? item.strategy_activity_score.toFixed(0) : "—"}
+                </td>
+                <td className={`py-1 pr-3 text-right tabular-nums ${scoreComponentColor(item.data_evidence_score)}`}>
+                  {item.data_evidence_score != null ? item.data_evidence_score.toFixed(0) : "—"}
+                </td>
+                <td className={`py-1 pr-3 text-right tabular-nums ${scoreComponentColor(item.backtest_trust_score)}`}>
+                  {item.backtest_trust_score != null ? item.backtest_trust_score.toFixed(0) : "—"}
+                </td>
+                <td className={`py-1 text-right tabular-nums ${scoreComponentColor(item.signal_evidence_score)}`}>
+                  {item.signal_evidence_score != null ? item.signal_evidence_score.toFixed(0) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Trend comparison: latest vs previous.
+function TrendSection({
+  trend,
+}: {
+  trend: ReliabilityScoreTrendResponse;
+}) {
+  if (!trend.has_trend || !trend.comparison) {
+    return (
+      <div className="rounded-control border border-border/50 bg-bg-800 px-3 py-2">
+        <p className="font-mono text-2xs text-text-muted italic">{trend.message}</p>
+      </div>
+    );
+  }
+
+  const cmp: ReliabilityScoreComparisonResponse = trend.comparison;
+
+  // Top component movers (abs delta ≥ 1.0, non-null)
+  const movers = cmp.component_deltas
+    .filter((d) => d.delta !== null && Math.abs(d.delta) >= 1.0)
+    .sort((a, b) => Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
+    .slice(0, 4);
+
+  return (
+    <div className="space-y-3">
+      <p className="caption">Latest vs. Previous</p>
+
+      {/* Overall delta */}
+      <div className="flex items-center gap-4">
+        <div className="text-center shrink-0">
+          <p className={`mono-num text-lg font-bold leading-none ${deltaColor(cmp.overall_delta)}`}>
+            {deltaSign(cmp.overall_delta)}
+          </p>
+          <p className="font-mono text-2xs text-text-muted mt-0.5">overall</p>
+        </div>
+        {cmp.status_changed && (
+          <div className="flex items-center gap-1.5 font-mono text-2xs">
+            <span className={`rounded border px-1.5 py-0.5 ${reliabilityStatusBadge(cmp.status_a)}`}>
+              {cmp.status_a.replace(/_/g, " ")}
+            </span>
+            <span className="text-text-muted">→</span>
+            <span className={`rounded border px-1.5 py-0.5 ${reliabilityStatusBadge(cmp.status_b)}`}>
+              {cmp.status_b.replace(/_/g, " ")}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Component movers */}
+      {movers.length > 0 && (
+        <div>
+          <p className="font-mono text-2xs text-text-muted mb-1">Component changes</p>
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+            {movers.map((d) => (
+              <div
+                key={d.component}
+                className="rounded-control border border-border/40 bg-bg-800 px-2 py-1.5"
+              >
+                <p className="font-mono text-2xs text-text-muted leading-tight">{d.label}</p>
+                <p className={`mono-num text-sm font-semibold ${deltaColor(d.delta)}`}>
+                  {deltaSign(d.delta)}
+                </p>
+                <p className="font-mono text-2xs text-text-muted">
+                  {d.score_a != null ? d.score_a.toFixed(0) : "—"}
+                  {" → "}
+                  {d.score_b != null ? d.score_b.toFixed(0) : "—"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Evidence changes */}
+      {cmp.resolved_missing_evidence.length > 0 && (
+        <div>
+          <p className="font-mono text-2xs text-green-400/80 mb-0.5">✓ Evidence gaps addressed</p>
+          <ul className="space-y-0.5">
+            {cmp.resolved_missing_evidence.map((item, i) => (
+              <li key={i} className="font-mono text-2xs text-green-300/70">· {item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {cmp.still_missing_evidence.length > 0 && (
+        <div>
+          <p className="font-mono text-2xs text-yellow-300/80 mb-0.5">△ Still missing</p>
+          <ul className="space-y-0.5">
+            {cmp.still_missing_evidence.map((item, i) => (
+              <li key={i} className="font-mono text-2xs text-yellow-200/70">· {item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Explanation */}
+      <p className="font-mono text-2xs text-text-muted/70 italic leading-relaxed">
+        {cmp.deterministic_explanation}
+      </p>
+    </div>
+  );
+}
+
 function ReliabilityPanel({
   score,
+  history,
+  trend,
   onCompute,
   computing,
 }: {
   score: StrategyReliabilityScore | null;
+  history: StrategyReliabilityScore[];
+  trend: ReliabilityScoreTrendResponse | null;
   onCompute: () => void;
   computing: boolean;
 }) {
+  // Sparkline uses up to the last 10 scores in chronological order.
+  const sparkScores = [...history].reverse().map((s) => s.overall_score);
+
   return (
     <div className="rounded-card border border-border bg-bg-700">
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
@@ -216,22 +424,33 @@ function ReliabilityPanel({
         </div>
       ) : (
         <div className="p-4 space-y-4">
-          {/* Overall score + status */}
-          <div className="flex items-center gap-4">
-            <div className="text-center shrink-0">
-              <p className={`mono-num text-3xl font-bold leading-none ${scoreComponentColor(score.overall_score)}`}>
-                {score.overall_score !== null ? score.overall_score.toFixed(1) : "—"}
-              </p>
-              <p className="font-mono text-2xs text-text-muted mt-0.5">/100</p>
+          {/* Overall score + status + sparkline */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="text-center shrink-0">
+                <p className={`mono-num text-3xl font-bold leading-none ${scoreComponentColor(score.overall_score)}`}>
+                  {score.overall_score !== null ? score.overall_score.toFixed(1) : "—"}
+                </p>
+                <p className="font-mono text-2xs text-text-muted mt-0.5">/100</p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className={`inline-flex w-fit items-center rounded border px-2.5 py-0.5 font-mono text-xs font-semibold uppercase tracking-wider ${reliabilityStatusBadge(score.status)}`}>
+                  {score.status.replace(/_/g, " ")}
+                </span>
+                <p className="font-mono text-2xs text-text-muted">
+                  generated {timeAgo(score.generated_at)}
+                </p>
+              </div>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <span className={`inline-flex w-fit items-center rounded border px-2.5 py-0.5 font-mono text-xs font-semibold uppercase tracking-wider ${reliabilityStatusBadge(score.status)}`}>
-                {score.status.replace("_", " ")}
-              </span>
-              <p className="font-mono text-2xs text-text-muted">
-                generated {timeAgo(score.generated_at)}
-              </p>
-            </div>
+            {/* Sparkline — only shown when ≥2 scores exist */}
+            {sparkScores.length >= 2 && (
+              <div className="w-24 shrink-0">
+                <p className="font-mono text-2xs text-text-muted mb-1 text-right">
+                  {sparkScores.length} scores
+                </p>
+                <ScoreSparkline scores={sparkScores} />
+              </div>
+            )}
           </div>
 
           {/* Component scores grid */}
@@ -277,6 +496,20 @@ function ReliabilityPanel({
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* M19: Trend section — latest vs previous */}
+          {trend && (
+            <div className="border-t border-border/50 pt-4">
+              <TrendSection trend={trend} />
+            </div>
+          )}
+
+          {/* M19: Score history strip */}
+          {history.length > 1 && (
+            <div className="border-t border-border/50 pt-4">
+              <ScoreHistoryStrip items={history} />
             </div>
           )}
         </div>
@@ -1213,9 +1446,11 @@ export default function StrategyDetail() {
   // M17: signal snapshot drawer state
   const [signalSnapshotDrawerOpen, setSignalSnapshotDrawerOpen] = useState(false);
 
-  // M18: reliability score state
+  // M18/M19: reliability score state + history + trend
   const [computingReliability, setComputingReliability] = useState(false);
   const [reliabilityScore, setReliabilityScore] = useState<StrategyReliabilityScore | null>(null);
+  const [scoreHistory, setScoreHistory] = useState<StrategyReliabilityScore[]>([]);
+  const [scoreTrend, setScoreTrend] = useState<ReliabilityScoreTrendResponse | null>(null);
 
   // M8: backtest audit state — keyed by run id.
   const [audits, setAudits] = useState<Record<string, BacktestAudit>>({});
@@ -1257,6 +1492,35 @@ export default function StrategyDetail() {
     }
   }
 
+  /** M19: load score history and compute synthetic trend from history items. */
+  function loadReliabilityHistory(strategyId: string) {
+    getStrategyReliabilityScoreHistory(strategyId, { limit: 10 })
+      .then((hist) => {
+        setScoreHistory(hist.items);
+        // Build trend from the two most-recent items (no extra API call).
+        if (hist.items.length >= 2) {
+          const [latest, previous] = hist.items; // newest-first
+          setScoreTrend({
+            has_trend: true,
+            message: "Comparing previous score to latest score.",
+            latest,
+            previous,
+            // Comparison will be loaded when needed; defer to avoid extra call.
+            comparison: null,
+          });
+        } else {
+          setScoreTrend({
+            has_trend: false,
+            message: "Compute at least two reliability scores to see trend.",
+            latest: hist.items[0] ?? null,
+            previous: null,
+            comparison: null,
+          });
+        }
+      })
+      .catch(() => {/* silently ignore — history is optional UI enhancement */});
+  }
+
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -1266,6 +1530,8 @@ export default function StrategyDetail() {
         // Seed the reliability score from the strategy detail response (M18)
         if (s.latest_reliability_score) {
           setReliabilityScore(s.latest_reliability_score);
+          // M19: also load score history + trend
+          loadReliabilityHistory(id);
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load strategy."))
@@ -1278,6 +1544,8 @@ export default function StrategyDetail() {
     try {
       const score = await computeStrategyReliabilityScore(id);
       setReliabilityScore(score);
+      // M19: refresh history + trend after every new computation.
+      loadReliabilityHistory(id);
     } catch (_err) {
       // silently ignore; panel will show last known score
     } finally {
@@ -1485,9 +1753,11 @@ export default function StrategyDetail() {
         </div>
       )}
 
-      {/* M18: Strategy Reliability panel */}
+      {/* M18/M19: Strategy Reliability panel with history + trend */}
       <ReliabilityPanel
         score={reliabilityScore}
+        history={scoreHistory}
+        trend={scoreTrend}
         onCompute={handleComputeReliabilityScore}
         computing={computingReliability}
       />
