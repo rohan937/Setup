@@ -4,7 +4,8 @@ export const navItems: NavItem[] = [
   // No section — top-level cockpit items
   { label: "Dashboard",        path: "/" },
   // Research
-  { label: "Strategy Lab",     path: "/strategies",  section: "Research" },
+  { label: "Strategy Lab",     path: "/strategies",           section: "Research" },
+  { label: "Compare Strategies", path: "/strategies/compare", section: "Research" },
   // Analysis
   { label: "Audit Trail",      path: "/timeline",    section: "Analysis" },
   { label: "Data Health",      path: "/data-health", section: "Analysis" },

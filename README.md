@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (740 tests)
+│   └── tests/              Pytest tests (785 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,155 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M19: Reliability Score History + Evidence Trend Panel
+## Current milestone — M20: Strategy Comparison Dashboard v1
+
+**Status: complete.**
+
+### M20 deliverables
+
+- **1 new API endpoint** — `POST /api/strategies/compare` registered in `app/api/routes/strategies.py`
+  BEFORE the parameterised `GET /api/strategies/{strategy_id}` route to prevent literal path
+  collision. Accepts 2–8 strategy IDs. Returns `StrategyComparisonResponse`. No timeline event
+  (read-only analysis, not a mutation).
+- **`app/services/strategy_comparison.py`** — new deterministic comparison service.
+  No AI, no live market data, no external calls:
+  - `compare_strategies(strategy_ids, db, *, include_archived)` — accepts 2–8 UUIDs.
+    Raises `ValueError` for: fewer than 2, more than 8, unknown IDs, archived strategies (unless
+    `include_archived=True`).
+  - **Evidence coverage score** (0–100) from 8 binary evidence checks:
+    `run_count > 0` (+10), `backtest_run > 0` (+10), `dataset_linked > 0` (+20),
+    `backtest_audit > 0` (+20), `signal_snapshots > 0` (+15), `universe_snapshots > 0` (+10),
+    `config_snapshots > 0` (+10), `reports > 0` (+5).
+  - **Gap labels** derived deterministically: `no_runs`, `no_dataset_evidence`,
+    `no_backtest_audit`, `no_signal_evidence`, `no_universe_evidence`, `no_config_snapshot`,
+    `open_high_alerts`, `insufficient_reliability_score`, `stale_reliability_score`.
+  - **Reliability ranking** — two-tier sort: scored strategies sorted by score descending,
+    null or `insufficient_evidence` strategies always rank last. Ties broken alphabetically.
+  - **Evidence-coverage ranking** — sorted by evidence coverage score descending.
+  - **Shared gaps** — gap labels present in every strategy being compared.
+  - **Differentiators** — strategies whose evidence coverage score differs from the maximum
+    by more than 15 points, calling out which specific gaps they have that others do not.
+  - **`deterministic_explanation`** — hedged prose using only approved language.
+    Ends with "This comparison is based on logged evidence. It is not investment advice."
+    Approved vocabulary: "better evidenced", "higher current reliability score", "more complete
+    instrumentation", "requires review". Forbidden: "better strategy", "more profitable",
+    "should trade", "alpha is stronger", "buy/sell".
+  - Four dataclasses: `StrategyEvidenceCoverageData`, `StrategyComparisonItemData`,
+    `StrategyComparisonRankingItemData`, `StrategyComparisonResult` (list fields use
+    `field(default_factory=list)`).
+  - `Alert.strategy_id` is a `String(36)` column → queries use `str(uuid_val)`.
+  - SQLite stores naive datetimes → stale-score check normalises with
+    `gen_at.replace(tzinfo=timezone.utc)` before computing the 30-day timedelta.
+- **New Pydantic schemas** (`app/schemas/strategy.py`):
+  `StrategyEvidenceCoverage`, `StrategyComparisonItem`, `StrategyComparisonRankingItem`,
+  `StrategyComparisonRequest`, `StrategyComparisonResponse`.
+- **45 new backend tests** — `tests/test_comparison_m20.py` across 5 test classes:
+  - `TestStrategyComparisonService` (16 tests): at-least-two, at-most-eight, unknown-id,
+    archived-rejected/allowed, correct count, identities present, coverage counts, gaps list,
+    reliability ranking, coverage ranking, explanation present, forbidden-language check,
+    disclaimer present, shared-gaps subset, generated-at recent.
+  - `TestStrategyComparisonScoredRanking` (2 tests): scored-ranks-above-unscored,
+    null-scores-rank-last.
+  - `TestStrategyComparisonEndpoint` (16 tests): two-strategies success, required fields,
+    coverage fields, <2 rejected, >8 rejected, missing strategy 404, archived rejection/allowed,
+    ranking counts match, explanation not investment advice, strongest/weakest null when no scores,
+    open-alert count included, expected gap keys, high-alert gap triggered, no timeline event,
+    invalid UUID 422.
+  - `TestEvidenceCoverageScore` (3 tests): empty=0, full=100, partial=20.
+  - `TestGapGeneration` (8 tests): no-runs, no-dataset, open-high, open-critical, medium-not-
+    triggered, insufficient-reliability, stale-reliability, fresh-no-stale.
+- **785 total backend tests** (740 prior M2–M19 + 45 new), 1 skipped.
+- **Frontend types** (`frontend/src/types/index.ts`): `StrategyEvidenceCoverage`,
+  `StrategyComparisonItem`, `StrategyComparisonRankingItem`, `StrategyComparisonRequest`,
+  `StrategyComparisonResponse` interfaces added.
+- **Frontend API** (`frontend/src/lib/api.ts`): `compareStrategies(payload)` added.
+- **New page** `frontend/src/pages/StrategyComparison.tsx` at route `/strategies/compare`:
+  - Strategy selector — checkbox list of all registered strategies; select 2–8 to enable Compare.
+  - `ReliabilityStatusChip` — colour-coded status pill (excellent/good/review/weak/insufficient).
+  - `GapChip` — gap label chip with severity colouring.
+  - `CoverageBar` — div-bar visualization of evidence coverage score (no chart library).
+  - `StrategyCard` — compact per-strategy panel showing all evidence sub-scores, coverage counts,
+    gaps, missing evidence list, and suggested checks.
+  - `RankingTable` — ranked table for reliability or coverage rankings.
+  - Side-by-side comparison score grid and full explanation + disclaimer.
+  - Score colour thresholds: ≥75 green, ≥55 amber, <55 red, null muted.
+  - Coverage colour: ≥80 green, ≥40 amber, <40 red.
+- **`Strategies.tsx`** — "Compare Strategies" secondary button added to PageHeader, navigating
+  to `/strategies/compare`.
+- **`App.tsx`** — `StrategyComparison` route registered BEFORE `strategies/:id`.
+- **`nav.ts`** — "Compare Strategies" nav item added under Research section.
+- **Zero TypeScript errors**, clean production build (60 modules, ≈365 kB JS bundle).
+
+### Language constraints (M20)
+
+M20 uses language that describes logged evidence and deterministic scores only:
+
+| Allowed | Forbidden |
+|---|---|
+| "better evidenced" | "better strategy" |
+| "higher current reliability score" | "more profitable" |
+| "more complete instrumentation" | "should trade" |
+| "requires review" | "alpha is stronger" |
+| "lower evidence coverage score" | "buy signal" / "sell signal" |
+
+All output from `POST /api/strategies/compare` ends with:
+> "This comparison is based on logged evidence. It is not investment advice."
+
+### What M20 does NOT build (by design)
+
+- No AI-driven comparison, no predictive scores, no market data.
+- No broker connectivity, no live trading actions.
+- No email/Slack/webhook notifications when comparison results change.
+- No real-time streaming or polling of comparison results.
+- No live drift attribution or execution-side comparisons.
+- No portfolio-level cross-strategy weighting or allocation suggestions.
+- No historical comparison trend tracking (comparing two comparison snapshots over time).
+
+### Verify with curl
+
+```bash
+# First, register at least two strategies (or use the seed data):
+curl http://localhost:8000/api/strategies | python3 -m json.tool
+# Note the "id" fields from the response.
+
+# Compare two strategies by ID:
+curl -s -X POST http://localhost:8000/api/strategies/compare \
+  -H 'Content-Type: application/json' \
+  -d '{"strategy_ids": ["<strategy_id_1>", "<strategy_id_2>"]}' \
+  | python3 -m json.tool
+# Response envelope:
+# {
+#   "strategies": [{ strategy_id, name, overall_reliability_score, coverage: {...},
+#                    gaps: [...], missing_evidence: [...], suggested_checks: [...] }],
+#   "ranked_by_reliability": [{ rank, strategy_id, name, score, score_label, status }],
+#   "ranked_by_evidence_coverage": [{ rank, strategy_id, name, score, score_label, status }],
+#   "strongest_strategy_id": "<id or null>",
+#   "weakest_strategy_id": "<id or null>",
+#   "shared_gaps": [...],
+#   "differentiators": [...],
+#   "deterministic_explanation": "...",
+#   "generated_at": "..."
+# }
+
+# Compare up to 8 strategies with archived included:
+curl -s -X POST http://localhost:8000/api/strategies/compare \
+  -H 'Content-Type: application/json' \
+  -d '{"strategy_ids": ["<id1>", "<id2>", "<id3>"], "include_archived": true}' \
+  | python3 -m json.tool
+
+# Too few strategies (returns 422):
+curl -s -X POST http://localhost:8000/api/strategies/compare \
+  -H 'Content-Type: application/json' \
+  -d '{"strategy_ids": ["<id1>"]}' | python3 -m json.tool
+```
+
+> **M20 note:** Comparisons are deterministic — based on logged evidence snapshots and stored
+> reliability scores, not live recalculation or market data. No AI, no predictions,
+> no investment advice.
+
+---
+
+## Previously completed — M19: Reliability Score History + Evidence Trend Panel
 
 **Status: complete.**
 

@@ -538,6 +538,98 @@ class StrategyDetailOut(StrategyListItemOut):
     latest_reliability_score: StrategyReliabilityScoreRead | None = None
 
 
+# ---------------------------------------------------------------------------
+# M20: Strategy comparison schemas
+# ---------------------------------------------------------------------------
+
+
+class StrategyEvidenceCoverage(BaseModel):
+    """Evidence coverage counts for one strategy in a comparison (M20)."""
+
+    run_count: int
+    backtest_run_count: int
+    research_run_count: int
+    paper_run_count: int
+    live_run_count: int
+    dataset_snapshot_linked_count: int
+    backtest_audit_count: int
+    config_snapshot_count: int
+    universe_snapshot_count: int
+    signal_snapshot_count: int
+    open_alert_count: int
+    report_count: int
+    timeline_event_count: int
+    evidence_coverage_score: float
+
+
+class StrategyComparisonItem(BaseModel):
+    """One strategy's evidence summary in a side-by-side comparison (M20)."""
+
+    strategy_id: uuid.UUID
+    name: str
+    slug: str
+    asset_class: str
+    status: str
+    overall_reliability_score: float | None
+    reliability_status: str | None
+    reliability_generated_at: datetime | None
+    strategy_activity_score: float | None
+    data_evidence_score: float | None
+    backtest_trust_score: float | None
+    config_evidence_score: float | None
+    universe_evidence_score: float | None
+    signal_evidence_score: float | None
+    alert_penalty_score: float | None
+    report_coverage_score: float | None
+    missing_evidence: list[str]
+    suggested_checks: list[str]
+    coverage: StrategyEvidenceCoverage
+    latest_run_at: datetime | None
+    latest_backtest_trust_score: float | None
+    latest_data_health_score: float | None
+    latest_signal_quality_score: float | None
+    latest_report_score: float | None
+    highest_severity_open_alert: str | None
+    gaps: list[str]
+
+
+class StrategyComparisonRankingItem(BaseModel):
+    """One strategy's rank in a comparison ranking list (M20)."""
+
+    rank: int
+    strategy_id: uuid.UUID
+    name: str
+    score: float | None
+    score_label: str   # formatted score string or "—"
+    status: str
+
+
+class StrategyComparisonRequest(BaseModel):
+    """Request body for POST /api/strategies/compare (M20)."""
+
+    strategy_ids: list[str]
+    include_archived: bool = False
+
+
+class StrategyComparisonResponse(BaseModel):
+    """Full strategy comparison result (M20).
+
+    Evidence-based comparison only — never investment advice.
+    Language: "higher current reliability score", "better evidenced",
+    "more complete instrumentation". Never "better strategy", "more profitable".
+    """
+
+    strategies: list[StrategyComparisonItem]
+    ranked_by_reliability: list[StrategyComparisonRankingItem]
+    ranked_by_evidence_coverage: list[StrategyComparisonRankingItem]
+    strongest_strategy_id: uuid.UUID | None
+    weakest_strategy_id: uuid.UUID | None
+    shared_gaps: list[str]
+    differentiators: list[str]
+    deterministic_explanation: str
+    generated_at: datetime
+
+
 # Keep the plain StrategyOut for any internal callers that still use it.
 class StrategyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

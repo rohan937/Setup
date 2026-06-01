@@ -67,11 +67,16 @@ from app.schemas.strategy import (
     SignalSnapshotDetail,
     SignalSnapshotRead,
     SignalSnapshotSummary,
+    StrategyComparisonItem,
+    StrategyComparisonRankingItem,
+    StrategyComparisonRequest,
+    StrategyComparisonResponse,
     StrategyConfigSnapshotCreate,
     StrategyConfigSnapshotDetail,
     StrategyConfigSnapshotRead,
     StrategyCreate,
     StrategyDetailOut,
+    StrategyEvidenceCoverage,
     StrategyListItemOut,
     StrategyReliabilityScoreHistoryResponse,
     StrategyReliabilityScoreRead,
@@ -444,6 +449,149 @@ def list_strategies(db: Session = Depends(get_db)) -> list[StrategyListItemOut]:
         )
         for s in strategies
     ]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/strategies/compare  (M20)
+# Must be registered BEFORE GET /strategies/{strategy_id} so "compare" is
+# not captured as a strategy_id path parameter on GET requests.
+# ---------------------------------------------------------------------------
+
+@router.post("/strategies/compare", response_model=StrategyComparisonResponse, status_code=200)
+def compare_strategies_endpoint(
+    payload: StrategyComparisonRequest,
+    db: Session = Depends(get_db),
+) -> StrategyComparisonResponse:
+    """Compare 2–8 strategies side-by-side using existing logged evidence.
+
+    Evidence-based comparison only — never investment advice.
+    """
+    from app.services.strategy_comparison import (
+        compare_strategies as _compare,
+        StrategyComparisonResult,
+        StrategyComparisonItemData,
+        StrategyEvidenceCoverageData,
+    )
+
+    if len(payload.strategy_ids) < 2:
+        raise HTTPException(
+            status_code=422, detail="At least 2 strategy IDs required for comparison."
+        )
+    if len(payload.strategy_ids) > 8:
+        raise HTTPException(
+            status_code=422, detail="At most 8 strategy IDs may be compared at once."
+        )
+
+    try:
+        ids = [uuid.UUID(sid) for sid in payload.strategy_ids]
+    except ValueError:
+        raise HTTPException(status_code=422, detail="One or more strategy IDs are not valid UUIDs.")
+
+    # Validate existence
+    strategies = db.query(Strategy).filter(Strategy.id.in_(ids)).all()
+    found_ids = {s.id for s in strategies}
+    missing = [str(sid) for sid in ids if sid not in found_ids]
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Strategies not found: {missing}",
+        )
+
+    # Validate archived
+    if not payload.include_archived:
+        archived_names = [s.name for s in strategies if s.status == "archived"]
+        if archived_names:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Archived strategies cannot be compared without include_archived=true: "
+                    f"{archived_names}"
+                ),
+            )
+
+    result: StrategyComparisonResult = _compare(
+        ids, db, include_archived=payload.include_archived
+    )
+
+    def _cov_schema(cov: StrategyEvidenceCoverageData) -> StrategyEvidenceCoverage:
+        return StrategyEvidenceCoverage(
+            run_count=cov.run_count,
+            backtest_run_count=cov.backtest_run_count,
+            research_run_count=cov.research_run_count,
+            paper_run_count=cov.paper_run_count,
+            live_run_count=cov.live_run_count,
+            dataset_snapshot_linked_count=cov.dataset_snapshot_linked_count,
+            backtest_audit_count=cov.backtest_audit_count,
+            config_snapshot_count=cov.config_snapshot_count,
+            universe_snapshot_count=cov.universe_snapshot_count,
+            signal_snapshot_count=cov.signal_snapshot_count,
+            open_alert_count=cov.open_alert_count,
+            report_count=cov.report_count,
+            timeline_event_count=cov.timeline_event_count,
+            evidence_coverage_score=cov.evidence_coverage_score,
+        )
+
+    def _item_schema(item: StrategyComparisonItemData) -> StrategyComparisonItem:
+        return StrategyComparisonItem(
+            strategy_id=item.strategy_id,
+            name=item.name,
+            slug=item.slug,
+            asset_class=item.asset_class,
+            status=item.status,
+            overall_reliability_score=item.overall_reliability_score,
+            reliability_status=item.reliability_status,
+            reliability_generated_at=item.reliability_generated_at,
+            strategy_activity_score=item.strategy_activity_score,
+            data_evidence_score=item.data_evidence_score,
+            backtest_trust_score=item.backtest_trust_score,
+            config_evidence_score=item.config_evidence_score,
+            universe_evidence_score=item.universe_evidence_score,
+            signal_evidence_score=item.signal_evidence_score,
+            alert_penalty_score=item.alert_penalty_score,
+            report_coverage_score=item.report_coverage_score,
+            missing_evidence=item.missing_evidence,
+            suggested_checks=item.suggested_checks,
+            coverage=_cov_schema(item.coverage),
+            latest_run_at=item.latest_run_at,
+            latest_backtest_trust_score=item.latest_backtest_trust_score,
+            latest_data_health_score=item.latest_data_health_score,
+            latest_signal_quality_score=item.latest_signal_quality_score,
+            latest_report_score=item.latest_report_score,
+            highest_severity_open_alert=item.highest_severity_open_alert,
+            gaps=item.gaps,
+        )
+
+    return StrategyComparisonResponse(
+        strategies=[_item_schema(i) for i in result.strategies],
+        ranked_by_reliability=[
+            StrategyComparisonRankingItem(
+                rank=r.rank,
+                strategy_id=r.strategy_id,
+                name=r.name,
+                score=r.score,
+                score_label=r.score_label,
+                status=r.status,
+            )
+            for r in result.ranked_by_reliability
+        ],
+        ranked_by_evidence_coverage=[
+            StrategyComparisonRankingItem(
+                rank=r.rank,
+                strategy_id=r.strategy_id,
+                name=r.name,
+                score=r.score,
+                score_label=r.score_label,
+                status=r.status,
+            )
+            for r in result.ranked_by_evidence_coverage
+        ],
+        strongest_strategy_id=result.strongest_strategy_id,
+        weakest_strategy_id=result.weakest_strategy_id,
+        shared_gaps=result.shared_gaps,
+        differentiators=result.differentiators,
+        deterministic_explanation=result.deterministic_explanation,
+        generated_at=result.generated_at,
+    )
 
 
 # ---------------------------------------------------------------------------

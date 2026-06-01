@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import Dashboard from "@/pages/Dashboard";
 import Strategies from "@/pages/Strategies";
+import StrategyComparison from "@/pages/StrategyComparison";
 import StrategyDetail from "@/pages/StrategyDetail";
 import Timeline from "@/pages/Timeline";
 import DataHealth from "@/pages/DataHealth";
@@ -18,6 +19,7 @@ export default function App() {
       <Route element={<AppShell />}>
         <Route index element={<Dashboard />} />
         <Route path="strategies" element={<Strategies />} />
+        <Route path="strategies/compare" element={<StrategyComparison />} />
         <Route path="strategies/:id" element={<StrategyDetail />} />
         <Route path="timeline" element={<Timeline />} />
         <Route path="data-health" element={<DataHealth />} />

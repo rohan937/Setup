@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { Strategy, StrategyReliabilityScore } from "@/types";
 import { getStrategies } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
@@ -45,6 +45,7 @@ export default function Strategies() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const navigate = useNavigate();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -64,6 +65,12 @@ export default function Strategies() {
         title="Strategy Lab"
         subtitle="Register and track every systematic strategy across data, backtest, and live execution."
       >
+        <button
+          onClick={() => navigate("/strategies/compare")}
+          className="rounded-control border border-border bg-bg-700 px-3.5 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-500/50 hover:text-accent-300"
+        >
+          Compare Strategies
+        </button>
         <button
           onClick={() => setDrawerOpen(true)}
           className="rounded-control bg-accent-500 px-3.5 py-1.5 text-xs font-medium text-text-inverse hover:bg-accent-600"

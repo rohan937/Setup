@@ -30,6 +30,8 @@ import type {
   SignalSnapshotDetail,
   SignalSnapshotRead,
   Strategy,
+  StrategyComparisonRequest,
+  StrategyComparisonResponse,
   StrategyConfigSnapshotCreateRequest,
   StrategyConfigSnapshotDetail,
   StrategyConfigSnapshotRead,
@@ -533,4 +535,18 @@ export async function getStrategyReliabilityScoreTrend(
   return request<ReliabilityScoreTrendResponse>(
     `/api/strategies/${strategyId}/reliability-score/trend`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Strategy comparison (M20)
+// ---------------------------------------------------------------------------
+
+/** Compare 2–8 strategies side-by-side using logged evidence. Evidence-based only — not investment advice. */
+export async function compareStrategies(
+  payload: StrategyComparisonRequest,
+): Promise<StrategyComparisonResponse> {
+  return request<StrategyComparisonResponse>("/api/strategies/compare", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

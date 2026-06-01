@@ -1046,3 +1046,79 @@ export interface ReliabilityScoreTrendResponse {
   previous: StrategyReliabilityScore | null;
   comparison: ReliabilityScoreComparisonResponse | null;
 }
+
+// ---------------------------------------------------------------------------
+// M20: Strategy comparison types
+// ---------------------------------------------------------------------------
+
+export interface StrategyEvidenceCoverage {
+  run_count: number;
+  backtest_run_count: number;
+  research_run_count: number;
+  paper_run_count: number;
+  live_run_count: number;
+  dataset_snapshot_linked_count: number;
+  backtest_audit_count: number;
+  config_snapshot_count: number;
+  universe_snapshot_count: number;
+  signal_snapshot_count: number;
+  open_alert_count: number;
+  report_count: number;
+  timeline_event_count: number;
+  evidence_coverage_score: number;
+}
+
+export interface StrategyComparisonItem {
+  strategy_id: string;
+  name: string;
+  slug: string;
+  asset_class: string;
+  status: string;
+  overall_reliability_score: number | null;
+  reliability_status: string | null;
+  reliability_generated_at: string | null;
+  strategy_activity_score: number | null;
+  data_evidence_score: number | null;
+  backtest_trust_score: number | null;
+  config_evidence_score: number | null;
+  universe_evidence_score: number | null;
+  signal_evidence_score: number | null;
+  alert_penalty_score: number | null;
+  report_coverage_score: number | null;
+  missing_evidence: string[];
+  suggested_checks: string[];
+  coverage: StrategyEvidenceCoverage;
+  latest_run_at: string | null;
+  latest_backtest_trust_score: number | null;
+  latest_data_health_score: number | null;
+  latest_signal_quality_score: number | null;
+  latest_report_score: number | null;
+  highest_severity_open_alert: string | null;
+  gaps: string[];
+}
+
+export interface StrategyComparisonRankingItem {
+  rank: number;
+  strategy_id: string;
+  name: string;
+  score: number | null;
+  score_label: string;
+  status: string;
+}
+
+export interface StrategyComparisonRequest {
+  strategy_ids: string[];
+  include_archived?: boolean;
+}
+
+export interface StrategyComparisonResponse {
+  strategies: StrategyComparisonItem[];
+  ranked_by_reliability: StrategyComparisonRankingItem[];
+  ranked_by_evidence_coverage: StrategyComparisonRankingItem[];
+  strongest_strategy_id: string | null;
+  weakest_strategy_id: string | null;
+  shared_gaps: string[];
+  differentiators: string[];
+  deterministic_explanation: string;
+  generated_at: string;
+}
