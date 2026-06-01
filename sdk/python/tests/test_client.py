@@ -336,3 +336,75 @@ def test_api_error_list_detail():
     )
     assert "field required" in str(err)
     assert "invalid value" in str(err)
+
+
+# ---------------------------------------------------------------------------
+# M24: API key activation tests
+# ---------------------------------------------------------------------------
+
+
+def test_api_key_sent_as_authorization_bearer():
+    """When api_key is provided, Authorization header is set."""
+    client = QuantFidelityClient(base_url=BASE_URL, api_key="qf_local_testkey")
+    headers = client._headers()
+    assert "Authorization" in headers
+    assert headers["Authorization"] == "Bearer qf_local_testkey"
+
+
+def test_no_api_key_no_auth_header():
+    """When api_key is None, no Authorization header is sent."""
+    client = QuantFidelityClient(base_url=BASE_URL)
+    headers = client._headers()
+    assert "Authorization" not in headers
+
+
+@responses_lib.activate
+def test_ingest_sends_auth_header_when_key_set():
+    """API key is sent in Authorization header during ingest."""
+    responses_lib.add(responses_lib.POST, INGEST_URL, json=_MINIMAL_RESPONSE, status=200)
+    client = QuantFidelityClient(base_url=BASE_URL, api_key="qf_local_testkey123")
+    client.ingest_evidence_bundle(STRATEGY_ID, {})
+    assert responses_lib.calls[0].request.headers.get("Authorization") == "Bearer qf_local_testkey123"
+
+
+@responses_lib.activate
+def test_ingest_no_auth_header_when_no_key():
+    """No Authorization header when api_key is None."""
+    responses_lib.add(responses_lib.POST, INGEST_URL, json=_MINIMAL_RESPONSE, status=200)
+    client = QuantFidelityClient(base_url=BASE_URL)
+    client.ingest_evidence_bundle(STRATEGY_ID, {})
+    assert "Authorization" not in responses_lib.calls[0].request.headers
+
+
+@responses_lib.activate
+def test_401_raises_api_error():
+    """401 response raises QuantFidelityAPIError."""
+    responses_lib.add(
+        responses_lib.POST,
+        INGEST_URL,
+        json={"detail": "Valid API key required."},
+        status=401,
+    )
+    client = QuantFidelityClient(base_url=BASE_URL)
+    with pytest.raises(QuantFidelityAPIError) as exc_info:
+        client.ingest_evidence_bundle(STRATEGY_ID, {})
+    assert exc_info.value.status_code == 401
+
+
+def test_api_key_not_in_repr():
+    """API key is masked in repr."""
+    client = QuantFidelityClient(base_url=BASE_URL, api_key="secret123")
+    assert "secret123" not in repr(client)
+
+
+def test_api_key_not_in_exception_message():
+    """API key is never included in exception messages."""
+    import unittest.mock as mock
+    import requests as req
+
+    client = QuantFidelityClient(base_url=BASE_URL, api_key="super_secret_key")
+    with mock.patch.object(req, "post", side_effect=req.exceptions.ConnectionError("refused")):
+        try:
+            client.ingest_evidence_bundle(STRATEGY_ID, {})
+        except Exception as e:
+            assert "super_secret_key" not in str(e)

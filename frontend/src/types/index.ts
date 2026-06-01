@@ -1300,3 +1300,45 @@ export interface EvidenceBundleResponse {
   timeline_events_created: number;
   generated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// M24: API Key types
+// ---------------------------------------------------------------------------
+
+export interface ApiKey {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  name: string;
+  key_prefix: string;
+  scopes_json: string[] | null;
+  status: "active" | "revoked";
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiKeyCreateRequest {
+  name: string;
+  organization_id?: string;
+  project_id?: string;
+  scopes?: string[];
+}
+
+export interface ApiKeyCreateResponse {
+  api_key: ApiKey;
+  raw_key: string;
+  warning: string;
+}
+
+export interface ApiKeyListResponse {
+  items: ApiKey[];
+  total: number;
+}
+
+export interface ApiKeyRevokeResponse {
+  id: string;
+  status: string;
+  revoked_at: string;
+}

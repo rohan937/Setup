@@ -297,3 +297,55 @@ def test_health_connection_error_exits_1(capsys: pytest.CaptureFixture):
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
     assert "Error" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# M24: CLI api-key tests
+# ---------------------------------------------------------------------------
+
+
+def test_cli_api_key_flag_passed_to_client():
+    """--api-key CLI flag is returned by _resolve_api_key."""
+    from quantfidelity.cli import _resolve_api_key
+
+    class FakeArgs:
+        api_key = "qf_local_fromflag"
+
+    result = _resolve_api_key(FakeArgs())
+    assert result == "qf_local_fromflag"
+
+
+def test_cli_api_key_from_env_var(monkeypatch):
+    """QUANTFIDELITY_API_KEY env var is used when --api-key not provided."""
+    monkeypatch.setenv("QUANTFIDELITY_API_KEY", "qf_local_fromenv")
+    from quantfidelity.cli import _resolve_api_key
+
+    class FakeArgs:
+        api_key = None
+
+    result = _resolve_api_key(FakeArgs())
+    assert result == "qf_local_fromenv"
+
+
+def test_cli_api_key_flag_overrides_env_var(monkeypatch):
+    """--api-key flag takes precedence over env var."""
+    monkeypatch.setenv("QUANTFIDELITY_API_KEY", "qf_local_fromenv")
+    from quantfidelity.cli import _resolve_api_key
+
+    class FakeArgs:
+        api_key = "qf_local_fromflag"
+
+    result = _resolve_api_key(FakeArgs())
+    assert result == "qf_local_fromflag"
+
+
+def test_cli_no_key_returns_none(monkeypatch):
+    """Returns None when neither flag nor env var is set."""
+    monkeypatch.delenv("QUANTFIDELITY_API_KEY", raising=False)
+    from quantfidelity.cli import _resolve_api_key
+
+    class FakeArgs:
+        api_key = None
+
+    result = _resolve_api_key(FakeArgs())
+    assert result is None

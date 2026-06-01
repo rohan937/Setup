@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (866 tests)
+│   └── tests/              Pytest tests (888 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,132 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M23: Evidence Bundle Python SDK v1
+## Current milestone — M24: API Key Foundation + SDK Auth
+
+**Status: complete.**
+
+### M24 deliverables
+
+- **New table** `api_keys` (migration `0013_m24_api_keys.py`):
+
+  | Column | Type | Notes |
+  |---|---|---|
+  | `id` | UUID PK | |
+  | `organization_id` | UUID FK organizations CASCADE | |
+  | `project_id` | UUID FK projects SET NULL, nullable | scope to project or org-wide |
+  | `name` | String 255 | human-readable label |
+  | `key_prefix` | String 16 | first 8 chars of raw key, stored plain for display |
+  | `key_hash` | String 64 | SHA-256 of full raw key — raw key never stored |
+  | `scopes_json` | JSON | list of scope strings, e.g. `["ingest"]` |
+  | `status` | String 20 | `active` \| `revoked` |
+  | `last_used_at` | DateTime, nullable | updated on each authenticated request |
+  | `revoked_at` | DateTime, nullable | set when revoked |
+  | `created_at` | DateTime | |
+  | `updated_at` | DateTime | |
+
+- **Key format**: `qf_local_<random>` for local development; `qf_live_<random>` for production environments. 40-character random suffix (URL-safe base64).
+- **Storage**: SHA-256 hash only. Raw key is returned **once** at creation and never stored. If lost, revoke and create a new key.
+- **3 new API endpoints** (`app/api/routes/api_keys.py`):
+  - `POST /api/api-keys` — create a new API key. Returns `ApiKeyCreateResponse` including the raw `key` field (shown once only). Emits `api_key_created` timeline event.
+  - `GET  /api/api-keys` — list all API keys for the default organization (never returns raw key or hash). Supports `status`, `project_id`, `limit`, `offset` query params.
+  - `PATCH /api/api-keys/{id}/revoke` — revoke an active key. Sets `status=revoked`, `revoked_at=now`. Emits `api_key_revoked` timeline event. Returns 404 if key not found, 409 if already revoked.
+- **Config** (`app/core/config.py`): `QF_REQUIRE_API_KEY_FOR_INGESTION=false` (default). When `true`, `POST /api/strategies/{id}/evidence-bundles` requires a valid active API key sent in `Authorization: Bearer <key>` or `X-QF-Api-Key: <key>` headers. All other endpoints remain unauthenticated.
+- **Auth dependency** (`app/api/deps.py`): `require_api_key(request, db)` — extracts key from header, computes SHA-256, looks up matching active `api_key` record, updates `last_used_at`. Returns the `ApiKey` ORM object. Raises 401 for missing/invalid key, 403 for revoked key.
+- **Timeline events**: `EventType.api_key_created`, `EventType.api_key_revoked` added to `constants.py`.
+- **SDK activated** (`sdk/python/quantfidelity/client.py`): `api_key` parameter now sends `Authorization: Bearer <key>` header on every request. `QUANTFIDELITY_API_KEY` environment variable supported as fallback — set it and omit `api_key=` in the constructor.
+- **Frontend**: new `Settings` page (`frontend/src/pages/Settings.tsx`) at route `/settings`:
+  - API key management panel: create key form (name, optional project scope), key list table (name, prefix, status, last used, created), revoke button per active key.
+  - Raw key shown once in a dismissible copy-to-clipboard panel immediately after creation. Warning: "This key will not be shown again."
+  - "Settings" nav item added under Configuration section in `nav.ts`.
+- **22 new backend tests** (`tests/test_api_keys_m24.py`):
+  - Key creation, key listing, key revocation, duplicate revocation returns 409.
+  - Auth enforcement when `QF_REQUIRE_API_KEY_FOR_INGESTION=true`: missing key → 401, invalid key → 401, revoked key → 403, valid key → 200.
+  - Auth bypass when `QF_REQUIRE_API_KEY_FOR_INGESTION=false` (default): no key needed.
+  - Timeline events emitted for create and revoke.
+  - Key hash stored, raw key NOT stored in DB.
+  - `last_used_at` updated on authenticated request.
+- **Backend total: 888 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean build (61 modules).
+- **SDK tests: 110 passed.**
+
+### What M24 does NOT build (by design)
+
+- No full auth system, OAuth 2.0, or JWT token issuance.
+- No roles/permissions system or per-endpoint access control beyond the single ingestion gate.
+- No production secrets manager (Vault, AWS Secrets Manager, etc.).
+- No PyPI publishing of the SDK.
+- No per-key rate limiting or quota enforcement.
+- No key rotation with zero-downtime overlap window.
+
+### API key curl examples
+
+```bash
+# Create an API key
+curl -s -X POST http://localhost:8000/api/api-keys \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "CI Pipeline Key",
+    "scopes": ["ingest"]
+  }' | python3 -m json.tool
+# Response includes "key": "qf_local_..." — copy this now, it will not be shown again.
+
+# List all API keys (raw key never returned)
+curl "http://localhost:8000/api/api-keys" | python3 -m json.tool
+
+# Revoke a key
+curl -s -X PATCH "http://localhost:8000/api/api-keys/<key_id>/revoke" \
+  | python3 -m json.tool
+
+# Ingest with auth (when QF_REQUIRE_API_KEY_FOR_INGESTION=true):
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/evidence-bundles \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer qf_local_...' \
+  -d '{"strategy_run": {"run_name": "bt", "run_type": "backtest"}}' \
+  | python3 -m json.tool
+
+# Alternative auth header:
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/evidence-bundles \
+  -H 'Content-Type: application/json' \
+  -H 'X-QF-Api-Key: qf_local_...' \
+  -d '{"strategy_run": {"run_name": "bt", "run_type": "backtest"}}' \
+  | python3 -m json.tool
+```
+
+### SDK example with api_key parameter
+
+```python
+from quantfidelity import QuantFidelityClient, EvidenceBundle
+import os
+
+# Option 1: pass key directly
+client = QuantFidelityClient(
+    base_url="http://localhost:8000",
+    api_key="qf_local_..."
+)
+
+# Option 2: use environment variable (recommended for CI)
+# export QUANTFIDELITY_API_KEY=qf_local_...
+client = QuantFidelityClient(base_url="http://localhost:8000")
+
+bundle = (
+    EvidenceBundle()
+    .with_strategy_run("bt-2024-q1", run_type="backtest",
+                       metrics_json={"sharpe": 1.4, "max_drawdown": -0.12})
+    .with_actions(compute_reliability_score=True)
+)
+result = client.ingest_evidence_bundle("<strategy-uuid>", bundle)
+print(result["summary"])
+```
+
+> **Security note:** Do not commit API keys to git. Use environment variables or a secrets manager.
+
+> **M24 note:** API key authentication is opt-in via `QF_REQUIRE_API_KEY_FOR_INGESTION`. All
+> other endpoints remain unauthenticated for local development. Key storage uses SHA-256 hash
+> only — the raw key is never persisted. No AI, no live data, not investment advice.
+
+---
+
+## Previously completed — M23: Evidence Bundle Python SDK v1
 
 **Status: complete.**
 

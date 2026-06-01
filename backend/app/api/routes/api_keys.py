@@ -1,0 +1,179 @@
+"""API key management routes — M24 API Key Foundation.
+
+POST   /api/api-keys              — create a new API key
+GET    /api/api-keys              — list API keys
+PATCH  /api/api-keys/{id}/revoke  — revoke an API key
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.core.constants import EventType, Severity
+from app.db.session import get_db
+from app.models.api_key import ApiKey
+from app.models.audit_timeline_event import AuditTimelineEvent
+from app.models.organization import Organization
+from app.schemas.api_keys import (
+    ApiKeyCreateRequest,
+    ApiKeyCreateResponse,
+    ApiKeyListResponse,
+    ApiKeyRead,
+    ApiKeyRevokeResponse,
+)
+from app.services.api_keys import generate_api_key, hash_api_key
+
+router = APIRouter(tags=["api-keys"])
+
+settings = get_settings()
+
+
+def _get_org(db: Session, organization_id: uuid.UUID | None) -> Organization:
+    """Resolve the organization, defaulting to the first org in local dev."""
+    if organization_id is not None:
+        org = db.query(Organization).filter(Organization.id == organization_id).first()
+        if org is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        return org
+    # Local dev fallback: use the first available organization.
+    org = db.query(Organization).first()
+    if org is None:
+        raise HTTPException(status_code=500, detail="No organization found in database")
+    return org
+
+
+@router.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=201)
+def create_api_key(
+    body: ApiKeyCreateRequest,
+    db: Session = Depends(get_db),
+) -> ApiKeyCreateResponse:
+    """Create a new API key.
+
+    The ``raw_key`` in the response is the ONLY time the plaintext key is
+    returned.  Store it securely — QuantFidelity will never show it again.
+    """
+    org = _get_org(db, body.organization_id)
+
+    # Validate project if provided
+    if body.project_id is not None:
+        from app.models.project import Project
+        project = db.query(Project).filter(Project.id == body.project_id).first()
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    raw_key, key_prefix = generate_api_key(env=settings.qf_api_key_env)
+    key_hash = hash_api_key(raw_key, settings.qf_api_key_hash_secret)
+
+    api_key = ApiKey(
+        organization_id=str(org.id),
+        project_id=str(body.project_id) if body.project_id is not None else None,
+        name=body.name,
+        key_prefix=key_prefix,
+        key_hash=key_hash,
+        scopes_json=body.scopes,
+        status="active",
+    )
+    db.add(api_key)
+    db.flush()
+
+    event = AuditTimelineEvent(
+        organization_id=org.id,
+        project_id=body.project_id,
+        event_type=EventType.api_key_created,
+        title=f"API key created: {body.name}",
+        description=(
+            f"API key '{body.name}' created with prefix '{key_prefix}'. "
+            f"Scopes: {', '.join(body.scopes)}."
+        ),
+        source_type="api_key",
+        source_id=str(api_key.id),
+        severity=Severity.info,
+        metadata_json={
+            "api_key_name": body.name,
+            "key_prefix": key_prefix,
+            "scopes": body.scopes,
+        },
+    )
+    db.add(event)
+
+    db.commit()
+    db.refresh(api_key)
+
+    return ApiKeyCreateResponse(
+        api_key=ApiKeyRead.model_validate(api_key),
+        raw_key=raw_key,
+    )
+
+
+@router.get("/api-keys", response_model=ApiKeyListResponse)
+def list_api_keys(
+    organization_id: str | None = None,
+    project_id: str | None = None,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+) -> ApiKeyListResponse:
+    """List API keys (never returns the raw key or key hash)."""
+    q = db.query(ApiKey)
+    if organization_id is not None:
+        q = q.filter(ApiKey.organization_id == organization_id)
+    if project_id is not None:
+        q = q.filter(ApiKey.project_id == project_id)
+    if status is not None:
+        q = q.filter(ApiKey.status == status)
+
+    total = q.count()
+    items = q.order_by(ApiKey.created_at.desc()).offset(offset).limit(limit).all()
+
+    return ApiKeyListResponse(
+        items=[ApiKeyRead.model_validate(k) for k in items],
+        total=total,
+    )
+
+
+@router.patch("/api-keys/{api_key_id}/revoke", response_model=ApiKeyRevokeResponse)
+def revoke_api_key(
+    api_key_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> ApiKeyRevokeResponse:
+    """Revoke an API key.  Revoked keys are rejected by the auth dependency."""
+    key = db.query(ApiKey).filter(ApiKey.id == api_key_id).first()
+    if key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    now = datetime.now(timezone.utc)
+    key.status = "revoked"
+    key.revoked_at = now
+    db.flush()
+
+    event = AuditTimelineEvent(
+        organization_id=uuid.UUID(key.organization_id) if isinstance(key.organization_id, str) else key.organization_id,
+        project_id=uuid.UUID(key.project_id) if isinstance(key.project_id, str) else key.project_id,
+        event_type=EventType.api_key_revoked,
+        title=f"API key revoked: {key.name}",
+        description=f"API key '{key.name}' (prefix: {key.key_prefix}) was revoked.",
+        source_type="api_key",
+        source_id=str(key.id),
+        severity=Severity.info,
+        metadata_json={
+            "api_key_name": key.name,
+            "key_prefix": key.key_prefix,
+            "revoked_at": now.isoformat(),
+        },
+    )
+    db.add(event)
+
+    db.commit()
+    db.refresh(key)
+
+    return ApiKeyRevokeResponse(
+        id=key.id,
+        status=key.status,
+        revoked_at=key.revoked_at,
+    )

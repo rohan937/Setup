@@ -33,6 +33,9 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     reports: Mapped[list["Report"]] = relationship(  # noqa: F821
         "Report", back_populates="organization", cascade="all, delete-orphan"
     )
+    api_keys: Mapped[list["ApiKey"]] = relationship(  # noqa: F821
+        "ApiKey", back_populates="organization", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Organization slug={self.slug!r}>"

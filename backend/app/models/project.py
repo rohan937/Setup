@@ -42,6 +42,9 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     reports: Mapped[list["Report"]] = relationship(  # noqa: F821
         "Report", back_populates="project"
     )
+    api_keys: Mapped[list["ApiKey"]] = relationship(  # noqa: F821
+        "ApiKey", back_populates="project"
+    )
 
     def __repr__(self) -> str:
         return f"<Project slug={self.slug!r}>"

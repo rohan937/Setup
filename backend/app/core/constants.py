@@ -72,6 +72,8 @@ class EventType(StrEnum):
     signal_snapshot_logged = "signal_snapshot_logged"
     strategy_reliability_scored = "strategy_reliability_scored"
     evidence_bundle_ingested = "evidence_bundle_ingested"
+    api_key_created = "api_key_created"
+    api_key_revoked = "api_key_revoked"
 
 
 class ReliabilityScoreStatus(StrEnum):

@@ -25,6 +25,7 @@ from app.models.alert import Alert
 from app.models.report import Report
 from app.models.report_section import ReportSection
 from app.models.strategy_reliability_score import StrategyReliabilityScore
+from app.models.api_key import ApiKey
 
 __all__ = [
     "Organization",
@@ -47,4 +48,5 @@ __all__ = [
     "Report",
     "ReportSection",
     "StrategyReliabilityScore",
+    "ApiKey",
 ]

@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     # PostgreSQL for staging / production: postgresql+psycopg2://user:pass@host/db
     database_url: str = _DEFAULT_DB_URL
 
+    # M24: API Key authentication
+    # Set to True to require valid API keys for evidence bundle ingestion.
+    qf_require_api_key_for_ingestion: bool = False
+    # Optional secret pepper for HMAC-SHA256 key hashing. Leave empty for local dev.
+    qf_api_key_hash_secret: str = ""
+    # API key prefix environment token: "local" or "live"
+    qf_api_key_env: str = "local"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

@@ -39,8 +39,9 @@ class QuantFidelityClient:
         Base URL of the QuantFidelity server (e.g. ``"http://localhost:8000"``).
         Trailing slashes are stripped automatically.
     api_key:
-        Reserved for future API key authentication.  Pass ``None`` for local
-        development (no authentication required).
+        API key for authentication.  When provided, it is sent as an
+        ``Authorization: Bearer <key>`` header on every request.  Pass
+        ``None`` for local development (no authentication required).
     timeout:
         Request timeout in seconds.  Defaults to 30.
     """
@@ -53,7 +54,7 @@ class QuantFidelityClient:
         timeout: int | float = 30,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._api_key = api_key  # reserved: no auth implemented yet
+        self._api_key = api_key
         self._timeout = timeout
 
         try:
@@ -72,7 +73,6 @@ class QuantFidelityClient:
     def _headers(self) -> dict[str, str]:
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._api_key:
-            # Reserved: will be activated when API key auth is added (M24+)
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
 

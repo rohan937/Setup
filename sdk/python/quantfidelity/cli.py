@@ -45,7 +45,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--api-key",
         default=None,
         metavar="KEY",
-        help="API key (reserved for future use; no-op in M23)",
+        help=(
+            "API key for authentication.  If not provided, falls back to the "
+            "QUANTFIDELITY_API_KEY environment variable."
+        ),
     )
 
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
@@ -113,6 +116,18 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_api_key(args: argparse.Namespace) -> str | None:
+    """Resolve API key from --api-key flag or QUANTFIDELITY_API_KEY env var.
+
+    --api-key flag takes precedence over env var.
+    """
+    import os
+
+    if args.api_key:
+        return args.api_key
+    return os.environ.get("QUANTFIDELITY_API_KEY") or None
+
+
 def _cmd_ingest(args: argparse.Namespace) -> int:
     """Handle the ``ingest`` sub-command."""
     try:
@@ -136,7 +151,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2))
         return 0
 
-    client = QuantFidelityClient(base_url=args.base_url, api_key=args.api_key)
+    client = QuantFidelityClient(base_url=args.base_url, api_key=_resolve_api_key(args))
     try:
         result = client.ingest_evidence_bundle(args.strategy_id, payload)
     except QuantFidelityError as exc:
@@ -149,7 +164,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
 
 def _cmd_example(args: argparse.Namespace) -> int:
     """Handle the ``example`` sub-command."""
-    client = QuantFidelityClient(base_url=args.base_url, api_key=args.api_key)
+    client = QuantFidelityClient(base_url=args.base_url, api_key=_resolve_api_key(args))
     try:
         example = client.get_evidence_bundle_example(args.strategy_id)
     except QuantFidelityError as exc:
@@ -172,7 +187,7 @@ def _cmd_example(args: argparse.Namespace) -> int:
 
 def _cmd_health(args: argparse.Namespace) -> int:
     """Handle the ``health`` sub-command."""
-    client = QuantFidelityClient(base_url=args.base_url, api_key=args.api_key)
+    client = QuantFidelityClient(base_url=args.base_url, api_key=_resolve_api_key(args))
     try:
         result = client.health()
     except QuantFidelityError as exc:

@@ -18,7 +18,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_api_key_if_enabled
 from app.db.session import get_db
+from app.models.api_key import ApiKey
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.strategy import Strategy
@@ -221,6 +223,7 @@ def ingest_bundle(
     strategy_id: uuid.UUID,
     bundle: EvidenceBundleRequest,
     db: Session = Depends(get_db),
+    api_key: ApiKey | None = Depends(require_api_key_if_enabled),
 ) -> EvidenceBundleResponse:
     """Ingest a structured evidence bundle for a strategy in a single transaction.
 

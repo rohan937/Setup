@@ -51,6 +51,61 @@ print(f"Created: {result['created_count']}")
 
 ---
 
+## API key authentication
+
+### Create a key
+
+Create API keys from the QuantFidelity Settings page (/settings) or via the API:
+
+```bash
+curl -s -X POST http://localhost:8000/api/api-keys \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-sdk-key"}' | python3 -m json.tool
+# Returns raw_key once. Store it securely.
+```
+
+### Use in the SDK
+
+```python
+from quantfidelity import QuantFidelityClient, EvidenceBundle
+client = QuantFidelityClient(
+    base_url="http://localhost:8000",
+    api_key="qf_local_<your-key>",
+)
+```
+
+### Use with environment variable
+
+```bash
+export QUANTFIDELITY_API_KEY=qf_local_<your-key>
+qf ingest --strategy-id <uuid> --file bundle.json
+```
+
+### CLI
+
+```bash
+# --api-key flag
+qf --api-key qf_local_<key> ingest --strategy-id <uuid> --file bundle.json
+
+# Or use env var (recommended)
+export QUANTFIDELITY_API_KEY=qf_local_<key>
+qf ingest --strategy-id <uuid> --file bundle.json
+```
+
+### Enabling API key enforcement
+
+By default, API keys are optional (QF_REQUIRE_API_KEY_FOR_INGESTION=false).
+To require keys for the evidence bundle endpoint, set in backend/.env:
+
+```
+QF_REQUIRE_API_KEY_FOR_INGESTION=true
+```
+
+**Note:** API keys are QuantFidelity-owned local keys for SDK authentication.
+They are not third-party market data API keys.
+
+---
+
 ## Full evidence bundle example
 
 ```python
@@ -207,10 +262,9 @@ from quantfidelity.exceptions import (
 
 ---
 
-## Known limitations (M23)
+## Known limitations (M24)
 
-- **No API key auth** — `api_key` parameter is reserved for M24+.
-- **No async support** — synchronous `requests` only.  Async variant planned for M24+.
+- **No async support** — synchronous `requests` only.  Async variant planned for a future milestone.
 - **No PyPI publish** — local editable install only.  `pip install quantfidelity` does not work yet.
 - **No automatic Git detection** — `git_commit` and `branch_name` must be supplied manually.
 - **No retry/offline buffering** — connection errors raise immediately.

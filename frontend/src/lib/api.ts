@@ -53,6 +53,10 @@ import type {
   UniverseSnapshotCreateRequest,
   UniverseSnapshotDetail,
   UniverseSnapshotRead,
+  ApiKeyCreateRequest,
+  ApiKeyCreateResponse,
+  ApiKeyListResponse,
+  ApiKeyRevokeResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -593,4 +597,40 @@ export async function getEvidenceBundleExample(
   return request<EvidenceBundleRequest>(
     `/api/strategies/${strategyId}/evidence-bundles/example`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// API Keys (M24)
+// ---------------------------------------------------------------------------
+
+export async function createApiKey(
+  data: ApiKeyCreateRequest,
+): Promise<ApiKeyCreateResponse> {
+  return request<ApiKeyCreateResponse>("/api/api-keys", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getApiKeys(params?: {
+  organization_id?: string;
+  project_id?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ApiKeyListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.organization_id) qs.set("organization_id", params.organization_id);
+  if (params?.project_id) qs.set("project_id", params.project_id);
+  if (params?.status) qs.set("status", params.status);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return request<ApiKeyListResponse>(`/api/api-keys${q ? `?${q}` : ""}`);
+}
+
+export async function revokeApiKey(apiKeyId: string): Promise<ApiKeyRevokeResponse> {
+  return request<ApiKeyRevokeResponse>(`/api/api-keys/${apiKeyId}/revoke`, {
+    method: "PATCH",
+  });
 }
