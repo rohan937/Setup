@@ -40,6 +40,7 @@ from quantfidelity.exceptions import (
     QuantFidelityError,
     QuantFidelityValidationError,
 )
+from quantfidelity.workflow import QuantResearchWorkflow
 
 __all__ = [
     "QuantFidelityClient",
@@ -49,6 +50,7 @@ __all__ = [
     "QuantFidelityConnectionError",
     "QuantFidelityAPIError",
     "QuantFidelityValidationError",
+    "QuantResearchWorkflow",
 ]
 
 try:

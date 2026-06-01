@@ -114,6 +114,25 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Path to the offline buffer file (default: ~/.quantfidelity/buffer.jsonl).",
     )
+    p_ingest.add_argument(
+        "--validate-before-send",
+        action="store_true",
+        default=False,
+        help=(
+            "Validate the bundle locally before sending it to the server. "
+            "If validation issues are found the command exits with code 1 "
+            "unless --force is also set."
+        ),
+    )
+    p_ingest.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help=(
+            "When used together with --validate-before-send, send the bundle "
+            "even if local validation finds issues (prints a warning instead)."
+        ),
+    )
 
     # ── example ─────────────────────────────────────────────────────────
     p_example = sub.add_parser(
@@ -141,6 +160,22 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "health",
         help="Check the QuantFidelity server health.",
+    )
+
+    # ── validate ────────────────────────────────────────────────────────
+    p_validate = sub.add_parser(
+        "validate",
+        help="Validate a bundle JSON file locally without sending.",
+        description=(
+            "Read a JSON evidence bundle from FILE and run SDK-side validation "
+            "checks.  Nothing is sent to the server."
+        ),
+    )
+    p_validate.add_argument(
+        "--file",
+        required=True,
+        metavar="PATH",
+        help="Path to the JSON bundle file to validate.",
     )
 
     # ── buffer ──────────────────────────────────────────────────────────
@@ -219,6 +254,38 @@ def _resolve_api_key(args: argparse.Namespace) -> str | None:
     return os.environ.get("QUANTFIDELITY_API_KEY") or None
 
 
+def _cmd_validate(args: argparse.Namespace) -> int:
+    """Handle the ``validate`` sub-command."""
+    try:
+        with open(args.file, encoding="utf-8") as fh:
+            raw = fh.read()
+    except FileNotFoundError:
+        print(f"Error: file not found: {args.file}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"Error reading {args.file}: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"Error: invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    from quantfidelity.bundle import EvidenceBundle  # noqa: PLC0415
+
+    bundle = EvidenceBundle.from_dict(payload)
+    issues = bundle.validate()
+    if not issues:
+        print("Bundle is valid. No issues found.")
+        return 0
+
+    print(f"Bundle has {len(issues)} validation issue(s):")
+    for issue in issues:
+        print(f"  - {issue}")
+    return 1
+
+
 def _cmd_ingest(args: argparse.Namespace) -> int:
     """Handle the ``ingest`` sub-command."""
     try:
@@ -236,6 +303,31 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     except json.JSONDecodeError as exc:
         print(f"Error: {args.file} is not valid JSON: {exc}", file=sys.stderr)
         return 1
+
+    # Optional local validation before sending
+    if getattr(args, "validate_before_send", False):
+        from quantfidelity.bundle import EvidenceBundle  # noqa: PLC0415
+
+        bundle_obj = EvidenceBundle.from_dict(payload)
+        issues = bundle_obj.validate()
+        if issues:
+            if getattr(args, "force", False):
+                print(
+                    f"Warning: {len(issues)} validation issue(s) found"
+                    " (--force set, continuing):",
+                    file=sys.stderr,
+                )
+                for issue in issues:
+                    print(f"  - {issue}", file=sys.stderr)
+            else:
+                print(
+                    f"Bundle has {len(issues)} validation issue(s)"
+                    " (use --force to send anyway):",
+                    file=sys.stderr,
+                )
+                for issue in issues:
+                    print(f"  - {issue}", file=sys.stderr)
+                return 1
 
     if args.dry_run:
         print("Dry run — payload parsed successfully.  Not sending to server.")
@@ -357,6 +449,7 @@ def _cmd_buffer(args: argparse.Namespace) -> int:
 
 _COMMAND_HANDLERS = {
     "ingest": _cmd_ingest,
+    "validate": _cmd_validate,
     "example": _cmd_example,
     "health": _cmd_health,
     "buffer": _cmd_buffer,

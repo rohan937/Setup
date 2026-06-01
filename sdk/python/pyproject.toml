@@ -30,6 +30,9 @@ dev = [
     "responses>=0.25.0",
     "pytest-mock>=3.12",
 ]
+pandas = [
+    "pandas>=2.0",
+]
 
 [project.scripts]
 qf = "quantfidelity.cli:main"

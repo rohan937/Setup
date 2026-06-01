@@ -416,6 +416,53 @@ class QuantFidelityClient:
         """
         return self._get("/api")
 
+    def ingest_bundle(
+        self,
+        strategy_id: str,
+        bundle: "EvidenceBundle | dict[str, Any]",
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Ergonomic alias for :meth:`ingest_evidence_bundle`.
+
+        Provided for clean notebook/script usage where the longer name feels
+        verbose.  All keyword arguments are forwarded unchanged.
+
+        Parameters
+        ----------
+        strategy_id:
+            UUID string of the target strategy.
+        bundle:
+            An :class:`~quantfidelity.bundle.EvidenceBundle` instance or a
+            plain ``dict``.
+        **kwargs:
+            Forwarded to :meth:`ingest_evidence_bundle`.
+        """
+        return self.ingest_evidence_bundle(strategy_id, bundle, **kwargs)
+
+    def validate_bundle(
+        self,
+        bundle: "EvidenceBundle | dict[str, Any]",
+    ) -> list[str]:
+        """Run SDK-side validation on a bundle without contacting the server.
+
+        Parameters
+        ----------
+        bundle:
+            An :class:`~quantfidelity.bundle.EvidenceBundle` instance or a
+            plain ``dict``.
+
+        Returns
+        -------
+        list[str]
+            Human-readable validation issues.  Empty list = valid.
+        """
+        try:
+            return bundle.validate()  # type: ignore[union-attr]
+        except AttributeError:
+            from quantfidelity.bundle import EvidenceBundle  # noqa: PLC0415
+
+            return EvidenceBundle.from_dict(bundle).validate()  # type: ignore[arg-type]
+
     def __repr__(self) -> str:
         auth = "api_key=***" if self._api_key else "api_key=None"
         return f"QuantFidelityClient(base_url={self._base_url!r}, {auth})"

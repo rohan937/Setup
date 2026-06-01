@@ -417,6 +417,284 @@ class EvidenceBundle:
         )
         return self
 
+    def with_dataset_snapshot_from_table(
+        self,
+        snapshot_label: str | None,
+        rows_or_df: Any,
+        *,
+        source_filename: str | None = None,
+    ) -> "EvidenceBundle":
+        """Attach a dataset snapshot from a ``list[dict]`` or pandas DataFrame.
+
+        Parameters
+        ----------
+        snapshot_label:
+            Human-readable label for this snapshot version.
+        rows_or_df:
+            Either a ``list[dict]`` or a pandas ``DataFrame``.
+        source_filename:
+            Optional path to the source file.
+        """
+        from quantfidelity.dataframe import rows_from_table  # noqa: PLC0415
+
+        rows = rows_from_table(rows_or_df)
+        return self.with_dataset_snapshot(
+            rows=rows,
+            snapshot_label=snapshot_label,
+            source_filename=source_filename,
+        )
+
+    def with_signal_snapshot_from_table(
+        self,
+        label: str,
+        rows_or_df: Any,
+        *,
+        signal_name: str | None = None,
+        signal_column: str = "signal",
+        strategy_version_label: str | None = None,
+        universe_snapshot_label: str | None = None,
+        source_type: str = "sdk_table",
+        source_filename: str | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> "EvidenceBundle":
+        """Attach a signal snapshot from a ``list[dict]`` or pandas DataFrame.
+
+        Parameters
+        ----------
+        label:
+            Human-readable label for this snapshot.
+        rows_or_df:
+            Either a ``list[dict]`` or a pandas ``DataFrame``.
+        signal_name:
+            Name of the signal.
+        signal_column:
+            Name of the signal column.  Defaults to ``"signal"``.
+        strategy_version_label:
+            Link this snapshot to the named version.
+        universe_snapshot_label:
+            Link this snapshot to the named universe snapshot.
+        source_type:
+            How the signal was sourced.  Defaults to ``"sdk_table"``.
+        source_filename:
+            Optional path to the source file.
+        metadata_json:
+            Arbitrary metadata.
+        """
+        from quantfidelity.dataframe import rows_from_table  # noqa: PLC0415
+
+        rows = rows_from_table(rows_or_df)
+        return self.with_signal_snapshot(
+            label,
+            rows=rows,
+            signal_name=signal_name,
+            signal_column=signal_column,
+            strategy_version_label=strategy_version_label,
+            universe_snapshot_label=universe_snapshot_label,
+            source_type=source_type,
+            source_filename=source_filename,
+            metadata_json=metadata_json,
+        )
+
+    def with_universe_from_symbols(
+        self,
+        label: str,
+        symbols: Any,
+        *,
+        strategy_version_label: str | None = None,
+        source_type: str = "sdk_symbols",
+        source_filename: str | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> "EvidenceBundle":
+        """Attach a universe snapshot from a list of symbol strings.
+
+        Parameters
+        ----------
+        label:
+            Human-readable label (e.g. ``"sp500-2024-q1"``).
+        symbols:
+            Any iterable of ticker strings (list, tuple, set, generator, …).
+        strategy_version_label:
+            Link this snapshot to the named version.
+        source_type:
+            How the universe was sourced.  Defaults to ``"sdk_symbols"``.
+        source_filename:
+            Optional path to the source file.
+        metadata_json:
+            Arbitrary metadata dict.
+        """
+        return self.with_universe_snapshot(
+            label,
+            symbols=list(symbols),
+            strategy_version_label=strategy_version_label,
+            source_type=source_type,
+            source_filename=source_filename,
+            metadata_json=metadata_json,
+        )
+
+    def with_backtest_run(
+        self,
+        run_name: str,
+        *,
+        params: dict[str, Any] | None = None,
+        assumptions: dict[str, Any] | None = None,
+        metrics: dict[str, Any] | None = None,
+        strategy_version_label: str | None = None,
+        dataset_snapshot_label: str | None = None,
+        universe_snapshot_label: str | None = None,
+        signal_snapshot_label: str | None = None,
+        universe_name: str | None = None,
+        dataset_version: str | None = None,
+        notes: str | None = None,
+    ) -> "EvidenceBundle":
+        """Clean alias for ``with_strategy_run(run_type='backtest')``.
+
+        Parameters
+        ----------
+        run_name:
+            Human-readable name for the run.
+        params:
+            Strategy parameter dict used for this run (``params_json``).
+        assumptions:
+            Execution assumption dict (``assumptions_json``).
+        metrics:
+            Performance metrics dict (``metrics_json``).
+        """
+        return self.with_strategy_run(
+            run_name,
+            run_type="backtest",
+            params_json=params,
+            assumptions_json=assumptions,
+            metrics_json=metrics,
+            strategy_version_label=strategy_version_label,
+            dataset_snapshot_label=dataset_snapshot_label,
+            universe_snapshot_label=universe_snapshot_label,
+            signal_snapshot_label=signal_snapshot_label,
+            universe_name=universe_name,
+            dataset_version=dataset_version,
+            notes=notes,
+        )
+
+    def with_research_run(
+        self,
+        run_name: str,
+        *,
+        params: dict[str, Any] | None = None,
+        assumptions: dict[str, Any] | None = None,
+        metrics: dict[str, Any] | None = None,
+        strategy_version_label: str | None = None,
+        notes: str | None = None,
+    ) -> "EvidenceBundle":
+        """Clean alias for ``with_strategy_run(run_type='research')``.
+
+        Parameters
+        ----------
+        run_name:
+            Human-readable name for the run.
+        params:
+            Strategy parameter dict (``params_json``).
+        assumptions:
+            Execution assumption dict (``assumptions_json``).
+        metrics:
+            Performance metrics dict (``metrics_json``).
+        """
+        return self.with_strategy_run(
+            run_name,
+            run_type="research",
+            params_json=params,
+            assumptions_json=assumptions,
+            metrics_json=metrics,
+            strategy_version_label=strategy_version_label,
+            notes=notes,
+        )
+
+    def validate(self) -> list[str]:
+        """Return a list of human-readable validation issues. Empty list = valid.
+
+        Performs lightweight SDK-side checks only; the backend remains the
+        authoritative source of truth for full business-logic validation.
+
+        Returns
+        -------
+        list[str]
+            Each entry is a human-readable description of a validation issue.
+            An empty list means the bundle looks valid from the client side.
+        """
+        issues: list[str] = []
+
+        if "config_snapshot" in self._data:
+            cj = self._data["config_snapshot"].get("config_json")
+            if cj is not None and not isinstance(cj, dict):
+                issues.append(
+                    "config_snapshot.config_json must be a dict object, not a list or scalar"
+                )
+
+        if "dataset_snapshot" in self._data:
+            rows = self._data["dataset_snapshot"].get("rows", [])
+            if not isinstance(rows, list):
+                issues.append("dataset_snapshot.rows must be a list")
+            elif len(rows) == 0:
+                issues.append("dataset_snapshot.rows is empty — no data to ingest")
+            elif not all(isinstance(r, dict) for r in rows):
+                issues.append(
+                    "dataset_snapshot.rows must contain dicts (not scalars or lists)"
+                )
+
+        if "signal_snapshot" in self._data:
+            ss = self._data["signal_snapshot"]
+            rows = ss.get("rows", [])
+            signal_col = ss.get("signal_column", "signal")
+            if not isinstance(rows, list):
+                issues.append("signal_snapshot.rows must be a list")
+            elif len(rows) == 0:
+                issues.append("signal_snapshot.rows is empty")
+            else:
+                missing = [i for i, r in enumerate(rows) if signal_col not in r]
+                if missing:
+                    issues.append(
+                        f"signal_snapshot.rows: {len(missing)} row(s) missing"
+                        f" '{signal_col}' column"
+                    )
+
+        if "universe_snapshot" in self._data:
+            syms = self._data["universe_snapshot"].get("symbols", [])
+            if not isinstance(syms, list) or len(syms) == 0:
+                issues.append("universe_snapshot.symbols must be a non-empty list")
+
+        if "strategy_run" in self._data:
+            sr = self._data["strategy_run"]
+            for field in ("params_json", "assumptions_json", "metrics_json"):
+                val = sr.get(field)
+                if val is not None and not isinstance(val, dict):
+                    issues.append(
+                        f"strategy_run.{field} must be a dict or null,"
+                        f" got {type(val).__name__}"
+                    )
+
+        if "actions" in self._data:
+            for k, v in self._data["actions"].items():
+                if not isinstance(v, bool):
+                    issues.append(
+                        f"actions.{k} must be a boolean, got {type(v).__name__}"
+                    )
+
+        return issues
+
+    def raise_if_invalid(self) -> None:
+        """Raise :class:`~quantfidelity.exceptions.QuantFidelityValidationError`
+        if :meth:`validate` finds any issues.
+
+        Raises
+        ------
+        QuantFidelityValidationError
+            When one or more validation issues are detected.
+        """
+        issues = self.validate()
+        if issues:
+            raise QuantFidelityValidationError(
+                "Evidence bundle validation failed:\n"
+                + "\n".join(f"  - {i}" for i in issues)
+            )
+
     def with_actions(
         self,
         *,

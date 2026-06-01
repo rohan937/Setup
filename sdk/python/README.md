@@ -51,6 +51,68 @@ print(f"Created: {result['created_count']}")
 
 ---
 
+## Pandas-friendly helpers
+
+Install optional pandas support:
+
+```bash
+pip install "quantfidelity[pandas]"
+```
+
+```python
+from quantfidelity.dataframe import rows_from_table
+
+# Accepts list[dict] or pandas DataFrame — both work the same way
+rows = rows_from_table(df)  # NaN→None, datetime→ISO, numpy scalars→Python
+
+bundle.with_dataset_snapshot_from_table("snap", df)
+bundle.with_signal_snapshot_from_table("sigs", signal_df)
+```
+
+Works with plain `list[dict]` even without pandas installed.
+
+---
+
+## QuantResearchWorkflow
+
+```python
+from quantfidelity import QuantFidelityClient, QuantResearchWorkflow
+
+client = QuantFidelityClient(base_url="http://localhost:8000")
+
+wf = QuantResearchWorkflow(strategy_name="AAPL MR", version_label="v1.0")
+wf.set_config(params={"lookback": 20}).set_universe(["AAPL", "MSFT"]).set_backtest_result(metrics={"sharpe": 1.4})
+bundle = wf.to_bundle()
+result = client.ingest_bundle(strategy_id, bundle)
+```
+
+All `set_*` methods are chainable.  `to_bundle()` returns an `EvidenceBundle` ready to ingest.
+
+---
+
+## Bundle validation
+
+```python
+# Returns list[str] of issues — empty means valid
+issues = bundle.validate()
+
+# Raises QuantFidelityValidationError if any issues exist
+bundle.raise_if_invalid()
+```
+
+```bash
+# CLI: validate a bundle file without sending
+qf validate --file bundle.json
+
+# Validate before ingesting (aborts on issues)
+qf ingest --strategy-id <uuid> --file bundle.json --validate-before-send
+
+# Force send even if validation finds issues
+qf ingest --strategy-id <uuid> --file bundle.json --validate-before-send --force
+```
+
+---
+
 ## Safe retries & idempotency
 
 ### Auto-retry with idempotency key
@@ -322,12 +384,11 @@ from quantfidelity.exceptions import (
 
 ---
 
-## Known limitations (M25)
+## Known limitations (M26)
 
 - **No async support** — synchronous `requests` only.  Async variant planned for a future milestone.
 - **No PyPI publish** — local editable install only.  `pip install quantfidelity` does not work yet.
 - **No automatic Git detection** — `git_commit` and `branch_name` must be supplied manually.
-- **No pandas/numpy helpers** — DataFrames must be converted to `list[dict]` before passing as rows.
 
 ---
 

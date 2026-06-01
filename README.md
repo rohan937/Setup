@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (901 tests)
+│   └── tests/              Pytest tests (901 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,86 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M25: SDK Ingestion Reliability v1
+## Current milestone — M26: SDK Pandas + Research Workflow Helpers v1
+
+**Status: complete.**
+
+### M26 deliverables
+
+No backend or frontend changes — SDK only.
+
+- **New `quantfidelity/dataframe.py`** — pandas-optional DataFrame helpers:
+  - `rows_from_table(data)` — accepts `list[dict]` or a pandas `DataFrame`; returns `list[dict]`.
+    When pandas is installed, converts NaN → `None`, `datetime`/`Timestamp` → ISO 8601 string,
+    and numpy scalar types → native Python int/float.
+  - `is_dataframe_like(obj)` — returns `True` when `obj` is a pandas `DataFrame`.
+  - `normalize_records(records)` — converts NaN/numpy scalars/datetimes in a `list[dict]`.
+  - `validate_required_columns(data, required)` — raises `ValueError` if any required column
+    is absent from the first record.
+  - **Pandas is OPTIONAL**: works with `list[dict]` by default.
+    Install DataFrame support: `pip install "quantfidelity[pandas]"`.
+
+- **`EvidenceBundle` new methods** (all chainable, added to `bundle.py`):
+  - `with_dataset_snapshot_from_table(label, data, **kwargs)` — calls `rows_from_table(data)`
+    then `with_dataset_snapshot()`.
+  - `with_signal_snapshot_from_table(label, data, **kwargs)` — calls `rows_from_table(data)`
+    then `with_signal_snapshot()`.
+  - `with_universe_from_symbols(label, symbols, **kwargs)` — thin wrapper around
+    `with_universe_snapshot()`.
+  - `with_backtest_run(run_name, **kwargs)` — shortcut with `run_type="backtest"`.
+  - `with_research_run(run_name, **kwargs)` — shortcut with `run_type="research"`.
+
+- **Bundle validation** — `EvidenceBundle` gains two new methods:
+  - `validate()` → `list[str]` — returns a list of human-readable issue strings (empty = valid).
+  - `raise_if_invalid()` → `None` — raises `QuantFidelityValidationError` if any issues exist.
+
+- **`QuantResearchWorkflow`** — new high-level research workflow builder
+  (`quantfidelity/workflow.py`, exported from `quantfidelity/__init__.py`):
+  - `QuantResearchWorkflow(strategy_name, version_label)` — initialises with strategy name and
+    version label.
+  - `set_version(label, **kwargs)` — chainable version config.
+  - `set_config(params, **kwargs)` — chainable config snapshot.
+  - `set_universe(symbols, label=None, **kwargs)` — chainable universe.
+  - `set_dataset(name, **kwargs)` — chainable dataset.
+  - `set_signals(rows_or_df, label=None, **kwargs)` — chainable signal snapshot (accepts
+    `list[dict]` or DataFrame via `rows_from_table`).
+  - `set_backtest_result(metrics, **kwargs)` — chainable backtest run.
+  - `set_research_result(metrics, **kwargs)` — chainable research run.
+  - `enable_actions(**kwargs)` — chainable actions (default: `compute_reliability_score=True`).
+  - `to_bundle()` → `EvidenceBundle` — assembles and returns the final bundle.
+  - `__repr__` shows strategy name, version, and configured sections.
+
+- **`QuantFidelityClient` additions**:
+  - `ingest_bundle(strategy_id, bundle, **kwargs)` — alias for `ingest_evidence_bundle()`.
+  - `validate_bundle(bundle)` → `list[str]` — SDK-side validation only; never calls the server.
+
+- **CLI additions** (`qf` command):
+  - `qf validate --file bundle.json` — validates a bundle JSON file; prints "Bundle is valid.
+    No issues found." or lists issues; exits 0 / 1.
+  - `qf ingest --validate-before-send` — runs `bundle.validate()` before sending; aborts on
+    issues unless `--force` is also passed.
+
+- **New examples** (`sdk/python/examples/`):
+  - `research_workflow_aapl.py` — demonstrates `QuantResearchWorkflow` end-to-end; outputs a
+    valid JSON bundle (strategy_version `v3.0.0`).
+  - `pandas_usage.py` — demonstrates `rows_from_table`, `with_dataset_snapshot_from_table`,
+    and `with_signal_snapshot_from_table` with plain `list[dict]`.
+
+- **43 new SDK tests** (`sdk/python/tests/test_pandas_m26.py`), 3 skipped (pandas-optional
+  DataFrame tests require `pandas` which is not installed in CI — expected behavior).
+- **SDK total: 174 passed, 3 skipped.**
+- No external APIs required; no API keys needed for local use.
+
+### What M26 does NOT build (by design)
+
+- No live data fetching, no market data integration.
+- No automated Git commit/push from workflow.
+- No Jupyter `.ipynb` execution or notebook integration.
+- No PyPI publishing of the SDK.
+
+---
+
+## Previously completed — M25: SDK Ingestion Reliability v1
 
 **Status: complete.**
 
