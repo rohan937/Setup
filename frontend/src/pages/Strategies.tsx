@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { Strategy, StrategyReliabilityScore } from "@/types";
-import { getStrategies } from "@/lib/api";
+import type { Strategy, StrategyHealth, StrategyReliabilityScore } from "@/types";
+import { getStrategies, getStrategiesHealth } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
@@ -40,11 +40,49 @@ function ReliabilityBadge({ score }: { score: StrategyReliabilityScore | null })
   );
 }
 
+const HEALTH_COLORS: Record<string, string> = {
+  healthy:               "text-teal-400",
+  watch:                 "text-yellow-400",
+  review:                "text-orange-400",
+  critical:              "text-red-400",
+  insufficient_evidence: "text-text-muted",
+};
+
+const HEALTH_DOT: Record<string, string> = {
+  healthy:               "bg-teal-400",
+  watch:                 "bg-yellow-400",
+  review:                "bg-orange-400",
+  critical:              "bg-red-500",
+  insufficient_evidence: "bg-bg-500",
+};
+
+function HealthCell({ health }: { health: StrategyHealth | undefined }) {
+  if (!health) {
+    return <span className="font-mono text-2xs text-text-muted/50">—</span>;
+  }
+  const textCls = HEALTH_COLORS[health.health_status] ?? HEALTH_COLORS.insufficient_evidence;
+  const dotCls  = HEALTH_DOT[health.health_status]   ?? HEALTH_DOT.insufficient_evidence;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotCls}`} />
+      <span className={`font-mono text-xs ${textCls}`}>
+        {health.health_status.replace(/_/g, " ")}
+      </span>
+      {health.health_score !== null && (
+        <span className={`mono-num font-semibold text-xs ${textCls}`}>
+          {health.health_score.toFixed(0)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function Strategies() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [healthMap, setHealthMap] = useState<Record<string, StrategyHealth>>({});
   const navigate = useNavigate();
 
   const load = useCallback(() => {
@@ -54,6 +92,14 @@ export default function Strategies() {
       .then(setStrategies)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load."))
       .finally(() => setLoading(false));
+    // M27: load health in parallel (best-effort)
+    getStrategiesHealth({ limit: 200 })
+      .then((r) => {
+        const map: Record<string, StrategyHealth> = {};
+        r.items.forEach((h) => { map[h.strategy_id] = h; });
+        setHealthMap(map);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -115,6 +161,7 @@ export default function Strategies() {
                 <th className={TH}>Asset</th>
                 <th className={TH}>Status</th>
                 <th className={`${TH} text-right`}>Runs</th>
+                <th className={TH}>Health</th>
                 <th className={TH}>Reliability</th>
                 <th className={TH}>Last Run</th>
                 <th className={TH}>Registered</th>
@@ -150,6 +197,9 @@ export default function Strategies() {
                   </td>
                   <td className="mono-num px-4 py-3 text-right text-sm text-text-secondary">
                     {s.run_count}
+                  </td>
+                  <td className="px-4 py-3">
+                    <HealthCell health={healthMap[s.id]} />
                   </td>
                   <td className="px-4 py-3">
                     <ReliabilityBadge score={s.latest_reliability_score} />

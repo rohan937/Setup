@@ -1342,3 +1342,43 @@ export interface ApiKeyRevokeResponse {
   status: string;
   revoked_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// M27: Strategy Health types
+// ---------------------------------------------------------------------------
+
+export type StrategyHealthStatus = "healthy" | "watch" | "review" | "critical" | "insufficient_evidence";
+
+export interface StrategyHealth {
+  strategy_id: string;
+  strategy_name: string;
+  asset_class: string;
+  status: string;
+  health_score: number | null;
+  health_status: StrategyHealthStatus;
+  primary_concern: string;
+  latest_run_at: string | null;
+  days_since_latest_run: number | null;
+  latest_reliability_score: number | null;
+  reliability_status: string | null;
+  evidence_coverage_score: number;
+  open_alert_count: number;
+  high_critical_alert_count: number;
+  latest_ingestion_status: string | null;
+  latest_ingestion_at: string | null;
+  latest_backtest_trust_score: number | null;
+  latest_data_health_score: number | null;
+  latest_signal_quality_score: number | null;
+  latest_report_score: number | null;
+  missing_evidence: string[];
+  suggested_checks: string[];
+  generated_at: string;
+}
+
+export interface StrategyHealthListResponse {
+  items: StrategyHealth[];
+  total: number;
+  limit: number;
+  offset: number;
+  generated_at: string;
+}

@@ -57,6 +57,8 @@ import type {
   ApiKeyCreateResponse,
   ApiKeyListResponse,
   ApiKeyRevokeResponse,
+  StrategyHealth,
+  StrategyHealthListResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -633,4 +635,27 @@ export async function revokeApiKey(apiKeyId: string): Promise<ApiKeyRevokeRespon
   return request<ApiKeyRevokeResponse>(`/api/api-keys/${apiKeyId}/revoke`, {
     method: "PATCH",
   });
+}
+
+// ---------------------------------------------------------------------------
+// M27: Strategy Health
+// ---------------------------------------------------------------------------
+
+export async function getStrategyHealth(strategyId: string): Promise<StrategyHealth> {
+  return request<StrategyHealth>(`/api/strategies/${strategyId}/health`);
+}
+
+export async function getStrategiesHealth(params?: {
+  status?: string;
+  asset_class?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<StrategyHealthListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.asset_class) qs.set("asset_class", params.asset_class);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return request<StrategyHealthListResponse>(`/api/strategies/health${q ? `?${q}` : ""}`);
 }

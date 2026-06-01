@@ -15,6 +15,7 @@ import type {
   SignalSnapshotSummary,
   StrategyConfigSnapshotRead,
   StrategyDetail as StrategyDetailType,
+  StrategyHealth,
   StrategyReliabilityScore,
   StrategyRun,
   StrategyVersion,
@@ -27,6 +28,7 @@ import {
   generateStrategyReport,
   getEvidenceBundleExample,
   getStrategy,
+  getStrategyHealth,
   getStrategyReliabilityScoreHistory,
   getStrategyTimeline,
   ingestEvidenceBundle,
@@ -1688,6 +1690,91 @@ function IngestionPanel({
 }
 
 // ---------------------------------------------------------------------------
+// M27: Strategy Health card
+// ---------------------------------------------------------------------------
+
+function StrategyHealthCard({ health }: { health: StrategyHealth }) {
+  const STATUS_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+    healthy:               { bg: "bg-teal-900/20",   border: "border-teal-700/40",   text: "text-teal-300",   dot: "bg-teal-400" },
+    watch:                 { bg: "bg-yellow-900/20", border: "border-yellow-700/40", text: "text-yellow-300", dot: "bg-yellow-400" },
+    review:                { bg: "bg-orange-900/20", border: "border-orange-700/40", text: "text-orange-300", dot: "bg-orange-400" },
+    critical:              { bg: "bg-red-900/20",    border: "border-red-700/40",    text: "text-red-300",    dot: "bg-red-500" },
+    insufficient_evidence: { bg: "bg-bg-700",        border: "border-border",        text: "text-text-muted", dot: "bg-bg-500" },
+  };
+  const cls = STATUS_COLORS[health.health_status] ?? STATUS_COLORS.insufficient_evidence;
+  const scoreColor = (s: number | null) =>
+    s === null ? "text-text-muted" : s >= 75 ? "text-teal-400" : s >= 55 ? "text-yellow-400" : "text-red-400";
+
+  return (
+    <div className={`rounded-card border ${cls.border} ${cls.bg}`}>
+      {/* Header */}
+      <div className={`flex items-center justify-between px-4 py-2.5 border-b ${cls.border}`}>
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${cls.dot}`} />
+          <p className="caption">Current Strategy Health</p>
+        </div>
+        <span className={`inline-flex items-center rounded border px-2 py-0.5 font-mono text-2xs ${cls.border} ${cls.bg} ${cls.text}`}>
+          {health.health_status.replace(/_/g, " ")}
+        </span>
+      </div>
+
+      {/* Score metrics grid */}
+      <div className="grid grid-cols-2 divide-x divide-border sm:grid-cols-4">
+        {[
+          { label: "Health Score",  value: health.health_score !== null ? health.health_score.toFixed(1) : "—",               color: scoreColor(health.health_score) },
+          { label: "Reliability",   value: health.latest_reliability_score !== null ? health.latest_reliability_score.toFixed(1) : "—", color: scoreColor(health.latest_reliability_score) },
+          { label: "Coverage",      value: health.evidence_coverage_score.toFixed(0),                                          color: scoreColor(health.evidence_coverage_score) },
+          { label: "Open Alerts",   value: health.open_alert_count.toString(),                                                 color: health.high_critical_alert_count > 0 ? "text-red-400" : health.open_alert_count > 0 ? "text-yellow-400" : "text-teal-400" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="px-4 py-2.5 text-center">
+            <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">{label}</p>
+            <p className={`mono-num mt-0.5 text-xl font-bold ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Primary concern */}
+      <div className={`border-t ${cls.border} px-4 py-2`}>
+        <span className="font-mono text-2xs text-text-muted mr-2">Primary Concern:</span>
+        <span className={`font-mono text-xs ${cls.text}`}>{health.primary_concern}</span>
+      </div>
+
+      {/* Latest run / ingestion row */}
+      <div className={`border-t ${cls.border} px-4 py-2 flex flex-wrap gap-x-6 gap-y-1`}>
+        <span className="font-mono text-2xs text-text-muted">
+          Last run: {health.days_since_latest_run !== null ? `${health.days_since_latest_run}d ago` : "never"}
+        </span>
+        {health.latest_ingestion_status && (
+          <span className="font-mono text-2xs text-text-muted">
+            Last ingest:{" "}
+            <span className={health.latest_ingestion_status === "failed" ? "text-red-400" : "text-text-secondary"}>
+              {health.latest_ingestion_status}
+            </span>
+          </span>
+        )}
+      </div>
+
+      {/* Missing evidence */}
+      {health.missing_evidence.length > 0 && (
+        <div className={`border-t ${cls.border} px-4 py-2`}>
+          <p className="font-mono text-2xs text-text-muted mb-1">Missing Evidence:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {health.missing_evidence.slice(0, 6).map((e) => (
+              <span
+                key={e}
+                className="font-mono text-2xs bg-bg-800 border border-border rounded px-1.5 py-0.5 text-text-muted"
+              >
+                {e}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -1739,6 +1826,9 @@ export default function StrategyDetail() {
   const [bundleError, setBundleError] = useState<string | null>(null);
   // M25: idempotency key for safe retries
   const [idempotencyKey, setIdempotencyKey] = useState("");
+
+  // M27: strategy health
+  const [health, setHealth] = useState<StrategyHealth | null>(null);
 
   async function handleGenerateReport() {
     if (!id) return;
@@ -1814,6 +1904,8 @@ export default function StrategyDetail() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load strategy."))
       .finally(() => setLoading(false));
+    // M27: load health in parallel
+    getStrategyHealth(id).then(setHealth).catch(() => setHealth(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -1920,6 +2012,9 @@ export default function StrategyDetail() {
           </button>
         </div>
       </div>
+
+      {/* M27: Strategy Health card */}
+      {health && <StrategyHealthCard health={health} />}
 
       <RunLogDrawer
         open={runDrawerOpen}

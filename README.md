@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (901 tests, 1 skipped)
+│   └── tests/              Pytest tests (916 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,90 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M26: SDK Pandas + Research Workflow Helpers v1
+## Current milestone — M27: Strategy Health Dashboard v1
+
+**Status: complete.**
+
+### M27 deliverables
+
+- **New `backend/app/services/strategy_health.py`** — deterministic health snapshot service.
+  No AI, no live market data, no external calls:
+  - `StrategyHealthSnapshot` dataclass — `strategy_id`, `name`, `slug`, `status` (health status),
+    `health_score` (0–100 or null), `reliability_score` (float or null), `reliability_status`
+    (string or null), `coverage_score` (float or null), `open_alert_count` (int),
+    `critical_alert_count` (int), `high_alert_count` (int), `medium_alert_count` (int),
+    `low_alert_count` (int), `primary_concern` (deterministic text, no AI), `last_run_age_days`
+    (float or null), `missing_evidence` (list of strings), `suggested_checks` (list of strings),
+    `generated_at`.
+  - `compute_strategy_health(strategy, db)` — computes a `StrategyHealthSnapshot` for one strategy.
+  - `get_strategies_health(db, *, status_filter, limit, offset)` — returns a paginated list of
+    snapshots across all active strategies.
+
+- **Health status values**: `healthy` / `watch` / `review` / `critical` / `insufficient_evidence`.
+  Computation rules (evaluated in order):
+  - `critical`: open critical alert, OR reliability score < 35 OR backtest trust < 40.
+  - `review`: open high alert, OR reliability status is `weak` or `review`, OR evidence coverage < 60.
+  - `watch`: open low/medium alert, OR evidence coverage 60–75, OR last run > 30 days stale.
+  - `healthy`: reliability status `good` or `excellent` AND evidence coverage ≥ 75.
+  - `insufficient_evidence`: no reliability score AND evidence coverage < 20.
+
+- **Health score (0–100 or null)**:
+  Base = reliability score if available, else evidence coverage score if available, else null.
+  Deductions: critical alert −30, high alert −20, medium alert −8, low alert −3.
+  Staleness deductions: no runs −20, last run > 90 days −20, last run > 30 days −10.
+  Floor: 0.
+
+- **Primary concern**: deterministic text string, no AI. Derived from the most severe issue.
+
+- **Missing evidence and suggested checks**: sourced from latest reliability score record.
+
+- **2 new API endpoints** (`app/api/routes/strategies.py`):
+  - `GET /api/strategies/health` — paginated health list across all active strategies.
+    Supports `status` filter, `limit`, `offset` query params. Returns `StrategyHealthListResponse`.
+  - `GET /api/strategies/{id}/health` — health snapshot for one strategy.
+    Returns `StrategyHealthRead`. 404 for unknown strategy.
+
+- **New Pydantic schemas** (`app/schemas/strategy.py`):
+  `StrategyHealthRead`, `StrategyHealthListResponse`.
+
+- **Frontend — `StrategyHealthCard`** in `StrategyDetail.tsx`:
+  - Status badge (critical/review/watch/healthy/insufficient_evidence), health score,
+    reliability score, evidence coverage score.
+  - Alert count chips (critical/high/medium/low).
+  - Primary concern text.
+  - Last run age in days.
+  - Missing evidence chips.
+
+- **Frontend — health status column** in `Strategies.tsx`:
+  - Health status badge added to the strategies table alongside the reliability column.
+
+- **Frontend — Strategy Health summary panel** in `Dashboard.tsx`:
+  - Summary panel showing count of strategies by health status.
+  - Links to individual strategy pages.
+
+- **15 new backend tests** (`tests/test_health_m27.py`) across 2 test classes:
+  - `TestStrategyHealthEndpoint` (7 tests): seeded strategy has health, required fields present,
+    404 for unknown strategy, list endpoint 200, list total matches, list has all fields,
+    health status filter.
+  - `TestHealthStatusLogic` (8 tests): insufficient_evidence with no runs, healthy status with
+    seeded strategy, review with open high alert, critical with open critical alert,
+    health score decreases with critical alert, watch with open low alert,
+    missing evidence list populated, primary concern text with no runs.
+
+- **Backend total: 916 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (61 modules).
+- No external APIs required; no API keys needed beyond existing QF keys.
+
+### What M27 does NOT build (by design)
+
+- No realtime polling or push notifications on health status change.
+- No AI health assessment or recommendations.
+- No historical trend tracking of health snapshots over time.
+- No database persistence of health snapshots (computed on demand).
+
+---
+
+## Previously completed — M26: SDK Pandas + Research Workflow Helpers v1
 
 **Status: complete.**
 

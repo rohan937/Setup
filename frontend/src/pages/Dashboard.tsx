@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, RecentEvidenceItem, Strategy } from "@/types";
-import { getDashboardSummary, getEvidenceCoverage, getStrategies } from "@/lib/api";
+import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, RecentEvidenceItem, Strategy, StrategyHealthListResponse } from "@/types";
+import { getDashboardSummary, getEvidenceCoverage, getStrategies, getStrategiesHealth } from "@/lib/api";
 import Badge from "@/components/Badge";
 
 // ---------------------------------------------------------------------------
@@ -170,10 +170,19 @@ function AlertSignalRow({ alert }: { alert: DashboardAlertItem }) {
 // Main component
 // ---------------------------------------------------------------------------
 
+type HealthStatusCounts = {
+  healthy: number;
+  watch: number;
+  review: number;
+  critical: number;
+  insufficient_evidence: number;
+};
+
 export default function Dashboard() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [coverageSummary, setCoverageSummary] = useState<EvidenceCoverageSummary | null>(null);
+  const [healthSummary, setHealthSummary] = useState<HealthStatusCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -192,6 +201,20 @@ export default function Dashboard() {
         setError(e instanceof Error ? e.message : "Failed to load"),
       )
       .finally(() => setLoading(false));
+    // M27: load health summary in parallel (best-effort)
+    getStrategiesHealth({ limit: 500 })
+      .then((r: StrategyHealthListResponse) => {
+        const statusCounts: HealthStatusCounts = {
+          healthy: 0, watch: 0, review: 0, critical: 0, insufficient_evidence: 0,
+        };
+        r.items.forEach((h) => {
+          if (h.health_status in statusCounts) {
+            (statusCounts as Record<string, number>)[h.health_status]++;
+          }
+        });
+        setHealthSummary(statusCounts);
+      })
+      .catch(() => {});
   }, []);
 
   const scores = summary?.scores ?? null;
@@ -358,6 +381,49 @@ export default function Dashboard() {
                   {label}
                 </span>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Strategy Health summary (M27)                                      */}
+      {/* ------------------------------------------------------------------ */}
+      {!loading && healthSummary && strategies.length > 0 && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+            <p className="caption">Strategy Health</p>
+            <Link
+              to="/strategies"
+              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            >
+              all strategies →
+            </Link>
+          </div>
+          <div className="px-4 py-3 flex flex-wrap gap-2">
+            {(
+              [
+                { key: "healthy",               label: "Healthy",              chip: "bg-teal-900/40 text-teal-300 border-teal-700/40" },
+                { key: "watch",                 label: "Watch",                chip: "bg-yellow-900/40 text-yellow-200 border-yellow-700/40" },
+                { key: "review",                label: "Review",               chip: "bg-orange-900/40 text-orange-300 border-orange-700/40" },
+                { key: "critical",              label: "Critical",             chip: "bg-red-900/40 text-red-300 border-red-700/40" },
+                { key: "insufficient_evidence", label: "Insufficient Evidence",chip: "bg-bg-600 text-text-muted border-border" },
+              ] as const
+            ).map(({ key, label, chip }) => (
+              <span
+                key={key}
+                className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-2xs ${chip}`}
+              >
+                {label}
+                <span className="font-bold">{healthSummary[key]}</span>
+              </span>
+            ))}
+          </div>
+          {(healthSummary.critical + healthSummary.review) > 0 && (
+            <div className="border-t border-border px-4 py-2">
+              <span className="font-mono text-2xs text-orange-400">
+                {healthSummary.critical + healthSummary.review} {healthSummary.critical + healthSummary.review === 1 ? "strategy requires" : "strategies require"} attention
+              </span>
             </div>
           )}
         </div>

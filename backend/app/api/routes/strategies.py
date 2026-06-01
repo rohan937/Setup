@@ -90,6 +90,8 @@ from app.schemas.strategy import (
     UniverseSnapshotRead,
     UniverseSnapshotSummary,
 )
+from app.schemas.strategy_health import StrategyHealthListResponse, StrategyHealthRead
+from app.services.strategy_health import compute_strategy_health, get_strategies_health
 from app.services.strategy_reliability import (
     compare_reliability_scores,
     compute_reliability_score,
@@ -594,6 +596,63 @@ def compare_strategies_endpoint(
     )
 
 
+
+# ---------------------------------------------------------------------------
+# GET /api/strategies/health  (M27)
+# Must be registered BEFORE GET /strategies/{strategy_id} so "health" is
+# not captured as a strategy_id path parameter.
+# ---------------------------------------------------------------------------
+
+@router.get("/strategies/health", response_model=StrategyHealthListResponse)
+def list_strategies_health(
+    status: str | None = Query(default=None),
+    asset_class: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> StrategyHealthListResponse:
+    """Return current health snapshots for non-archived strategies.
+    Computed on read — not persisted. Deterministic, no AI.
+    """
+    items, total = get_strategies_health(
+        db, status=status, asset_class=asset_class, limit=limit, offset=offset
+    )
+    return StrategyHealthListResponse(
+        items=[
+            StrategyHealthRead(
+                strategy_id=s.strategy_id,
+                strategy_name=s.strategy_name,
+                asset_class=s.asset_class,
+                status=s.status,
+                health_score=s.health_score,
+                health_status=s.health_status,
+                primary_concern=s.primary_concern,
+                latest_run_at=s.latest_run_at,
+                days_since_latest_run=s.days_since_latest_run,
+                latest_reliability_score=s.latest_reliability_score,
+                reliability_status=s.reliability_status,
+                evidence_coverage_score=s.evidence_coverage_score,
+                open_alert_count=s.open_alert_count,
+                high_critical_alert_count=s.high_critical_alert_count,
+                latest_ingestion_status=s.latest_ingestion_status,
+                latest_ingestion_at=s.latest_ingestion_at,
+                latest_backtest_trust_score=s.latest_backtest_trust_score,
+                latest_data_health_score=s.latest_data_health_score,
+                latest_signal_quality_score=s.latest_signal_quality_score,
+                latest_report_score=s.latest_report_score,
+                missing_evidence=s.missing_evidence,
+                suggested_checks=s.suggested_checks,
+                generated_at=s.generated_at,
+            )
+            for s in items
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /api/strategies/{strategy_id}
 # ---------------------------------------------------------------------------
@@ -715,6 +774,52 @@ def get_strategy(
             if latest_rel_score is not None
             else None
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# M27: GET /api/strategies/{strategy_id}/health
+# ---------------------------------------------------------------------------
+
+@router.get("/strategies/{strategy_id}/health", response_model=StrategyHealthRead)
+def get_strategy_health(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyHealthRead:
+    """Return current health snapshot for a strategy. Computed on read, not persisted.
+    Deterministic — no AI, no live market data.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    try:
+        snap = compute_strategy_health(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return StrategyHealthRead(
+        strategy_id=snap.strategy_id,
+        strategy_name=snap.strategy_name,
+        asset_class=snap.asset_class,
+        status=snap.status,
+        health_score=snap.health_score,
+        health_status=snap.health_status,
+        primary_concern=snap.primary_concern,
+        latest_run_at=snap.latest_run_at,
+        days_since_latest_run=snap.days_since_latest_run,
+        latest_reliability_score=snap.latest_reliability_score,
+        reliability_status=snap.reliability_status,
+        evidence_coverage_score=snap.evidence_coverage_score,
+        open_alert_count=snap.open_alert_count,
+        high_critical_alert_count=snap.high_critical_alert_count,
+        latest_ingestion_status=snap.latest_ingestion_status,
+        latest_ingestion_at=snap.latest_ingestion_at,
+        latest_backtest_trust_score=snap.latest_backtest_trust_score,
+        latest_data_health_score=snap.latest_data_health_score,
+        latest_signal_quality_score=snap.latest_signal_quality_score,
+        latest_report_score=snap.latest_report_score,
+        missing_evidence=snap.missing_evidence,
+        suggested_checks=snap.suggested_checks,
+        generated_at=snap.generated_at,
     )
 
 
