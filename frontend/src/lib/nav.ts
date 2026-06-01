@@ -7,6 +7,7 @@ export const navItems: NavItem[] = [
   { label: "Strategy Lab",     path: "/strategies",           section: "Research" },
   { label: "Compare Strategies", path: "/strategies/compare", section: "Research" },
   // Analysis
+  { label: "Evidence Matrix",  path: "/evidence/coverage", section: "Analysis" },
   { label: "Audit Trail",      path: "/timeline",    section: "Analysis" },
   { label: "Data Health",      path: "/data-health", section: "Analysis" },
   { label: "Backtest Audit",   path: "/backtests",   section: "Analysis" },

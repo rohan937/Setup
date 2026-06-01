@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { DashboardAlertItem, DashboardSummary, RecentEvidenceItem, Strategy } from "@/types";
-import { getDashboardSummary, getStrategies } from "@/lib/api";
+import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, RecentEvidenceItem, Strategy } from "@/types";
+import { getDashboardSummary, getEvidenceCoverage, getStrategies } from "@/lib/api";
 import Badge from "@/components/Badge";
 
 // ---------------------------------------------------------------------------
@@ -173,14 +173,20 @@ function AlertSignalRow({ alert }: { alert: DashboardAlertItem }) {
 export default function Dashboard() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [coverageSummary, setCoverageSummary] = useState<EvidenceCoverageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getDashboardSummary(), getStrategies()])
-      .then(([s, strats]) => {
+    Promise.all([
+      getDashboardSummary(),
+      getStrategies(),
+      getEvidenceCoverage({ limit: 1 }),
+    ])
+      .then(([s, strats, cov]) => {
         setSummary(s);
         setStrategies(strats);
+        setCoverageSummary(cov.summary);
       })
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : "Failed to load"),
@@ -286,6 +292,76 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Evidence Coverage quick card (M21)                                 */}
+      {/* ------------------------------------------------------------------ */}
+      {!loading && coverageSummary && coverageSummary.strategy_count > 0 && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+            <p className="caption">Instrumentation Coverage</p>
+            <Link
+              to="/evidence/coverage"
+              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            >
+              full matrix →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-border sm:grid-cols-4 px-0 py-0">
+            {[
+              {
+                label: "Avg Coverage",
+                value: `${coverageSummary.average_coverage_score.toFixed(1)}`,
+                color:
+                  coverageSummary.average_coverage_score >= 80
+                    ? "text-teal-400"
+                    : coverageSummary.average_coverage_score >= 50
+                    ? "text-yellow-400"
+                    : "text-orange-400",
+              },
+              {
+                label: "Complete Cells",
+                value: coverageSummary.complete_cell_count,
+                color: "text-teal-400",
+              },
+              {
+                label: "Missing Cells",
+                value: coverageSummary.missing_cell_count,
+                color:
+                  coverageSummary.missing_cell_count > 0 ? "text-text-muted" : "text-teal-400",
+              },
+              {
+                label: "Review Cells",
+                value: coverageSummary.review_cell_count,
+                color:
+                  coverageSummary.review_cell_count > 0 ? "text-orange-400" : "text-teal-400",
+              },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="px-4 py-3 text-center">
+                <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
+                  {label}
+                </p>
+                <p className={`mono-num mt-1 text-xl font-bold ${color}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+          {coverageSummary.most_common_missing_evidence.length > 0 && (
+            <div className="border-t border-border px-4 py-2 flex flex-wrap gap-x-3 gap-y-1">
+              <p className="font-mono text-2xs text-text-muted self-center">
+                Most missing:
+              </p>
+              {coverageSummary.most_common_missing_evidence.slice(0, 4).map((label) => (
+                <span
+                  key={label}
+                  className="font-mono text-2xs text-text-muted bg-bg-800 border border-border rounded px-1.5 py-0.5"
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Evidence counters                                                   */}

@@ -1,6 +1,8 @@
 import type {
   Alert,
   AlertFilters,
+  EvidenceCoverageMatrixResponse,
+  EvidenceCoverageParams,
   AlertGenerateResponse,
   AlertListResponse,
   AlertUpdateRequest,
@@ -549,4 +551,25 @@ export async function compareStrategies(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Evidence Coverage Matrix (M21)
+// ---------------------------------------------------------------------------
+
+/** Return the evidence coverage matrix for all strategies matching the given filters. */
+export async function getEvidenceCoverage(
+  params: EvidenceCoverageParams = {},
+): Promise<EvidenceCoverageMatrixResponse> {
+  const qs = new URLSearchParams();
+  if (params.include_archived != null)
+    qs.set("include_archived", String(params.include_archived));
+  if (params.asset_class) qs.set("asset_class", params.asset_class);
+  if (params.status) qs.set("status", params.status);
+  if (params.limit != null) qs.set("limit", String(params.limit));
+  if (params.offset != null) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return request<EvidenceCoverageMatrixResponse>(
+    `/api/evidence/coverage${q ? `?${q}` : ""}`,
+  );
 }

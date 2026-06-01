@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (785 tests)
+│   └── tests/              Pytest tests (843 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,151 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M20: Strategy Comparison Dashboard v1
+## Current milestone — M21: Evidence Coverage Matrix v1
+
+**Status: complete.**
+
+### M21 deliverables
+
+- **1 new API endpoint** — `GET /api/evidence/coverage` in new `app/api/routes/evidence.py`.
+  Returns a paginated evidence coverage matrix for all non-archived strategies by default.
+  Query params: `include_archived`, `asset_class`, `status`, `limit` (1–500, default 100),
+  `offset`. Read-only — no audit timeline event created.
+- **`app/services/evidence_coverage.py`** — new deterministic coverage service.
+  No AI, no live market data, no external calls:
+  - `get_evidence_coverage_matrix(db, *, include_archived, asset_class, status, limit, offset)` —
+    for every matched strategy, computes coverage across 11 evidence layers and returns a
+    paginated `EvidenceCoverageMatrixData` with per-row rows and aggregate summary.
+  - **11 evidence columns** with deterministic status per column:
+    `strategy_runs`, `backtest_runs`, `dataset_evidence`, `backtest_audits`,
+    `config_snapshots`, `universe_snapshots`, `signal_snapshots`, `alerts`,
+    `reports`, `reliability_scores`, `timeline_events`.
+  - **Cell statuses**: `complete` | `partial` | `review` | `missing`.
+  - **Coverage score** (0–100): average of per-cell status weights × 100.
+    `complete=1.0`, `partial=0.6`, `review=0.4`, `missing=0.0`.
+  - **Per-column status rules** (key examples):
+    - `strategy_runs`: complete if ≥2 runs, partial if 1, missing if 0.
+    - `backtest_runs`: complete if ≥1 backtest run, missing otherwise.
+    - `dataset_evidence`: complete if ≥1 run linked to a snapshot with min health ≥75;
+      review if linked but min health < 75; missing if no linked snapshot.
+    - `backtest_audits`: complete if any audit has trust_score ≥75; review if audits
+      exist but avg trust < 75; missing if none.
+    - `config_snapshots`, `universe_snapshots`: complete if ≥1 exists, missing otherwise.
+    - `signal_snapshots`: complete if ≥1 and avg quality ≥75; review if exists but avg < 75.
+    - `alerts`: complete if no open high/critical; review if high/critical open; partial if
+      only low/medium open.
+    - `reports`: complete if a `strategy_reliability` report exists; partial if any other
+      report type exists; missing if no reports.
+    - `reliability_scores`: complete if latest score is excellent/good; review if weak/review
+      status; partial if `insufficient_evidence`; missing if no score.
+    - `timeline_events`: complete if ≥3 events; partial if 1–2; missing if 0.
+  - **Suggested next steps**: ordered list of `suggested_check` strings (missing first,
+    then review, then partial) for each coverage row.
+  - **Aggregate summary** over all matched strategies: `strategy_count`,
+    `average_coverage_score`, cell counts by status, and `most_common_missing_evidence`
+    (up to 5 labels, most common first).
+  - `Alert.strategy_id` is `String(36)` — queries use `str(uuid_val)`.
+- **New Pydantic schemas** (`app/schemas/evidence_coverage.py`):
+  `EvidenceCoverageCell`, `StrategyEvidenceCoverageRow`, `EvidenceCoverageSummary`,
+  `EvidenceCoverageMatrixResponse`.
+- **58 new backend tests** (`tests/test_evidence_m21.py`) across 4 test classes:
+  - `TestEvidenceCoverageEndpoint` (16 tests): 200 response, envelope fields, column presence,
+    cell fields, cell status validity, score in range, seeded strategy present,
+    include_archived filter, asset_class filter, status filter, pagination limit/offset,
+    suggested_next_steps is list, most_common_missing is list.
+  - `TestEvidenceCoverageService` (33 tests): per-column status rules for all 11 columns —
+    strategy_runs (missing/partial/complete), backtest_runs (missing/complete),
+    dataset_evidence (missing), backtest_audits (missing/complete/review),
+    config_snapshots (missing/complete), universe_snapshots (missing/complete),
+    signal_snapshots (missing/complete/review), alerts (complete/review-high/review-critical/
+    partial-medium/partial-low), reports (missing/complete/partial), reliability_scores
+    (missing/partial-insufficient/review-weak/review-review/complete-good/complete-excellent),
+    timeline events (missing/complete).
+  - `TestCoverageScoreFormula` (6 tests): all-complete=100, all-missing=0, all-partial=60,
+    all-review=40, empty=0, mixed calculation.
+  - `TestEvidenceCoverageSummary` (4 tests): strategy_count matches total, average in range,
+    cell counts sum to strategy_count×11, service average correct.
+- **843 total backend tests** (785 prior M2–M20 + 58 new), 1 skipped.
+- **Frontend types** (`frontend/src/types/index.ts`): `EvidenceCoverageCell`,
+  `StrategyEvidenceCoverageRow`, `EvidenceCoverageSummary`, `EvidenceCoverageMatrixResponse`,
+  `EvidenceCoverageParams` interfaces added.
+- **Frontend API** (`frontend/src/lib/api.ts`): `getEvidenceCoverage(params?)` added.
+- **New page** `frontend/src/pages/EvidenceCoverage.tsx` at route `/evidence/coverage`:
+  - Summary cards: Strategies, Avg Coverage, Missing Cells, Review Cells.
+  - Filter bar: asset_class and strategy status dropdowns; both trigger live reload.
+  - Matrix table: Strategy (name + asset + status badges), Coverage (score + progress bar),
+    11 evidence column cells (coloured dot + count). Each cell coloured by status.
+  - **Click-to-expand row** — reveals per-cell summary text, latest_at timestamps, and
+    suggested next steps ordered by priority (missing → review → partial).
+  - Under-instrumented panel: bottom-5 strategies by coverage score (scores < 80).
+  - Most Common Missing Evidence panel: top 5 most-missing evidence labels from summary.
+  - Legend: complete (teal) / partial (amber) / review (orange) / missing (muted).
+  - Score thresholds: ≥80 teal, ≥50 amber, ≥25 orange, <25 red.
+  - "Compare Strategies" link in page header.
+  - No chart libraries used.
+- **`App.tsx`** — `EvidenceCoverage` route at `evidence/coverage`.
+- **`nav.ts`** — "Evidence Matrix" item added under Analysis section.
+- **`Strategies.tsx`** — "Evidence Matrix" secondary button added to PageHeader.
+- **`Dashboard.tsx`** — "Instrumentation Coverage" quick card inserted between the
+  reliability pillars strip and evidence counters. Shows avg coverage score, complete/
+  missing/review cell counts, and most-common-missing chips. Links to `/evidence/coverage`.
+- **Zero TypeScript errors**, clean production build (61 modules, ≈379 kB JS bundle).
+
+### Evidence coverage scoring formula
+
+```
+status_weights = { complete: 1.0, partial: 0.6, review: 0.4, missing: 0.0 }
+evidence_coverage_score = mean(status_weights[cell.status] for cell in 11_columns) × 100
+```
+
+All scores are deterministic — computed from existing logged evidence, not estimated or
+AI-generated.
+
+### What M21 does NOT build (by design)
+
+- No AI recommendations or auto-fix suggestions.
+- No automatic instrumentation ingestion or SDK-based data capture.
+- No live drift attribution or execution-side evidence columns.
+- No email/Slack/webhook notifications when coverage score changes.
+- No historical trend tracking of per-strategy coverage scores over time.
+- No reliability score formula changes.
+- No alert generation changes.
+
+### Verify with curl
+
+```bash
+# Evidence coverage matrix for all active strategies:
+curl "http://localhost:8000/api/evidence/coverage" | python3 -m json.tool
+# Response: { total, limit, offset, generated_at, items: [...], summary: {...} }
+
+# Each item has:
+# { strategy_id, name, slug, asset_class, status, evidence_coverage_score,
+#   missing_count, review_count, partial_count, complete_count,
+#   strategy_runs: {status, count, latest_at, summary, suggested_check},
+#   backtest_runs: {...}, dataset_evidence: {...}, ... (11 columns),
+#   suggested_next_steps: ["..."] }
+
+# Summary field has:
+# { strategy_count, average_coverage_score, complete_cell_count,
+#   partial_cell_count, review_cell_count, missing_cell_count,
+#   most_common_missing_evidence: ["Strategy Runs", ...] }
+
+# Filter by asset_class:
+curl "http://localhost:8000/api/evidence/coverage?asset_class=equity" | python3 -m json.tool
+
+# Include archived strategies:
+curl "http://localhost:8000/api/evidence/coverage?include_archived=true" | python3 -m json.tool
+
+# Pagination:
+curl "http://localhost:8000/api/evidence/coverage?limit=10&offset=0" | python3 -m json.tool
+```
+
+> **M21 note:** Coverage computation is deterministic — based on logged evidence counts and
+> statuses from existing data. No AI, no live data, no external calls. Not investment advice.
+
+---
+
+## Previously completed — M20: Strategy Comparison Dashboard v1
 
 **Status: complete.**
 

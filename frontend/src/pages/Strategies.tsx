@@ -66,6 +66,12 @@ export default function Strategies() {
         subtitle="Register and track every systematic strategy across data, backtest, and live execution."
       >
         <button
+          onClick={() => navigate("/evidence/coverage")}
+          className="rounded-control border border-border bg-bg-700 px-3.5 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-500/50 hover:text-accent-300"
+        >
+          Evidence Matrix
+        </button>
+        <button
           onClick={() => navigate("/strategies/compare")}
           className="rounded-control border border-border bg-bg-700 px-3.5 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-500/50 hover:text-accent-300"
         >

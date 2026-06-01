@@ -1122,3 +1122,72 @@ export interface StrategyComparisonResponse {
   deterministic_explanation: string;
   generated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// M21: Evidence Coverage Matrix types
+// ---------------------------------------------------------------------------
+
+/** Coverage status + metadata for a single evidence layer. */
+export interface EvidenceCoverageCell {
+  /** "complete" | "partial" | "review" | "missing" */
+  status: string;
+  count: number;
+  latest_at: string | null;
+  summary: string;
+  suggested_check: string | null;
+}
+
+/** Full coverage row for one strategy across all 11 evidence columns. */
+export interface StrategyEvidenceCoverageRow {
+  strategy_id: string;
+  name: string;
+  slug: string;
+  asset_class: string;
+  status: string;
+  evidence_coverage_score: number;
+  missing_count: number;
+  review_count: number;
+  partial_count: number;
+  complete_count: number;
+  strategy_runs: EvidenceCoverageCell;
+  backtest_runs: EvidenceCoverageCell;
+  dataset_evidence: EvidenceCoverageCell;
+  backtest_audits: EvidenceCoverageCell;
+  config_snapshots: EvidenceCoverageCell;
+  universe_snapshots: EvidenceCoverageCell;
+  signal_snapshots: EvidenceCoverageCell;
+  alerts: EvidenceCoverageCell;
+  reports: EvidenceCoverageCell;
+  reliability_scores: EvidenceCoverageCell;
+  timeline_events: EvidenceCoverageCell;
+  suggested_next_steps: string[];
+}
+
+/** Aggregate summary over all matched strategies. */
+export interface EvidenceCoverageSummary {
+  strategy_count: number;
+  average_coverage_score: number;
+  complete_cell_count: number;
+  partial_cell_count: number;
+  review_cell_count: number;
+  missing_cell_count: number;
+  most_common_missing_evidence: string[];
+}
+
+/** Paginated evidence coverage matrix response. */
+export interface EvidenceCoverageMatrixResponse {
+  items: StrategyEvidenceCoverageRow[];
+  total: number;
+  limit: number;
+  offset: number;
+  generated_at: string;
+  summary: EvidenceCoverageSummary;
+}
+
+export interface EvidenceCoverageParams {
+  include_archived?: boolean;
+  asset_class?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import alerts, backtests, dashboard, datasets, health, meta, projects, reliability, reports, strategies, timeline
+from app.api.routes import alerts, backtests, dashboard, datasets, evidence, health, meta, projects, reliability, reports, strategies, timeline
 
 api_router = APIRouter()
 
@@ -31,3 +31,4 @@ api_router.include_router(dashboard.router, prefix="/api")
 api_router.include_router(alerts.router, prefix="/api")
 api_router.include_router(reports.router, prefix="/api")
 api_router.include_router(reliability.router, prefix="/api")
+api_router.include_router(evidence.router, prefix="/api")
