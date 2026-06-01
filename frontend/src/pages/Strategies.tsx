@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Strategy } from "@/types";
+import type { Strategy, StrategyReliabilityScore } from "@/types";
 import { getStrategies } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Badge from "@/components/Badge";
@@ -15,6 +15,30 @@ function formatDate(iso: string | null): string {
 }
 
 const TH = "px-4 py-2 text-left font-mono text-2xs uppercase tracking-widest text-text-muted";
+
+function ReliabilityBadge({ score }: { score: StrategyReliabilityScore | null }) {
+  if (!score) {
+    return <span className="font-mono text-2xs text-text-muted/50">—</span>;
+  }
+  const statusColors: Record<string, string> = {
+    excellent: "bg-cyan-900/40 text-cyan-300 border-cyan-700/40",
+    good:      "bg-teal-900/40 text-teal-300 border-teal-700/40",
+    review:    "bg-yellow-900/40 text-yellow-200 border-yellow-700/40",
+    weak:      "bg-red-900/40 text-red-300 border-red-700/40",
+    insufficient_evidence: "bg-bg-600 text-text-muted border-border",
+  };
+  const cls = statusColors[score.status] ?? statusColors.insufficient_evidence;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`mono-num text-sm font-semibold ${score.overall_score !== null && score.overall_score >= 75 ? "text-green-400" : score.overall_score !== null && score.overall_score >= 55 ? "text-yellow-400" : "text-text-muted"}`}>
+        {score.overall_score !== null ? score.overall_score.toFixed(0) : "—"}
+      </span>
+      <span className={`inline-flex rounded border px-1.5 py-px font-mono text-2xs ${cls}`}>
+        {score.status.replace("_", " ")}
+      </span>
+    </span>
+  );
+}
 
 export default function Strategies() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -78,6 +102,7 @@ export default function Strategies() {
                 <th className={TH}>Asset</th>
                 <th className={TH}>Status</th>
                 <th className={`${TH} text-right`}>Runs</th>
+                <th className={TH}>Reliability</th>
                 <th className={TH}>Last Run</th>
                 <th className={TH}>Registered</th>
               </tr>
@@ -112,6 +137,9 @@ export default function Strategies() {
                   </td>
                   <td className="mono-num px-4 py-3 text-right text-sm text-text-secondary">
                     {s.run_count}
+                  </td>
+                  <td className="px-4 py-3">
+                    <ReliabilityBadge score={s.latest_reliability_score} />
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-text-muted">
                     {formatDate(s.latest_run_at)}

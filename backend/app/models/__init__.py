@@ -24,6 +24,7 @@ from app.models.alert_rule import AlertRule
 from app.models.alert import Alert
 from app.models.report import Report
 from app.models.report_section import ReportSection
+from app.models.strategy_reliability_score import StrategyReliabilityScore
 
 __all__ = [
     "Organization",
@@ -45,4 +46,5 @@ __all__ = [
     "Alert",
     "Report",
     "ReportSection",
+    "StrategyReliabilityScore",
 ]

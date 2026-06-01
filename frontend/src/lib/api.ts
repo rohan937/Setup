@@ -32,6 +32,8 @@ import type {
   StrategyConfigSnapshotDetail,
   StrategyConfigSnapshotRead,
   StrategyDetail,
+  StrategyReliabilityScore,
+  StrategyReliabilityScoreListResponse,
   StrategyRun,
   StrategyCreateRequest,
   StrategyRunCreateRequest,
@@ -448,5 +450,46 @@ export async function compareSignalSnapshots(
 ): Promise<SignalComparisonResponse> {
   return request<SignalComparisonResponse>(
     `/api/strategies/${strategyId}/signal-snapshots/compare?snapshot_a_id=${snapshotAId}&snapshot_b_id=${snapshotBId}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Strategy Reliability Score (M18)
+// ---------------------------------------------------------------------------
+
+/** Compute (or recompute) the reliability score for a strategy. */
+export async function computeStrategyReliabilityScore(
+  strategyId: string,
+): Promise<StrategyReliabilityScore> {
+  return request<StrategyReliabilityScore>(
+    `/api/strategies/${strategyId}/reliability-score`,
+    { method: "POST" },
+  );
+}
+
+/** Get the latest computed reliability score for a strategy. Throws if none exists. */
+export async function getStrategyReliabilityScore(
+  strategyId: string,
+): Promise<StrategyReliabilityScore> {
+  return request<StrategyReliabilityScore>(
+    `/api/strategies/${strategyId}/reliability-score`,
+  );
+}
+
+/** List reliability scores globally, with optional filters. */
+export async function getReliabilityScores(params?: {
+  status?: string;
+  strategy_id?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<StrategyReliabilityScoreListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.strategy_id) qs.set("strategy_id", params.strategy_id);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return request<StrategyReliabilityScoreListResponse>(
+    `/api/reliability-scores${q ? `?${q}` : ""}`,
   );
 }

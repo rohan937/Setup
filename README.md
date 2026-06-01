@@ -161,7 +161,59 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M17: Signal Snapshotting + Signal Coverage Evidence
+## Current milestone — M18: Strategy Reliability Score Engine v1
+
+**Status: complete.**
+
+### M18 deliverables
+
+- **Migration `0011_m18_reliability_scores.py`** — adds `strategy_reliability_scores` table.
+  Columns: `id` (UUID PK), `strategy_id` (FK strategies CASCADE), `overall_score` (Float nullable),
+  `status` (String 50), 8 component score columns (Float nullable each), 4 JSON blob columns
+  (`evidence_counts_json`, `component_summaries_json`, `missing_evidence_json`, `suggested_checks_json`),
+  `generated_at` (DateTime), `created_at`, `updated_at`.
+  Indexes on: strategy_id, status, generated_at.
+- **`EventType.strategy_reliability_scored`** and new **`ReliabilityScoreStatus`** StrEnum added to `constants.py`.
+- **`app/models/strategy_reliability_score.py`** — new `StrategyReliabilityScore` ORM model with all columns + relationship to `Strategy`.
+- **Strategy model** updated with `reliability_scores` relationship (CASCADE delete-orphan).
+- **`app/services/strategy_reliability.py`** — deterministic scoring engine. No AI, no live data:
+  - `_score_activity(runs)` — 30/55/75 based on run count + +10 bonus for mixed run types (backtest + paper/live/research).
+  - `_score_data_evidence(runs, db)` — averages linked dataset snapshot health; caps at 60 if any health <50, caps at 70 if any critical quality issue. Returns None if no linked snapshots.
+  - `_score_backtest_trust(runs, db)` — averages backtest audit trust scores; caps at 65 if any weak/unreliable status. Returns None if no audits.
+  - `_score_config_evidence(strategy_id, versions, db)` — 40/60/85/90 based on version+config snapshot counts.
+  - `_score_universe_evidence(runs, snapshots, db)` — 75 (1 snapshot) or 85 (2+); +10 if any run links a universe snapshot. Returns None if no snapshots.
+  - `_score_signal_evidence(runs, snapshots, db)` — averages quality scores; caps at 75 if any <70; +5 boost if any run links a signal snapshot. Returns None if no snapshots.
+  - `_score_alert_penalty(strategy_id, db)` — 100 - (5×low + 10×medium + 20×high + 30×critical open alerts); floor 0.
+  - `_score_report_coverage(strategy_id, db)` — 80 (existing report) or 90 (generated within 30 days). Returns None if no strategy_reliability reports.
+  - Weighted overall score: backtest_trust=25%, data_evidence=20%, signal_evidence=15%, universe/config/activity/alert_penalty=10% each. Null + `insufficient_evidence` when fewer than 3 non-null components.
+  - Status thresholds: ≥90=excellent, ≥75=good, ≥55=review, else=weak.
+  - Deterministic suggested checks list based on missing/low-score components.
+- **Schemas** (`app/schemas/strategy.py`): `StrategyReliabilityScoreRead`, `StrategyReliabilityScoreListResponse` added. `StrategyListItemOut` and `StrategyDetailOut` both gain `latest_reliability_score` field.
+- **API endpoints** (`app/api/routes/strategies.py`):
+  - `POST /api/strategies/{id}/reliability-score` — computes and stores score, creates timeline event.
+  - `GET  /api/strategies/{id}/reliability-score` — returns latest score (404 if none).
+  - Updated `GET /api/strategies` list to include `latest_reliability_score` per strategy.
+  - Updated `GET /api/strategies/{id}` detail to include `latest_reliability_score`.
+- **New router** (`app/api/routes/reliability.py`): `GET /api/reliability-scores` with `status`, `strategy_id`, `limit`, `offset` filters; newest-first.
+- **Dashboard** (`app/services/dashboard_summary.py` + `app/schemas/dashboard.py`): `DashboardScores` gains `average_strategy_reliability_score` (avg of latest per-strategy scores) and `strategies_by_reliability_status` (status → count breakdown).
+- **Tests** (`backend/tests/test_reliability_m18.py`) — 71 tests covering all component scoring functions (unit), overall formula, status thresholds, suggested checks, API endpoints (POST/GET/list), dashboard fields, and strategy detail/list integration. 696 total tests (625 prior + 71 new), 1 skipped.
+- **Frontend types** (`frontend/src/types/index.ts`): `StrategyReliabilityScore`, `StrategyReliabilityScoreListResponse` added. `Strategy`, `StrategyDetail`, `DashboardScores` updated.
+- **Frontend API** (`frontend/src/lib/api.ts`): `computeStrategyReliabilityScore`, `getStrategyReliabilityScore`, `getReliabilityScores` added.
+- **Frontend StrategyDetail** (`frontend/src/pages/StrategyDetail.tsx`): Reliability panel with overall score, status badge, 8-component grid, missing evidence list, suggested checks, and Compute/Refresh button.
+- **Frontend Strategies** (`frontend/src/pages/Strategies.tsx`): Reliability column added to table showing score + status badge.
+- **Frontend Dashboard** (`frontend/src/pages/Dashboard.tsx`): "Avg Reliability" pillar added; reliability status breakdown chips displayed.
+
+### What M18 does NOT build (by design)
+
+- No AI-driven scoring, no live market data, no external API calls.
+- No broker connectivity, no live trading actions.
+- No email/Slack/webhook notifications.
+- No real-time streaming score updates.
+- Scoring is deterministic and snapshot-based: run POST to refresh.
+
+---
+
+## Previously completed — M17: Signal Snapshotting + Signal Coverage Evidence
 
 **Status: complete.**
 

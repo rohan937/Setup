@@ -231,28 +231,59 @@ export default function Dashboard() {
             <p className="font-mono text-2xs text-text-muted">Loading…</p>
           </div>
         ) : (
-          <div className="grid grid-cols-4 divide-x divide-border px-4 py-4">
-            <ScorePillar
-              label="Overall Reliability"
-              description="Avg of available dimension scores"
-              score={scores?.overall_reliability_score ?? null}
-            />
-            <ScorePillar
-              label="Data Health"
-              description="Avg snapshot health across datasets"
-              score={scores?.data_health_score ?? null}
-            />
-            <ScorePillar
-              label="Backtest Trust"
-              description="Avg trust score across audits"
-              score={scores?.backtest_trust_score ?? null}
-            />
-            <ScorePillar
-              label="Strategy Activity"
-              description="Based on strategy and run counts"
-              score={scores?.strategy_activity_score ?? null}
-            />
-          </div>
+          <>
+            <div className="grid grid-cols-5 divide-x divide-border px-4 py-4">
+              <ScorePillar
+                label="Overall Reliability"
+                description="Avg of available dimension scores"
+                score={scores?.overall_reliability_score ?? null}
+              />
+              <ScorePillar
+                label="Avg Reliability"
+                description="Avg of latest per-strategy scores"
+                score={scores?.average_strategy_reliability_score ?? null}
+              />
+              <ScorePillar
+                label="Data Health"
+                description="Avg snapshot health across datasets"
+                score={scores?.data_health_score ?? null}
+              />
+              <ScorePillar
+                label="Backtest Trust"
+                description="Avg trust score across audits"
+                score={scores?.backtest_trust_score ?? null}
+              />
+              <ScorePillar
+                label="Strategy Activity"
+                description="Based on strategy and run counts"
+                score={scores?.strategy_activity_score ?? null}
+              />
+            </div>
+
+            {/* M18: Reliability status breakdown chips */}
+            {scores && scores.strategies_by_reliability_status && Object.keys(scores.strategies_by_reliability_status).length > 0 && (
+              <div className="border-t border-border px-4 py-2.5 flex flex-wrap gap-2">
+                <p className="font-mono text-2xs text-text-muted mr-2 self-center">Reliability Status:</p>
+                {Object.entries(scores.strategies_by_reliability_status).map(([status, count]) => {
+                  const cls: Record<string, string> = {
+                    excellent: "bg-cyan-900/40 text-cyan-300 border-cyan-700/40",
+                    good: "bg-teal-900/40 text-teal-300 border-teal-700/40",
+                    review: "bg-yellow-900/40 text-yellow-200 border-yellow-700/40",
+                    weak: "bg-red-900/40 text-red-300 border-red-700/40",
+                    insufficient_evidence: "bg-bg-600 text-text-muted border-border",
+                  };
+                  return (
+                    <span
+                      key={status}
+                      className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 font-mono text-2xs ${cls[status] ?? cls.insufficient_evidence}`}
+                    >
+                      {status.replace("_", " ")} <span className="font-bold">{count}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 

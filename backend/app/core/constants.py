@@ -70,6 +70,15 @@ class EventType(StrEnum):
     strategy_config_snapshot_logged = "strategy_config_snapshot_logged"
     universe_snapshot_logged = "universe_snapshot_logged"
     signal_snapshot_logged = "signal_snapshot_logged"
+    strategy_reliability_scored = "strategy_reliability_scored"
+
+
+class ReliabilityScoreStatus(StrEnum):
+    excellent = "excellent"
+    good = "good"
+    review = "review"
+    weak = "weak"
+    insufficient_evidence = "insufficient_evidence"
 
 
 class Severity(StrEnum):

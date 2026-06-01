@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.constants import AssetClass, EventType, RunStatus, RunType, Severity, StrategyStatus
+from app.core.constants import AssetClass, EventType, ReliabilityScoreStatus, RunStatus, RunType, Severity, StrategyStatus
 from app.core.utils import slugify
 from app.db.session import get_db
 from app.models.audit_timeline_event import AuditTimelineEvent
@@ -46,6 +46,7 @@ from app.models.dataset_snapshot import DatasetSnapshot
 from app.models.project import Project
 from app.models.signal_snapshot import SignalSnapshot
 from app.models.strategy import Strategy
+from app.models.strategy_reliability_score import StrategyReliabilityScore
 from app.models.strategy_config_snapshot import StrategyConfigSnapshot
 from app.models.strategy_run import StrategyRun
 from app.models.strategy_version import StrategyVersion
@@ -68,6 +69,7 @@ from app.schemas.strategy import (
     StrategyCreate,
     StrategyDetailOut,
     StrategyListItemOut,
+    StrategyReliabilityScoreRead,
     StrategyRunCreate,
     StrategyRunOut,
     StrategyVersionCreate,
@@ -78,6 +80,7 @@ from app.schemas.strategy import (
     UniverseSnapshotRead,
     UniverseSnapshotSummary,
 )
+from app.services.strategy_reliability import compute_reliability_score
 from app.schemas.timeline import TimelineEventOut, TimelineListResponse
 from app.services.config_snapshots import (
     compare_config_snapshots,
@@ -386,6 +389,31 @@ def list_strategies(db: Session = Depends(get_db)) -> list[StrategyListItemOut]:
         .all()
     )
 
+    # M18: load latest reliability score per strategy
+    latest_score_map: dict = {}
+    if strategy_ids:
+        # Subquery: for each strategy_id, find max generated_at
+        subq = (
+            db.query(
+                StrategyReliabilityScore.strategy_id,
+                func.max(StrategyReliabilityScore.generated_at).label("max_gen"),
+            )
+            .filter(StrategyReliabilityScore.strategy_id.in_(strategy_ids))
+            .group_by(StrategyReliabilityScore.strategy_id)
+            .subquery()
+        )
+        latest_scores = (
+            db.query(StrategyReliabilityScore)
+            .join(
+                subq,
+                (StrategyReliabilityScore.strategy_id == subq.c.strategy_id)
+                & (StrategyReliabilityScore.generated_at == subq.c.max_gen),
+            )
+            .all()
+        )
+        for score in latest_scores:
+            latest_score_map[score.strategy_id] = score
+
     return [
         StrategyListItemOut(
             id=s.id,
@@ -400,6 +428,11 @@ def list_strategies(db: Session = Depends(get_db)) -> list[StrategyListItemOut]:
             latest_run_at=latest_runs.get(s.id),
             created_at=s.created_at,
             updated_at=s.updated_at,
+            latest_reliability_score=(
+                StrategyReliabilityScoreRead.model_validate(latest_score_map[s.id])
+                if s.id in latest_score_map
+                else None
+            ),
         )
         for s in strategies
     ]
@@ -486,6 +519,14 @@ def get_strategy(
         vout.signal_snapshot_count = version_sig_counts.get(v.id, 0)
         version_outs.append(vout)
 
+    # M18: load latest reliability score
+    latest_rel_score = (
+        db.query(StrategyReliabilityScore)
+        .filter(StrategyReliabilityScore.strategy_id == strategy_id)
+        .order_by(StrategyReliabilityScore.generated_at.desc())
+        .first()
+    )
+
     return StrategyDetailOut(
         id=strategy.id,
         project_id=strategy.project_id,
@@ -513,7 +554,109 @@ def get_strategy(
             SignalSnapshotRead.model_validate(ss)
             for ss in strategy.signal_snapshots
         ],
+        latest_reliability_score=(
+            StrategyReliabilityScoreRead.model_validate(latest_rel_score)
+            if latest_rel_score is not None
+            else None
+        ),
     )
+
+
+# ---------------------------------------------------------------------------
+# M18: GET /api/strategies/{strategy_id}/reliability-score
+# NOTE: registered BEFORE POST to avoid Starlette path conflicts if any.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/reliability-score",
+    response_model=StrategyReliabilityScoreRead,
+)
+def get_strategy_reliability_score(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyReliabilityScoreRead:
+    """Return the latest computed reliability score for a strategy.
+
+    404 if no score has been computed yet.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    score = (
+        db.query(StrategyReliabilityScore)
+        .filter(StrategyReliabilityScore.strategy_id == strategy_id)
+        .order_by(StrategyReliabilityScore.generated_at.desc())
+        .first()
+    )
+    if score is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No reliability score computed yet for this strategy",
+        )
+
+    return StrategyReliabilityScoreRead.model_validate(score)
+
+
+# ---------------------------------------------------------------------------
+# M18: POST /api/strategies/{strategy_id}/reliability-score
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/strategies/{strategy_id}/reliability-score",
+    response_model=StrategyReliabilityScoreRead,
+    status_code=201,
+)
+def compute_strategy_reliability_score(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyReliabilityScoreRead:
+    """Compute and persist a reliability score for a strategy.
+
+    Deterministic — scores all available evidence (runs, snapshots, audits,
+    alerts, reports) and returns a structured score.
+    No AI, no live market data, no external calls.
+    """
+    strategy = (
+        db.query(Strategy)
+        .options(selectinload(Strategy.project))
+        .filter(Strategy.id == strategy_id)
+        .first()
+    )
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    score_data = compute_reliability_score(str(strategy_id), db)
+
+    score_row = StrategyReliabilityScore(**score_data)
+    db.add(score_row)
+    db.flush()
+
+    event = AuditTimelineEvent(
+        organization_id=strategy.project.organization_id,
+        project_id=strategy.project_id,
+        strategy_id=strategy_id,
+        event_type=EventType.strategy_reliability_scored,
+        title=f"Reliability scored: {score_row.status}",
+        description=(
+            f"Reliability score computed for strategy '{strategy.name}'. "
+            f"Overall: {score_row.overall_score if score_row.overall_score is not None else 'N/A'}/100. "
+            f"Status: {score_row.status}."
+        ),
+        source_type="strategy_reliability_score",
+        source_id=str(score_row.id),
+        severity=Severity.info,
+        metadata_json={
+            "overall_score": score_row.overall_score,
+            "status": score_row.status,
+            "strategy_name": strategy.name,
+        },
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(score_row)
+
+    return StrategyReliabilityScoreRead.model_validate(score_row)
 
 
 # ---------------------------------------------------------------------------

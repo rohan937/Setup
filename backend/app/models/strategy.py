@@ -75,6 +75,13 @@ class Strategy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="SignalSnapshot.created_at.desc()",
     )
+    # M18: reliability scores for this strategy.
+    reliability_scores: Mapped[list["StrategyReliabilityScore"]] = relationship(  # noqa: F821
+        "StrategyReliabilityScore",
+        back_populates="strategy",
+        cascade="all, delete-orphan",
+        order_by="StrategyReliabilityScore.generated_at.desc()",
+    )
 
     def __repr__(self) -> str:
         return f"<Strategy slug={self.slug!r} status={self.status!r}>"

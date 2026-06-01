@@ -71,6 +71,10 @@ class DashboardScores(BaseModel):
     strategy_activity_score: float | None
     # Weighted average of available non-null dimension scores.
     overall_reliability_score: float | None
+    # M18: average of latest per-strategy reliability scores.
+    average_strategy_reliability_score: float | None = None
+    # M18: count of strategies by reliability status.
+    strategies_by_reliability_status: dict[str, int] = {}
 
 
 # ---------------------------------------------------------------------------

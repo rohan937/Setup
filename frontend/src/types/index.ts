@@ -35,6 +35,8 @@ export interface Strategy {
   latest_run_at: string | null;
   created_at: string;
   updated_at: string;
+  /** M18: latest computed reliability score, null if not yet scored. */
+  latest_reliability_score: StrategyReliabilityScore | null;
 }
 
 export interface StrategyVersion {
@@ -361,6 +363,8 @@ export interface StrategyDetail extends Strategy {
   universe_snapshots: UniverseSnapshotRead[];
   /** M17: signal snapshots linked to this strategy, newest-first. */
   signal_snapshots: SignalSnapshotRead[];
+  /** M18: latest computed reliability score, null if not yet scored. */
+  latest_reliability_score: StrategyReliabilityScore | null;
 }
 
 export interface StrategyCreateRequest {
@@ -669,6 +673,10 @@ export interface DashboardScores {
   lowest_backtest_trust_score: number | null;
   strategy_activity_score: number | null;
   overall_reliability_score: number | null;
+  /** M18: average of latest per-strategy reliability scores. */
+  average_strategy_reliability_score: number | null;
+  /** M18: count of strategies per reliability status. */
+  strategies_by_reliability_status: Record<string, number>;
 }
 
 export interface DashboardAlertItem {
@@ -945,4 +953,36 @@ export interface ReportFilters {
   source_type?: string;
   limit?: number;
   offset?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Strategy Reliability Score (M18)
+// ---------------------------------------------------------------------------
+
+export interface StrategyReliabilityScore {
+  id: string;
+  strategy_id: string;
+  overall_score: number | null;
+  /** "excellent" | "good" | "review" | "weak" | "insufficient_evidence" */
+  status: string;
+  strategy_activity_score: number | null;
+  data_evidence_score: number | null;
+  backtest_trust_score: number | null;
+  config_evidence_score: number | null;
+  universe_evidence_score: number | null;
+  signal_evidence_score: number | null;
+  alert_penalty_score: number | null;
+  report_coverage_score: number | null;
+  evidence_counts_json: Record<string, number> | null;
+  component_summaries_json: Record<string, string> | null;
+  missing_evidence_json: string[] | null;
+  suggested_checks_json: string[] | null;
+  generated_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrategyReliabilityScoreListResponse {
+  total: number;
+  items: StrategyReliabilityScore[];
 }

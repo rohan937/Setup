@@ -24,6 +24,7 @@ from app.models.data_quality_issue import DataQualityIssue
 from app.models.dataset import Dataset
 from app.models.dataset_snapshot import DatasetSnapshot
 from app.models.strategy import Strategy
+from app.models.strategy_reliability_score import StrategyReliabilityScore
 from app.models.strategy_run import StrategyRun
 from app.core.constants import AlertStatus
 from app.schemas.dashboard import (
@@ -278,6 +279,42 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
         avg_data_health, avg_backtest_trust, activity_score
     )
 
+    # M18: compute average of latest per-strategy reliability scores.
+    avg_reliability_score: float | None = None
+    reliability_status_counts: dict[str, int] = {}
+
+    if total_strategies > 0:
+        all_strategy_ids = [
+            row[0] for row in db.query(Strategy.id).all()
+        ]
+        # Get the latest score per strategy_id
+        subq = (
+            db.query(
+                StrategyReliabilityScore.strategy_id,
+                func.max(StrategyReliabilityScore.generated_at).label("max_gen"),
+            )
+            .filter(StrategyReliabilityScore.strategy_id.in_(all_strategy_ids))
+            .group_by(StrategyReliabilityScore.strategy_id)
+            .subquery()
+        )
+        latest_scores = (
+            db.query(StrategyReliabilityScore)
+            .join(
+                subq,
+                (StrategyReliabilityScore.strategy_id == subq.c.strategy_id)
+                & (StrategyReliabilityScore.generated_at == subq.c.max_gen),
+            )
+            .all()
+        )
+        if latest_scores:
+            non_null = [s.overall_score for s in latest_scores if s.overall_score is not None]
+            if non_null:
+                avg_reliability_score = round(sum(non_null) / len(non_null), 1)
+            for s in latest_scores:
+                reliability_status_counts[s.status] = (
+                    reliability_status_counts.get(s.status, 0) + 1
+                )
+
     # ------------------------------------------------------------------
     # H. Recent evidence (most recent N items each)
     # ------------------------------------------------------------------
@@ -402,6 +439,8 @@ def build_dashboard_summary(db: Session) -> DashboardSummary:
         lowest_backtest_trust_score=lowest_backtest_trust,
         strategy_activity_score=activity_score,
         overall_reliability_score=overall_score,
+        average_strategy_reliability_score=avg_reliability_score,
+        strategies_by_reliability_status=reliability_status_counts,
     )
 
     return DashboardSummary(

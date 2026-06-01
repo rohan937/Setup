@@ -11,13 +11,14 @@ import type {
   SignalSnapshotSummary,
   StrategyConfigSnapshotRead,
   StrategyDetail as StrategyDetailType,
+  StrategyReliabilityScore,
   StrategyRun,
   StrategyVersion,
   TimelineEvent,
   UniverseSnapshotRead,
   UniverseSnapshotSummary,
 } from "@/types";
-import { generateStrategyReport, getStrategy, getStrategyTimeline, runBacktestAudit } from "@/lib/api";
+import { computeStrategyReliabilityScore, generateStrategyReport, getStrategy, getStrategyTimeline, runBacktestAudit } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import RunLogDrawer from "@/components/RunLogDrawer";
@@ -132,6 +133,154 @@ function DataEvidenceChip({ ev }: { ev: DataEvidenceSummary }) {
           <span className="font-mono text-2xs text-fidelity-high">no issues</span>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M18: Strategy Reliability panel
+// ---------------------------------------------------------------------------
+
+function reliabilityStatusBadge(status: string): string {
+  switch (status) {
+    case "excellent": return "bg-cyan-900/40 text-cyan-300 border-cyan-700/40";
+    case "good":      return "bg-teal-900/40 text-teal-300 border-teal-700/40";
+    case "review":    return "bg-yellow-900/40 text-yellow-200 border-yellow-700/40";
+    case "weak":      return "bg-red-900/40 text-red-300 border-red-700/40";
+    default:          return "bg-bg-600 text-text-muted border-border";
+  }
+}
+
+function scoreComponentColor(val: number | null): string {
+  if (val === null) return "text-text-muted";
+  if (val >= 75) return "text-green-400";
+  if (val >= 55) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function timeAgo(isoStr: string): string {
+  const d = new Date(isoStr);
+  const now = Date.now();
+  const diff = Math.floor((now - d.getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+const COMPONENT_LABELS: Record<string, string> = {
+  strategy_activity_score: "Activity",
+  data_evidence_score: "Data Evidence",
+  backtest_trust_score: "Backtest Trust",
+  config_evidence_score: "Config",
+  universe_evidence_score: "Universe",
+  signal_evidence_score: "Signal",
+  alert_penalty_score: "Alert Penalty",
+  report_coverage_score: "Report Coverage",
+};
+
+function ReliabilityPanel({
+  score,
+  onCompute,
+  computing,
+}: {
+  score: StrategyReliabilityScore | null;
+  onCompute: () => void;
+  computing: boolean;
+}) {
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <p className="caption">Strategy Reliability</p>
+        <button
+          onClick={onCompute}
+          disabled={computing}
+          className="rounded-control border border-border px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {computing ? "Computing…" : score ? "Refresh Score" : "Compute Score"}
+        </button>
+      </div>
+
+      {score === null ? (
+        <div className="px-4 py-6 text-center">
+          <p className="font-mono text-2xs text-text-muted">
+            No reliability score computed yet.
+          </p>
+          <button
+            onClick={onCompute}
+            disabled={computing}
+            className="mt-3 rounded-control bg-accent-500 px-3.5 py-1.5 font-mono text-xs font-medium text-text-inverse hover:bg-accent-600 disabled:opacity-50"
+          >
+            {computing ? "Computing…" : "Compute Score"}
+          </button>
+        </div>
+      ) : (
+        <div className="p-4 space-y-4">
+          {/* Overall score + status */}
+          <div className="flex items-center gap-4">
+            <div className="text-center shrink-0">
+              <p className={`mono-num text-3xl font-bold leading-none ${scoreComponentColor(score.overall_score)}`}>
+                {score.overall_score !== null ? score.overall_score.toFixed(1) : "—"}
+              </p>
+              <p className="font-mono text-2xs text-text-muted mt-0.5">/100</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className={`inline-flex w-fit items-center rounded border px-2.5 py-0.5 font-mono text-xs font-semibold uppercase tracking-wider ${reliabilityStatusBadge(score.status)}`}>
+                {score.status.replace("_", " ")}
+              </span>
+              <p className="font-mono text-2xs text-text-muted">
+                generated {timeAgo(score.generated_at)}
+              </p>
+            </div>
+          </div>
+
+          {/* Component scores grid */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {Object.entries(COMPONENT_LABELS).map(([key, label]) => {
+              const val = score[key as keyof StrategyReliabilityScore] as number | null;
+              return (
+                <div
+                  key={key}
+                  className="rounded-control border border-border/50 bg-bg-800 px-2.5 py-2"
+                >
+                  <p className="font-mono text-2xs text-text-muted leading-tight">{label}</p>
+                  <p className={`mono-num mt-0.5 text-sm font-semibold ${scoreComponentColor(val)}`}>
+                    {val !== null ? val.toFixed(1) : "—"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Missing evidence */}
+          {score.missing_evidence_json && score.missing_evidence_json.length > 0 && (
+            <div>
+              <p className="caption mb-1.5">Missing Evidence</p>
+              <ul className="space-y-0.5">
+                {score.missing_evidence_json.map((item, i) => (
+                  <li key={i} className="font-mono text-2xs text-yellow-300/80">
+                    · {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Suggested checks */}
+          {score.suggested_checks_json && score.suggested_checks_json.length > 0 && (
+            <div>
+              <p className="caption mb-1.5">Suggested Checks</p>
+              <ul className="space-y-0.5">
+                {score.suggested_checks_json.map((item, i) => (
+                  <li key={i} className="font-mono text-2xs text-text-secondary">
+                    ☐ {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1064,6 +1213,10 @@ export default function StrategyDetail() {
   // M17: signal snapshot drawer state
   const [signalSnapshotDrawerOpen, setSignalSnapshotDrawerOpen] = useState(false);
 
+  // M18: reliability score state
+  const [computingReliability, setComputingReliability] = useState(false);
+  const [reliabilityScore, setReliabilityScore] = useState<StrategyReliabilityScore | null>(null);
+
   // M8: backtest audit state — keyed by run id.
   const [audits, setAudits] = useState<Record<string, BacktestAudit>>({});
   const [auditingRunId, setAuditingRunId] = useState<string | null>(null);
@@ -1108,10 +1261,29 @@ export default function StrategyDetail() {
     if (!id) return;
     setLoading(true);
     getStrategy(id)
-      .then(setStrategy)
+      .then((s) => {
+        setStrategy(s);
+        // Seed the reliability score from the strategy detail response (M18)
+        if (s.latest_reliability_score) {
+          setReliabilityScore(s.latest_reliability_score);
+        }
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load strategy."))
       .finally(() => setLoading(false));
   }, [id, refreshKey]);
+
+  async function handleComputeReliabilityScore() {
+    if (!id) return;
+    setComputingReliability(true);
+    try {
+      const score = await computeStrategyReliabilityScore(id);
+      setReliabilityScore(score);
+    } catch (_err) {
+      // silently ignore; panel will show last known score
+    } finally {
+      setComputingReliability(false);
+    }
+  }
 
   const backLink = (
     <Link
@@ -1312,6 +1484,13 @@ export default function StrategyDetail() {
           </div>
         </div>
       )}
+
+      {/* M18: Strategy Reliability panel */}
+      <ReliabilityPanel
+        score={reliabilityScore}
+        onCompute={handleComputeReliabilityScore}
+        computing={computingReliability}
+      />
 
       {/* M7: Data Evidence panel — shown when any run has a linked snapshot */}
       <DataEvidencePanel runs={strategy.runs} />

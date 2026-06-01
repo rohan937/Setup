@@ -395,6 +395,39 @@ class StrategyRunOut(BaseModel):
     signal_snapshot: SignalSnapshotSummary | None = None
 
 
+class StrategyReliabilityScoreRead(BaseModel):
+    """Reliability score record for a strategy (M18)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    strategy_id: uuid.UUID
+    overall_score: float | None
+    status: str
+    strategy_activity_score: float | None
+    data_evidence_score: float | None
+    backtest_trust_score: float | None
+    config_evidence_score: float | None
+    universe_evidence_score: float | None
+    signal_evidence_score: float | None
+    alert_penalty_score: float | None
+    report_coverage_score: float | None
+    evidence_counts_json: dict | None
+    component_summaries_json: dict | None
+    missing_evidence_json: list[str] | None
+    suggested_checks_json: list[str] | None
+    generated_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class StrategyReliabilityScoreListResponse(BaseModel):
+    """Paginated list of reliability scores."""
+
+    total: int
+    items: list[StrategyReliabilityScoreRead]
+
+
 class StrategyListItemOut(BaseModel):
     """Strategy summary row used in the list endpoint."""
 
@@ -410,6 +443,8 @@ class StrategyListItemOut(BaseModel):
     latest_run_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # M18: latest reliability score (None if not yet computed)
+    latest_reliability_score: StrategyReliabilityScoreRead | None = None
 
 
 class StrategyDetailOut(StrategyListItemOut):
@@ -422,6 +457,8 @@ class StrategyDetailOut(StrategyListItemOut):
     universe_snapshots: list[UniverseSnapshotRead] = []
     # M17: recent signal snapshots, newest-first.
     signal_snapshots: list[SignalSnapshotRead] = []
+    # M18: latest reliability score
+    latest_reliability_score: StrategyReliabilityScoreRead | None = None
 
 
 # Keep the plain StrategyOut for any internal callers that still use it.
