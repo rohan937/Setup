@@ -1191,3 +1191,112 @@ export interface EvidenceCoverageParams {
   limit?: number;
   offset?: number;
 }
+
+// M22: Evidence Bundle Ingestion types
+export interface EvidenceBundleObjectRef {
+  id: string;
+  name: string;
+  type: string;
+  status: "created" | "reused";
+}
+
+export interface EvidenceBundleObjects {
+  strategy_version?: EvidenceBundleObjectRef;
+  config_snapshot?: EvidenceBundleObjectRef;
+  universe_snapshot?: EvidenceBundleObjectRef;
+  signal_snapshot?: EvidenceBundleObjectRef;
+  dataset?: EvidenceBundleObjectRef;
+  dataset_snapshot?: EvidenceBundleObjectRef;
+  strategy_run?: EvidenceBundleObjectRef;
+  backtest_audit?: EvidenceBundleObjectRef;
+  reliability_score?: EvidenceBundleObjectRef;
+  report?: EvidenceBundleObjectRef;
+}
+
+export interface EvidenceBundleActions {
+  run_backtest_audit?: boolean;
+  compute_reliability_score?: boolean;
+  generate_strategy_report?: boolean;
+  generate_alerts?: boolean;
+}
+
+export interface EvidenceBundleRequest {
+  strategy_version?: {
+    version_label: string;
+    git_commit?: string;
+    branch_name?: string;
+    code_path?: string;
+    signal_name?: string;
+    signal_description?: string;
+  };
+  config_snapshot?: {
+    strategy_version_label?: string;
+    label: string;
+    source_type?: string;
+    source_filename?: string;
+    config_json: Record<string, unknown>;
+  };
+  universe_snapshot?: {
+    strategy_version_label?: string;
+    label: string;
+    source_type?: string;
+    source_filename?: string;
+    symbols: string[];
+    metadata_json?: Record<string, unknown>;
+  };
+  signal_snapshot?: {
+    strategy_version_label?: string;
+    universe_snapshot_label?: string;
+    label: string;
+    signal_name?: string;
+    source_type?: string;
+    source_filename?: string;
+    signal_column?: string;
+    rows: Record<string, unknown>[];
+    metadata_json?: Record<string, unknown>;
+  };
+  dataset?: {
+    name: string;
+    slug?: string;
+    description?: string;
+    asset_class?: string;
+    dataset_type?: string;
+    source_type?: string;
+  };
+  dataset_snapshot?: {
+    snapshot_label?: string;
+    source_filename?: string;
+    rows: Record<string, unknown>[];
+  };
+  strategy_run?: {
+    strategy_version_label?: string;
+    dataset_snapshot_label?: string;
+    universe_snapshot_label?: string;
+    signal_snapshot_label?: string;
+    run_name: string;
+    run_type: string;
+    status?: string;
+    started_at?: string;
+    completed_at?: string;
+    params_json?: Record<string, unknown>;
+    assumptions_json?: Record<string, unknown>;
+    metrics_json?: Record<string, unknown>;
+    universe_name?: string;
+    dataset_version?: string;
+    notes?: string;
+  };
+  actions?: EvidenceBundleActions;
+}
+
+export interface EvidenceBundleResponse {
+  strategy_id: string;
+  created_count: number;
+  reused_count: number;
+  actions_run: string[];
+  objects: EvidenceBundleObjects;
+  alerts_generated: number;
+  warnings: string[];
+  summary: string;
+  timeline_events_created: number;
+  generated_at: string;
+}

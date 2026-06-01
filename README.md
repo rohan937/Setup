@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (843 tests)
+│   └── tests/              Pytest tests (866 tests)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,208 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M21: Evidence Coverage Matrix v1
+## Current milestone — M22: Evidence Ingestion Bundle v1
+
+**Status: complete.**
+
+### M22 deliverables
+
+- **2 new API endpoints** registered in `app/api/routes/evidence.py` (alongside the existing M21
+  coverage endpoint):
+  - `POST /api/strategies/{strategy_id}/evidence-bundles` — ingest a structured evidence bundle
+    in a single all-or-nothing DB transaction. Accepts up to 7 evidence sections plus an optional
+    `actions` block. Returns `EvidenceBundleResponse` with created/reused counts, objects map,
+    alerts generated, warnings, and `generated_at`.
+  - `GET  /api/strategies/{strategy_id}/evidence-bundles/example` — returns a pre-filled
+    example `EvidenceBundleRequest` payload seeded from the strategy's own existing evidence
+    (versions, config snapshots, universe snapshots, signal snapshots, datasets). Useful for
+    SDK scaffolding and interactive exploration. Registered BEFORE the POST route. Read-only —
+    no audit event.
+- **`app/services/evidence_ingestion.py`** — new deterministic ingestion service.
+  No AI, no live market data, no external calls:
+  - `ingest_evidence_bundle(strategy_id, bundle, db)` — processes sections in dependency order
+    and returns an `EvidenceBundleResult` dataclass. The route handler commits; the service does
+    not call `db.commit()`.
+  - **Section processing order** (dependency-respecting):
+    1. `strategy_version` — reused if `version_label` already exists on this strategy; created
+       otherwise.
+    2. `config_snapshot` — always created fresh when present; linked to reused or new version.
+    3. `universe_snapshot` — always created; normalizes symbols (uppercase + sort); computes
+       SHA-256 `universe_hash`.
+    4. `signal_snapshot` — always created; normalizes rows; computes SHA-256 `signal_hash` and
+       quality score.
+    5. `dataset` — reused if a dataset with the same `name` already exists in the strategy's
+       project; created otherwise.
+    6. `dataset_snapshot` — always created; runs all 10 data-quality checks; computes health
+       score.
+    7. `strategy_run` — always created; linked to all snapshots and dataset snapshot created
+       above.
+  - **Reuse logic**: `strategy_version` reused if `version_label` already exists for this
+    strategy. `dataset` reused if `name` already exists in the same project.
+    Reused objects increment `reused_count`; new objects increment `created_count`.
+  - **Transaction behaviour**: all sections are added to one DB session. If any section raises
+    an unexpected exception, the entire transaction rolls back and the endpoint returns 500.
+    Individual per-section errors (e.g., bad FK reference) raise 422 before any writes occur.
+    Optional `actions` failures add warnings but do not roll back the rest of the transaction.
+  - **Actions** (all optional, run after all sections are persisted):
+    - `run_backtest_audit` — runs the M8/M13 backtest reality check on the newly created run
+      (only applies to backtest/research/paper run types).
+    - `compute_reliability_score` — computes and stores a fresh reliability score for the strategy.
+    - `generate_strategy_report` — generates a strategy reliability report.
+    - `generate_alerts` — runs the M11 alert generation engine for the default org.
+  - **New `EventType.evidence_bundle_ingested`** added to `app/core/constants.py`. Exactly one
+    audit timeline event is created per bundle call (after all sections and actions succeed).
+    Event metadata includes section counts, actions run, and warnings summary.
+  - `EvidenceBundleResult` dataclass fields: `strategy_id`, `created_count`, `reused_count`,
+    `actions_run`, `objects` (per-section `{id, name, type, status}` or `None`),
+    `alerts_generated`, `warnings`, `summary`, `timeline_events_created`, `generated_at`.
+- **New Pydantic schemas** (`app/schemas/evidence_ingestion.py`):
+  `StrategyVersionBundleSection`, `ConfigSnapshotBundleSection`,
+  `UniverseSnapshotBundleSection`, `SignalSnapshotBundleSection`, `DatasetBundleSection`,
+  `DatasetSnapshotBundleSection`, `StrategyRunBundleSection`, `EvidenceBundleActions`,
+  `EvidenceBundleRequest`, `EvidenceBundleObjectRef`, `EvidenceBundleObjects`,
+  `EvidenceBundleResponse`.
+- **23 new backend tests** (`tests/test_evidence_ingestion_m22.py`) across multiple test classes:
+  - Bundle with all sections creates objects and returns correct counts.
+  - Reuse logic: strategy_version reused when label exists; dataset reused when name matches.
+  - All-or-nothing transaction: partial bundles (only version, only run, etc.) succeed.
+  - Actions: `run_backtest_audit` appended to `actions_run`; `compute_reliability_score`,
+    `generate_strategy_report`, `generate_alerts` each tested.
+  - Timeline event created with `evidence_bundle_ingested` event type.
+  - Example endpoint returns valid `EvidenceBundleRequest` shape.
+  - 404 for unknown strategy on both POST and GET example endpoints.
+  - `created_count` and `reused_count` correctly track object lifecycle.
+  - Warnings list populated when optional action fails gracefully.
+- **866 total backend tests** (843 prior M2–M21 + 23 new), 1 skipped.
+- **Frontend types** (`frontend/src/types/index.ts`):
+  `EvidenceBundleObjectRef`, `EvidenceBundleObjects`, `EvidenceBundleActions`,
+  `StrategyVersionBundleSection`, `ConfigSnapshotBundleSection`,
+  `UniverseSnapshotBundleSection`, `SignalSnapshotBundleSection`, `DatasetBundleSection`,
+  `DatasetSnapshotBundleSection`, `StrategyRunBundleSection`, `EvidenceBundleRequest`,
+  `EvidenceBundleResponse` interfaces added.
+- **Frontend API** (`frontend/src/lib/api.ts`): `ingestEvidenceBundle(strategyId, payload)` and
+  `getEvidenceBundleExample(strategyId)` added.
+- **`StrategyDetail.tsx` updated** — "Ingest Evidence" panel added:
+  - "Load Example" button populates a JSON textarea with the strategy-specific example payload
+    from `GET .../evidence-bundles/example`.
+  - JSON textarea — editable, validated client-side before submit.
+  - "Ingest Bundle" submit button — calls `POST .../evidence-bundles`; shows spinner.
+  - Result panel: summary text, created/reused counts, actions run list, alerts generated,
+    warnings list (if any), and a per-section objects table (section name, status, id prefix).
+  - On success, calls `setRefreshKey((k) => k + 1)` to reload strategy detail.
+- **Zero TypeScript errors**, clean production build (61 modules, 384.81 kB JS bundle).
+
+### Evidence Bundle sections
+
+| Section | Reuse policy | Key fields |
+|---|---|---|
+| `strategy_version` | Reused if `version_label` already exists on this strategy | `version_label`, `git_commit`, `branch_name`, `signal_name` |
+| `config_snapshot` | Always created | `label`, `config_json`, `strategy_version_id` (auto-linked) |
+| `universe_snapshot` | Always created | `label`, `symbols` (normalized), `source_type` |
+| `signal_snapshot` | Always created | `label`, `rows`, `signal_column`, `signal_name` |
+| `dataset` | Reused if `name` already exists in this project | `name`, `dataset_type`, `source_type` |
+| `dataset_snapshot` | Always created | `version_label`, `rows` (data quality checked) |
+| `strategy_run` | Always created | `run_name`, `run_type`, `metrics_json`, `params_json`, `assumptions_json` |
+
+### What M22 does NOT build (by design)
+
+- No Python SDK package, no published `pip install quantfidelity` distribution.
+- No API key authentication or per-client rate limiting.
+- No async ingestion queue or background workers.
+- No streaming responses or real-time progress notifications.
+- No AI-generated summaries or smart field suggestions.
+- No duplicate-bundle detection (same evidence can be ingested multiple times — callers control idempotency).
+
+### Note: foundation for future Python SDK
+
+`POST /api/strategies/{strategy_id}/evidence-bundles` is the intended call target for a future
+`quantfidelity` Python SDK. The bundle schema maps directly to what a `StrategyEvidenceBundle`
+class would submit from a research notebook or CI pipeline. M22 builds only the server-side
+receiver; the SDK package is a separate future milestone.
+
+### Sample curl
+
+```bash
+# Ingest an evidence bundle for a strategy
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/evidence-bundles \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "strategy_version": {
+      "version_label": "v1.2.0",
+      "branch_name": "main",
+      "signal_name": "momentum_12m"
+    },
+    "config_snapshot": {
+      "label": "prod-config-2024-Q1",
+      "config_json": {
+        "params": {"lookback": 252, "threshold": 0.05},
+        "assumptions": {"transaction_cost_bps": 10}
+      }
+    },
+    "universe_snapshot": {
+      "label": "SP500-2024-Q1",
+      "symbols": ["AAPL", "MSFT", "GOOG", "AMZN"]
+    },
+    "signal_snapshot": {
+      "label": "momentum-12m-2024-Q1",
+      "signal_name": "momentum_12m",
+      "rows": [
+        {"symbol": "AAPL", "timestamp": "2024-01-01", "signal": 0.52},
+        {"symbol": "MSFT", "timestamp": "2024-01-01", "signal": 0.78}
+      ]
+    },
+    "dataset": {
+      "name": "SP500 Daily OHLCV",
+      "dataset_type": "ohlcv",
+      "source_type": "manual"
+    },
+    "dataset_snapshot": {
+      "version_label": "v2024-Q1",
+      "rows": [
+        {"symbol": "AAPL", "timestamp": "2024-01-02", "close": 187.1, "volume": 52000000},
+        {"symbol": "MSFT", "timestamp": "2024-01-02", "close": 374.0, "volume": 28000000}
+      ]
+    },
+    "strategy_run": {
+      "run_name": "Momentum Backtest 2024-Q1",
+      "run_type": "backtest",
+      "status": "completed",
+      "metrics_json": {"sharpe": 1.4, "annual_return": 0.18, "max_drawdown": -0.12},
+      "assumptions_json": {"transaction_cost_bps": 10, "fill_model": "close"}
+    },
+    "actions": {
+      "run_backtest_audit": true,
+      "compute_reliability_score": true
+    }
+  }' | python3 -m json.tool
+# Response:
+# {
+#   "strategy_id": "...",
+#   "created_count": 7,
+#   "reused_count": 0,
+#   "actions_run": ["run_backtest_audit", "compute_reliability_score"],
+#   "objects": {
+#     "strategy_version": {"id": "...", "name": "v1.2.0", "type": "strategy_version", "status": "created"},
+#     "strategy_run": {"id": "...", "name": "Momentum Backtest 2024-Q1", "type": "strategy_run", "status": "created"},
+#     ...
+#   },
+#   "alerts_generated": 0,
+#   "warnings": [],
+#   "summary": "Ingested 7 objects (7 created, 0 reused). Actions run: run_backtest_audit, compute_reliability_score.",
+#   "generated_at": "2026-06-01T..."
+# }
+
+# Get an example bundle payload pre-filled from existing strategy evidence
+curl "http://localhost:8000/api/strategies/<strategy_id>/evidence-bundles/example" \
+  | python3 -m json.tool
+```
+
+> **M22 note:** The ingestion service is deterministic — no AI, no live market data, no external
+> calls. All evidence is logged from the caller-supplied payload. Not investment advice.
+
+---
+
+## Previously completed — M21: Evidence Coverage Matrix v1
 
 **Status: complete.**
 

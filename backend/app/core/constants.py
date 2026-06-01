@@ -71,6 +71,7 @@ class EventType(StrEnum):
     universe_snapshot_logged = "universe_snapshot_logged"
     signal_snapshot_logged = "signal_snapshot_logged"
     strategy_reliability_scored = "strategy_reliability_scored"
+    evidence_bundle_ingested = "evidence_bundle_ingested"
 
 
 class ReliabilityScoreStatus(StrEnum):

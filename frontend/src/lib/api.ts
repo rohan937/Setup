@@ -1,6 +1,8 @@
 import type {
   Alert,
   AlertFilters,
+  EvidenceBundleRequest,
+  EvidenceBundleResponse,
   EvidenceCoverageMatrixResponse,
   EvidenceCoverageParams,
   AlertGenerateResponse,
@@ -571,5 +573,24 @@ export async function getEvidenceCoverage(
   const q = qs.toString();
   return request<EvidenceCoverageMatrixResponse>(
     `/api/evidence/coverage${q ? `?${q}` : ""}`,
+  );
+}
+
+// M22: Evidence Bundle Ingestion
+export async function ingestEvidenceBundle(
+  strategyId: string,
+  payload: EvidenceBundleRequest,
+): Promise<EvidenceBundleResponse> {
+  return request<EvidenceBundleResponse>(
+    `/api/strategies/${strategyId}/evidence-bundles`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function getEvidenceBundleExample(
+  strategyId: string,
+): Promise<EvidenceBundleRequest> {
+  return request<EvidenceBundleRequest>(
+    `/api/strategies/${strategyId}/evidence-bundles/example`,
   );
 }

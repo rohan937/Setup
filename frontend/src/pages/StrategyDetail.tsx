@@ -6,6 +6,8 @@ import type {
   BacktestStatus,
   CostSensitivityScenario,
   DataEvidenceSummary,
+  EvidenceBundleRequest,
+  EvidenceBundleResponse,
   ReliabilityScoreComparisonResponse,
   ReliabilityScoreTrendResponse,
   ReportDetail,
@@ -23,9 +25,11 @@ import type {
 import {
   computeStrategyReliabilityScore,
   generateStrategyReport,
+  getEvidenceBundleExample,
   getStrategy,
   getStrategyReliabilityScoreHistory,
   getStrategyTimeline,
+  ingestEvidenceBundle,
   runBacktestAudit,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
@@ -1418,6 +1422,246 @@ function VersionConfigSection({
 }
 
 // ---------------------------------------------------------------------------
+// M22: Evidence Bundle Ingestion Panel (developer tool)
+// ---------------------------------------------------------------------------
+
+function IngestionPanel({
+  strategyId,
+  bundlePayload,
+  setBundlePayload,
+  bundleResult,
+  setBundleResult,
+  bundleLoading,
+  setBundleLoading,
+  bundleError,
+  setBundleError,
+  onSuccess,
+}: {
+  strategyId: string;
+  bundlePayload: string;
+  setBundlePayload: (v: string) => void;
+  bundleResult: EvidenceBundleResponse | null;
+  setBundleResult: (v: EvidenceBundleResponse | null) => void;
+  bundleLoading: boolean;
+  setBundleLoading: (v: boolean) => void;
+  bundleError: string | null;
+  setBundleError: (v: string | null) => void;
+  onSuccess: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loadingExample, setLoadingExample] = useState(false);
+
+  async function handleLoadExample() {
+    setLoadingExample(true);
+    setBundleError(null);
+    try {
+      const example = await getEvidenceBundleExample(strategyId);
+      setBundlePayload(JSON.stringify(example, null, 2));
+    } catch (err) {
+      setBundleError(err instanceof Error ? err.message : "Failed to load example.");
+    } finally {
+      setLoadingExample(false);
+    }
+  }
+
+  async function handleIngest() {
+    setBundleError(null);
+    setBundleResult(null);
+    let parsed: EvidenceBundleRequest;
+    try {
+      parsed = JSON.parse(bundlePayload) as EvidenceBundleRequest;
+    } catch {
+      setBundleError("Invalid JSON — please fix the payload before ingesting.");
+      return;
+    }
+    setBundleLoading(true);
+    try {
+      const result = await ingestEvidenceBundle(strategyId, parsed);
+      setBundleResult(result);
+      onSuccess();
+    } catch (err) {
+      setBundleError(err instanceof Error ? err.message : "Ingestion failed.");
+    } finally {
+      setBundleLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-panel border border-border bg-bg-800">
+      {/* Header / toggle */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left"
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="font-mono text-xs font-semibold uppercase tracking-widest text-cyan-400">
+            Evidence Bundle Ingestion
+          </span>
+          <span className="rounded border border-cyan-700/40 bg-cyan-900/30 px-1.5 py-0.5 font-mono text-2xs text-cyan-400/70">
+            DEV TOOL
+          </span>
+        </div>
+        <span className="font-mono text-xs text-text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-border px-5 pb-5 pt-4">
+          <p className="mb-3 font-mono text-2xs text-text-muted">
+            POST a single JSON payload to ingest all evidence layers at once (version, config,
+            universe, signal, dataset, run, audit, reliability, report).
+          </p>
+
+          {/* Textarea */}
+          <textarea
+            rows={15}
+            value={bundlePayload}
+            onChange={(e) => setBundlePayload(e.target.value)}
+            spellCheck={false}
+            placeholder='{\n  "strategy_run": { "run_name": "...", "run_type": "backtest" }\n}'
+            className="w-full resize-y rounded border border-border bg-bg-900 p-3 font-mono text-xs text-teal-300 placeholder:text-text-muted/40 focus:border-cyan-600 focus:outline-none"
+          />
+
+          {/* Action buttons */}
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={handleLoadExample}
+              disabled={loadingExample || bundleLoading}
+              className="rounded-control border border-cyan-700/50 bg-cyan-900/20 px-3 py-1.5 font-mono text-xs text-cyan-400 hover:bg-cyan-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loadingExample ? "Loading…" : "Load Example"}
+            </button>
+            <button
+              onClick={handleIngest}
+              disabled={bundleLoading || !bundlePayload.trim()}
+              className="rounded-control border border-teal-600/60 bg-teal-900/30 px-3 py-1.5 font-mono text-xs font-semibold text-teal-300 hover:bg-teal-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {bundleLoading ? "Ingesting…" : "Ingest Bundle"}
+            </button>
+            {(bundleResult || bundleError) && (
+              <button
+                onClick={() => {
+                  setBundleResult(null);
+                  setBundleError(null);
+                }}
+                className="ml-auto font-mono text-2xs text-text-muted/60 hover:text-text-muted"
+              >
+                Clear results
+              </button>
+            )}
+          </div>
+
+          {/* Error banner */}
+          {bundleError && (
+            <div className="mt-3 rounded border border-red-700/40 bg-red-900/20 px-3 py-2 font-mono text-xs text-red-400">
+              {bundleError}
+            </div>
+          )}
+
+          {/* Result panel */}
+          {bundleResult && (
+            <div className="mt-4 space-y-3 rounded border border-teal-700/30 bg-bg-900/60 p-4">
+              {/* Summary */}
+              <p className="font-mono text-xs text-teal-300">{bundleResult.summary}</p>
+
+              {/* Counts */}
+              <div className="flex gap-5">
+                <span className="font-mono text-2xs text-text-muted">
+                  Created:{" "}
+                  <span className="text-fidelity-high">{bundleResult.created_count}</span>
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  Reused:{" "}
+                  <span className="text-text-secondary">{bundleResult.reused_count}</span>
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  Timeline events:{" "}
+                  <span className="text-text-secondary">{bundleResult.timeline_events_created}</span>
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  Alerts:{" "}
+                  <span className="text-text-secondary">{bundleResult.alerts_generated}</span>
+                </span>
+              </div>
+
+              {/* Objects */}
+              {Object.keys(bundleResult.objects).length > 0 && (
+                <div>
+                  <p className="mb-1.5 font-mono text-2xs font-semibold uppercase tracking-wider text-text-muted/60">
+                    Objects
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      Object.entries(bundleResult.objects) as [
+                        string,
+                        { id: string; name: string; type: string; status: "created" | "reused" },
+                      ][]
+                    ).map(([key, obj]) => (
+                      <div
+                        key={key}
+                        className="flex items-center gap-1.5 rounded border border-border bg-bg-700 px-2 py-1"
+                      >
+                        <span className="font-mono text-2xs text-text-muted">{obj.type}</span>
+                        <span className="font-mono text-2xs text-text-secondary">{obj.name}</span>
+                        <span
+                          className={`font-mono text-2xs ${
+                            obj.status === "created" ? "text-fidelity-high" : "text-text-muted/60"
+                          }`}
+                        >
+                          [{obj.status}]
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions run */}
+              {bundleResult.actions_run.length > 0 && (
+                <div>
+                  <p className="mb-1 font-mono text-2xs font-semibold uppercase tracking-wider text-text-muted/60">
+                    Actions run
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {bundleResult.actions_run.map((a) => (
+                      <span
+                        key={a}
+                        className="rounded border border-cyan-700/40 bg-cyan-900/20 px-1.5 py-0.5 font-mono text-2xs text-cyan-400"
+                      >
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Warnings */}
+              {bundleResult.warnings.length > 0 && (
+                <div>
+                  <p className="mb-1 font-mono text-2xs font-semibold uppercase tracking-wider text-amber-500/70">
+                    Warnings
+                  </p>
+                  <ul className="space-y-0.5">
+                    {bundleResult.warnings.map((w, i) => (
+                      <li key={i} className="font-mono text-2xs text-amber-400">
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <p className="font-mono text-2xs text-text-muted/50">
+                Generated at {bundleResult.generated_at}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -1461,6 +1705,12 @@ export default function StrategyDetail() {
   const [latestReport, setLatestReport] = useState<ReportDetail | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+
+  // M22: evidence bundle ingestion
+  const [bundlePayload, setBundlePayload] = useState("");
+  const [bundleResult, setBundleResult] = useState<EvidenceBundleResponse | null>(null);
+  const [bundleLoading, setBundleLoading] = useState(false);
+  const [bundleError, setBundleError] = useState<string | null>(null);
 
   async function handleGenerateReport() {
     if (!id) return;
@@ -1890,6 +2140,20 @@ export default function StrategyDetail() {
 
       {/* Run comparison (M5) */}
       <RunComparisonPanel strategyId={id!} runs={strategy.runs} />
+
+      {/* M22: Evidence Bundle Ingestion (developer tool) */}
+      <IngestionPanel
+        strategyId={id!}
+        bundlePayload={bundlePayload}
+        setBundlePayload={setBundlePayload}
+        bundleResult={bundleResult}
+        setBundleResult={setBundleResult}
+        bundleLoading={bundleLoading}
+        setBundleLoading={setBundleLoading}
+        bundleError={bundleError}
+        setBundleError={setBundleError}
+        onSuccess={() => setRefreshKey((k) => k + 1)}
+      />
     </div>
   );
 }
