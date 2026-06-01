@@ -161,7 +161,112 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M22: Evidence Ingestion Bundle v1
+## Current milestone — M23: Evidence Bundle Python SDK v1
+
+**Status: complete.**
+
+### M23 deliverables
+
+- **New package** `sdk/python/` — a local pip-installable Python package named `quantfidelity`.
+  Install with `cd sdk/python && pip install -e .` (editable) or `pip install -e ".[dev]"` for tests.
+- **`EvidenceBundle` builder** (`sdk/python/quantfidelity/bundle.py`) — fluent chainable API
+  for all 7 evidence sections plus `with_actions()`:
+  `with_strategy_version()`, `with_config_snapshot()`, `with_universe_snapshot()`,
+  `with_signal_snapshot()`, `with_dataset()`, `with_dataset_snapshot()`,
+  `with_strategy_run()`, `with_actions()`.
+  Serialise with `to_dict()` / `to_json(indent=2)`; load with `from_dict()` / `from_json()`.
+  Lightweight client-side validation catches wrong types and empty required lists.
+- **`QuantFidelityClient`** (`sdk/python/quantfidelity/client.py`):
+  - `__init__(base_url, *, api_key=None, timeout=30)` — `api_key` reserved for M24+
+  - `ingest_evidence_bundle(strategy_id, bundle)` — accepts `EvidenceBundle` or plain `dict`
+  - `get_evidence_bundle_example(strategy_id)` — fetches sample payload from API
+  - `health()` — GET `/health`
+  - `api_root()` — GET `/api`
+  - Uses `requests` library (sync HTTP)
+- **Exception classes** (`sdk/python/quantfidelity/exceptions.py`):
+  `QuantFidelityError` (base), `QuantFidelityConnectionError`, `QuantFidelityAPIError`
+  (stores `status_code`, `response_text`, `response_json`), `QuantFidelityValidationError`
+- **TypedDict annotations** (`sdk/python/quantfidelity/types.py`) — optional IDE type hints
+  mirroring all M22 bundle schemas
+- **CLI entry point** `qf` (`sdk/python/quantfidelity/cli.py`):
+  - `qf ingest --strategy-id <uuid> --file bundle.json [--dry-run]`
+  - `qf example --strategy-id <uuid> [--output out.json]`
+  - `qf health`
+  - `--base-url URL`, `--api-key KEY` global flags; exit 0 success, exit 1 error
+- **Examples** (`sdk/python/examples/`):
+  - `aapl_mean_reversion_bundle.py` — full 7-section bundle; prints payload by default;
+    sends to server only when `RUN_QF_EXAMPLE=1` env var is set
+  - `bundle.json` — static JSON copy of the full AAPL bundle payload
+- **99 SDK tests** (`sdk/python/tests/`) with no server required:
+  - `test_bundle.py` (53 tests): all section setters, validation errors, chaining,
+    serialisation round-trips, section management, repr, equality
+  - `test_client.py` (28 tests): construction, URL building, ingest + error paths,
+    example + health endpoints (uses `responses` mock)
+  - `test_cli.py` (18 tests): argparse, dry-run, file errors, success path, connection
+    errors, example/health commands (uses `unittest.mock`)
+- **`sdk/python/README.md`** — full SDK documentation
+- **866 backend tests** still pass (no backend changes in M23), 1 skipped.
+- **Zero TypeScript errors**, clean frontend build (no frontend changes in M23).
+
+### SDK install & quick start
+
+```bash
+# Install locally (from repo root):
+cd sdk/python
+pip install -e .           # runtime only
+pip install -e ".[dev]"   # + pytest + responses + pytest-mock
+
+# Run SDK tests:
+pytest -v          # 99 passed, 0 failed
+
+# Quick start:
+from quantfidelity import QuantFidelityClient, EvidenceBundle
+client = QuantFidelityClient(base_url="http://localhost:8000")
+bundle = (
+    EvidenceBundle()
+    .with_strategy_run("bt-2024-q1", run_type="backtest",
+                       metrics_json={"sharpe": 1.4, "max_drawdown": -0.12})
+    .with_actions(compute_reliability_score=True)
+)
+result = client.ingest_evidence_bundle("<strategy-uuid>", bundle)
+print(result["summary"])
+```
+
+### CLI usage
+
+```bash
+# Ingest a bundle from a JSON file:
+qf ingest --strategy-id <uuid> --file sdk/python/examples/bundle.json
+
+# Dry-run: parse and print without sending:
+qf ingest --strategy-id <uuid> --file bundle.json --dry-run
+
+# Fetch and save an example payload:
+qf example --strategy-id <uuid> --output my_bundle.json
+
+# Check server health:
+qf health
+
+# Custom server:
+qf --base-url http://qf.myteam.internal ingest --strategy-id <uuid> --file bundle.json
+```
+
+### What M23 does NOT build (by design)
+
+- No PyPI publish — local editable install only.
+- No API key authentication — `api_key` parameter reserved for M24+.
+- No async support — synchronous `requests` only.
+- No automatic Git detection — git info supplied manually.
+- No pandas/numpy helpers — DataFrames converted to `list[dict]` by the user.
+- No retry or offline buffering — connection errors raise immediately.
+
+> **M23 note:** This SDK is the foundation for future milestones (auth, async, pandas helpers,
+> PyPI release, CI integration).  Wraps the M22 evidence bundle endpoint directly —
+> deterministic, no AI, no live data, not investment advice.
+
+---
+
+## Previously completed — M22: Evidence Ingestion Bundle v1
 
 **Status: complete.**
 

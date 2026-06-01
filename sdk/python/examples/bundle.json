@@ -1,0 +1,105 @@
+{
+  "strategy_version": {
+    "version_label": "v2.0.0",
+    "git_commit": "c3d4e5f6a7b8",
+    "branch_name": "main",
+    "code_path": "strategies/aapl_mean_reversion.py",
+    "signal_name": "return_zscore_mean_reversion",
+    "signal_description": "Mean reversion signal using 20-day return z-score"
+  },
+  "config_snapshot": {
+    "label": "baseline-config-v2",
+    "strategy_version_label": "v2.0.0",
+    "source_type": "manual_json",
+    "config_json": {
+      "params": {
+        "lookback_days": 20,
+        "zscore_entry_threshold": 2.0,
+        "zscore_exit_threshold": 0.5,
+        "max_position_size": 0.05
+      },
+      "assumptions": {
+        "transaction_cost_bps": 5,
+        "fill_model": "mid_plus_5bps",
+        "borrow_cost_bps": 10
+      }
+    }
+  },
+  "universe_snapshot": {
+    "label": "us-large-cap-2024-q1",
+    "strategy_version_label": "v2.0.0",
+    "source_type": "manual_json",
+    "symbols": ["AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "TSLA"],
+    "metadata_json": {
+      "universe_type": "US_LARGE_CAP",
+      "rebalance_freq": "monthly"
+    }
+  },
+  "signal_snapshot": {
+    "label": "z-score-signals-2024-01-02",
+    "strategy_version_label": "v2.0.0",
+    "universe_snapshot_label": "us-large-cap-2024-q1",
+    "signal_name": "return_zscore_mean_reversion",
+    "signal_column": "signal",
+    "source_type": "manual_json",
+    "rows": [
+      {"symbol": "AAPL",  "timestamp": "2024-01-02", "signal":  1.53},
+      {"symbol": "MSFT",  "timestamp": "2024-01-02", "signal": -0.42},
+      {"symbol": "NVDA",  "timestamp": "2024-01-02", "signal":  2.11}
+    ]
+  },
+  "dataset": {
+    "name": "AAPL Mean Reversion OHLCV",
+    "description": "Daily OHLCV data for the AAPL mean reversion backtest",
+    "asset_class": "equity",
+    "dataset_type": "equity_prices",
+    "source_type": "manual_json"
+  },
+  "dataset_snapshot": {
+    "snapshot_label": "ohlcv-2024-01-02",
+    "rows": [
+      {
+        "symbol": "AAPL",
+        "timestamp": "2024-01-02",
+        "open": 185.55,
+        "high": 188.91,
+        "low": 184.81,
+        "close": 185.64,
+        "volume": 72043900
+      }
+    ]
+  },
+  "strategy_run": {
+    "run_name": "backtest-q1-2024-v2",
+    "run_type": "backtest",
+    "status": "completed",
+    "strategy_version_label": "v2.0.0",
+    "dataset_snapshot_label": "ohlcv-2024-01-02",
+    "universe_snapshot_label": "us-large-cap-2024-q1",
+    "signal_snapshot_label": "z-score-signals-2024-01-02",
+    "params_json": {
+      "lookback_days": 20,
+      "zscore_entry_threshold": 2.0,
+      "zscore_exit_threshold": 0.5
+    },
+    "assumptions_json": {
+      "transaction_cost_bps": 5,
+      "fill_model": "mid_plus_5bps"
+    },
+    "metrics_json": {
+      "sharpe_ratio": 1.62,
+      "annual_return": 0.184,
+      "max_drawdown": -0.109,
+      "num_trades": 142,
+      "win_rate": 0.54
+    },
+    "universe_name": "US Large Cap (SP500 top 50)",
+    "notes": "Baseline backtest v2. Not for live trading."
+  },
+  "actions": {
+    "run_backtest_audit": true,
+    "compute_reliability_score": true,
+    "generate_strategy_report": false,
+    "generate_alerts": false
+  }
+}
