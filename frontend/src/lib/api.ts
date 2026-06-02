@@ -78,6 +78,9 @@ import type {
   StrategyComparisonReportRequest,
   StrategyComparisonReportResponse,
   SystemHealthResponse,
+  DemoSeedRequest,
+  DemoSeedResponse,
+  DemoStatusResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -920,4 +923,19 @@ export async function generateStrategyComparisonReport(
 
 export async function getSystemHealth(): Promise<SystemHealthResponse> {
   return request<SystemHealthResponse>("/api/admin/system-health");
+}
+
+// ---------------------------------------------------------------------------
+// M46: Demo Mode
+// ---------------------------------------------------------------------------
+
+export async function seedDemoData(payload: DemoSeedRequest): Promise<DemoSeedResponse> {
+  return request<DemoSeedResponse>("/api/admin/seed-demo", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getDemoStatus(): Promise<DemoStatusResponse> {
+  return request<DemoStatusResponse>("/api/admin/demo-status");
 }

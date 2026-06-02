@@ -1,7 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getSystemHealth } from "@/lib/api";
-import type { SystemHealthResponse, SystemOperationalActivityItem } from "@/types";
+import { getSystemHealth, seedDemoData, getDemoStatus } from "@/lib/api";
+import type {
+  SystemHealthResponse,
+  SystemOperationalActivityItem,
+  DemoSeedResponse,
+  DemoStatusResponse,
+} from "@/types";
 import PageHeader from "@/components/PageHeader";
 
 // ---------------------------------------------------------------------------
@@ -167,6 +172,206 @@ function StatusCountChips({ counts }: { counts: Record<string, number> }) {
 }
 
 // ---------------------------------------------------------------------------
+// Demo Mode panel
+// ---------------------------------------------------------------------------
+
+interface DemoModePanelProps {
+  demoStatus: DemoStatusResponse | null;
+  demoSeedResult: DemoSeedResponse | null;
+  demoSeedLoading: boolean;
+  demoSeedError: string | null;
+  confirmReset: boolean;
+  onConfirmResetChange: (v: boolean) => void;
+  onSeedDemo: () => void;
+  onResetDemo: () => void;
+}
+
+function DemoModePanel({
+  demoStatus,
+  demoSeedResult,
+  demoSeedLoading,
+  demoSeedError,
+  confirmReset,
+  onConfirmResetChange,
+  onSeedDemo,
+  onResetDemo,
+}: DemoModePanelProps) {
+  const active = demoStatus?.demo_org_exists ?? false;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      {/* Header */}
+      <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+        <p className="caption">Demo Mode</p>
+        <span
+          className={`inline-flex items-center rounded border px-2 py-0.5 font-mono text-2xs ${
+            active
+              ? "bg-teal-900/40 text-teal-300 border-teal-700/40"
+              : "bg-bg-600 text-text-muted border-border"
+          }`}
+        >
+          {active ? "Demo Active" : "No Demo Data"}
+        </span>
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        {/* Status rows */}
+        {demoStatus && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-2xs text-text-muted">Org</span>
+                <span
+                  className={`font-mono text-2xs font-semibold ${
+                    demoStatus.demo_org_exists ? "text-teal-400" : "text-text-muted"
+                  }`}
+                >
+                  {demoStatus.demo_org_exists ? "exists" : "none"}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-2xs text-text-muted">Project</span>
+                <span
+                  className={`font-mono text-2xs font-semibold ${
+                    demoStatus.demo_project_exists ? "text-teal-400" : "text-text-muted"
+                  }`}
+                >
+                  {demoStatus.demo_project_exists ? "exists" : "none"}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-2xs text-text-muted">Strategies</span>
+                <span className="font-mono text-2xs font-semibold text-text-primary">
+                  {demoStatus.strategy_count}
+                </span>
+              </div>
+              {demoStatus.last_seeded_at && (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-2xs text-text-muted">Last seeded</span>
+                  <span className="font-mono text-2xs text-text-secondary">
+                    {formatShortDate(demoStatus.last_seeded_at)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {demoStatus.demo_strategy_names.length > 0 && (
+              <div>
+                <p className="font-mono text-2xs text-text-muted mb-1">Demo strategies:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {demoStatus.demo_strategy_names.map((name, i) => (
+                    <span
+                      key={i}
+                      className="rounded bg-bg-600 border border-border px-2 py-0.5 font-mono text-2xs text-text-secondary"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {demoStatus.summary && (
+              <p className="font-mono text-2xs text-text-muted italic">{demoStatus.summary}</p>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            onClick={onSeedDemo}
+            disabled={demoSeedLoading}
+            className="rounded border border-border bg-bg-600 hover:bg-bg-500 disabled:opacity-50 px-3 py-1.5 font-mono text-xs text-text-primary transition-colors"
+          >
+            {demoSeedLoading ? "Seeding..." : "Seed / Extend Demo Data"}
+          </button>
+
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={confirmReset}
+                onChange={(e) => onConfirmResetChange(e.target.checked)}
+                className="accent-red-500"
+              />
+              <span className="font-mono text-2xs text-text-muted">
+                I understand this only resets demo data
+              </span>
+            </label>
+            <button
+              onClick={onResetDemo}
+              disabled={demoSeedLoading || !confirmReset}
+              className="rounded border border-red-800/60 bg-red-900/20 hover:bg-red-900/40 disabled:opacity-40 px-3 py-1.5 font-mono text-xs text-red-300 transition-colors"
+            >
+              Reset Demo Data
+            </button>
+          </div>
+        </div>
+
+        {demoSeedError && (
+          <p className="font-mono text-xs text-red-400">{demoSeedError}</p>
+        )}
+
+        {/* Seed result */}
+        {demoSeedResult && (
+          <div className="rounded border border-border bg-bg-600 px-3 py-2.5 space-y-2">
+            <p className="font-mono text-xs text-text-primary font-semibold">
+              {demoSeedResult.summary}
+            </p>
+
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              {Object.entries(demoSeedResult.created_counts).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-1">
+                  <span className="font-mono text-2xs text-text-muted">created {k}</span>
+                  <span className="font-mono text-2xs font-bold text-teal-400">{v}</span>
+                </div>
+              ))}
+              {Object.entries(demoSeedResult.reused_counts).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-1">
+                  <span className="font-mono text-2xs text-text-muted">reused {k}</span>
+                  <span className="font-mono text-2xs font-bold text-text-secondary">{v}</span>
+                </div>
+              ))}
+            </div>
+
+            {demoSeedResult.generated_artifacts.length > 0 && (
+              <div>
+                <p className="font-mono text-2xs text-text-muted mb-1">Generated artifacts:</p>
+                <ul className="space-y-0.5">
+                  {demoSeedResult.generated_artifacts.map((a, i) => (
+                    <li key={i} className="font-mono text-2xs text-text-secondary">· {a}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {demoSeedResult.warnings.length > 0 && (
+              <div>
+                <p className="font-mono text-2xs text-yellow-400 mb-1">Warnings:</p>
+                <ul className="space-y-0.5">
+                  {demoSeedResult.warnings.map((w, i) => (
+                    <li key={i} className="font-mono text-2xs text-yellow-300">· {w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="pt-1 flex flex-wrap gap-3">
+              <span className="font-mono text-2xs text-text-muted">Quick links:</span>
+              <Link to="/" className="font-mono text-2xs text-accent-500 hover:text-accent-300">Dashboard</Link>
+              <Link to="/portfolio" className="font-mono text-2xs text-accent-500 hover:text-accent-300">Portfolio</Link>
+              <Link to="/strategies" className="font-mono text-2xs text-accent-500 hover:text-accent-300">Strategies</Link>
+              <Link to="/evidence/coverage" className="font-mono text-2xs text-accent-500 hover:text-accent-300">Evidence Coverage</Link>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -175,11 +380,49 @@ export default function AdminSystemHealth() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Demo Mode state
+  const [demoStatus, setDemoStatus] = useState<DemoStatusResponse | null>(null);
+  const [demoSeedResult, setDemoSeedResult] = useState<DemoSeedResponse | null>(null);
+  const [demoSeedLoading, setDemoSeedLoading] = useState(false);
+  const [demoSeedError, setDemoSeedError] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+
   useEffect(() => {
     getSystemHealth()
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load system health"))
       .finally(() => setLoading(false));
+
+    getDemoStatus().then(setDemoStatus).catch(() => {});
+  }, []);
+
+  const handleSeedDemo = useCallback(() => {
+    setDemoSeedLoading(true);
+    setDemoSeedError(null);
+    seedDemoData({ mode: "extend" })
+      .then((res) => {
+        setDemoSeedResult(res);
+        getDemoStatus().then(setDemoStatus).catch(() => {});
+      })
+      .catch((e: unknown) => {
+        setDemoSeedError(e instanceof Error ? e.message : "Failed to seed demo data");
+      })
+      .finally(() => setDemoSeedLoading(false));
+  }, []);
+
+  const handleResetDemo = useCallback(() => {
+    setDemoSeedLoading(true);
+    setDemoSeedError(null);
+    seedDemoData({ mode: "reset_demo_only", confirm_reset: true })
+      .then((res) => {
+        setDemoSeedResult(res);
+        setConfirmReset(false);
+        getDemoStatus().then(setDemoStatus).catch(() => {});
+      })
+      .catch((e: unknown) => {
+        setDemoSeedError(e instanceof Error ? e.message : "Failed to reset demo data");
+      })
+      .finally(() => setDemoSeedLoading(false));
   }, []);
 
   if (loading) {
@@ -383,6 +626,18 @@ export default function AdminSystemHealth() {
           </div>
         </div>
       )}
+
+      {/* Demo Mode */}
+      <DemoModePanel
+        demoStatus={demoStatus}
+        demoSeedResult={demoSeedResult}
+        demoSeedLoading={demoSeedLoading}
+        demoSeedError={demoSeedError}
+        confirmReset={confirmReset}
+        onConfirmResetChange={setConfirmReset}
+        onSeedDemo={handleSeedDemo}
+        onResetDemo={handleResetDemo}
+      />
 
       {/* Suggested Operational Checks */}
       {data.suggested_operational_checks.length > 0 && (

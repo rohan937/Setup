@@ -1,11 +1,13 @@
-"""Admin routes — M45 System Health.
+"""Admin routes — M45 System Health, M46 Demo Seed.
 
-GET /api/admin/system-health — full system health snapshot (read-only).
+GET  /api/admin/system-health  — full system health snapshot (read-only).
+POST /api/admin/seed-demo      — seed / reset demo data.
+GET  /api/admin/demo-status    — describe current demo data state.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -19,6 +21,7 @@ from app.schemas.system_health import (
     SystemProjectHealthRollup,
     SystemStrategyHealthRollup,
 )
+from app.schemas.demo_seed import DemoSeedRequest, DemoSeedResponse, DemoStatusResponse
 
 router = APIRouter(tags=["admin"])
 
@@ -125,3 +128,48 @@ def get_system_health_endpoint(db: Session = Depends(get_db)) -> SystemHealthRes
         recent_activity=recent_activity,
         suggested_operational_checks=r.get("suggested_operational_checks", []),
     )
+
+
+# ---------------------------------------------------------------------------
+# M46: Demo seed endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/admin/seed-demo", response_model=DemoSeedResponse)
+def seed_demo_endpoint(
+    payload: DemoSeedRequest,
+    db: Session = Depends(get_db),
+) -> DemoSeedResponse:
+    """Seed (or reset) the demo dataset.
+
+    POST with mode="extend" (default) to create missing records.
+    POST with mode="reset_demo_only" and confirm_reset=true to wipe and reseed.
+    """
+    from app.services.demo_seed import seed_demo_data
+
+    try:
+        result = seed_demo_data(
+            db,
+            mode=payload.mode,
+            confirm_reset=payload.confirm_reset,
+            include_reports=payload.include_reports,
+            include_alerts=payload.include_alerts,
+            include_backtest_audits=payload.include_backtest_audits,
+        )
+        return DemoSeedResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Demo seed failed: {str(exc)[:200]}",
+        )
+
+
+@router.get("/admin/demo-status", response_model=DemoStatusResponse)
+def demo_status_endpoint(db: Session = Depends(get_db)) -> DemoStatusResponse:
+    """Return the current state of the demo dataset (read-only)."""
+    from app.services.demo_seed import get_demo_status
+
+    result = get_demo_status(db)
+    return DemoStatusResponse(**result)

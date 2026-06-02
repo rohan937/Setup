@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1262 tests, 1 skipped)
+│   └── tests/              Pytest tests (1275 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,76 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M45: System Health + Operations Dashboard v1
+## Current milestone — M46: Demo Mode + Data Seeder v2
+
+**Status: complete.**
+
+### M46 deliverables
+
+- **New service `backend/app/services/demo_seed.py`** — `seed_demo_data(db, mode, confirm_reset)` and `get_demo_status(db)` functions. No AI, no external APIs. Fully deterministic. Not real market data.
+
+- **Demo data — 3 deterministic strategies**:
+  - **AAPL Mean Reversion Demo** — health status `healthy`, `well_instrumented` lineage.
+  - **FX Carry Strategy Demo** — health status `review`, partial evidence.
+  - **Crypto Momentum Demo** — health status `under_instrumented`, minimal evidence.
+
+- **Evidence created per demo strategy** (deterministic, stable slugs):
+  - Strategy versions, config snapshots, universe snapshots, signal snapshots.
+  - Datasets and dataset snapshots.
+  - Strategy runs.
+  - Backtest audits (optional per strategy).
+  - Reliability scores.
+  - Alerts (optional per strategy).
+  - Reports (optional per strategy).
+
+- **Two new endpoints** registered in `backend/app/api/routes/admin.py`:
+  - `POST /api/admin/seed-demo` — body: `{ "mode": "extend" | "reset_demo_only", "confirm_reset": true }`.
+  - `GET /api/admin/demo-status` — returns demo org/project/strategy counts and last seeded timestamp.
+
+- **Seeding modes**:
+  - `extend` (default) — idempotent; reuses existing demo org/project/strategies by stable slugs. Safe to run multiple times.
+  - `reset_demo_only` — deletes the demo org and all its data, then reseeds from scratch. Requires `confirm_reset=True`. Only the demo org/project is deleted — non-demo data is never touched.
+
+- **Safety**: `reset_demo_only` requires `confirm_reset=True`; any non-demo organization is completely untouched.
+
+- **`EventType.demo_seeded`** added to `backend/app/core/constants.py`.
+
+- **New schemas `backend/app/schemas/demo_seed.py`** — `DemoSeedRequest`, `DemoSeedResponse`, `DemoStatusResponse`.
+
+- **Frontend — Demo Mode section in `AdminSystemHealth.tsx`**:
+  - Seed button (extend mode) and Reset + Reseed button (reset_demo_only).
+  - Status chips showing demo strategy count and last seeded timestamp.
+  - Result panel with links to seeded strategies after successful seed.
+
+- **New docs `docs/demo-walkthrough.md`** — 10-step demo guide covering seed, navigation, and key feature exploration.
+
+- **13 new backend M46 tests** (`tests/test_demo_seed_m46.py`). All 13 passed on first run.
+- **Backend total: 1275 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (64 modules, built in ~854ms).
+- No external APIs. Fully deterministic. Not real market data. Not investment advice.
+
+### Quick start
+
+```bash
+# Seed demo data
+curl -s -X POST http://localhost:8000/api/admin/seed-demo \
+  -H 'Content-Type: application/json' \
+  -d '{"mode": "extend"}' | python3 -m json.tool
+
+# Then open the frontend
+open http://localhost:5173
+```
+
+### What M46 does NOT build (by design)
+
+- No production deployment or cloud provisioning.
+- No user onboarding flows or guided tours.
+- No live or real market data.
+- No AI-generated demo content.
+
+---
+
+## Previously completed — M45: System Health + Operations Dashboard v1
 
 **Status: complete.**
 

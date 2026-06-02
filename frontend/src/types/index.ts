@@ -2509,3 +2509,38 @@ export interface SystemHealthResponse {
   recent_activity: SystemOperationalActivityItem[];
   suggested_operational_checks: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M46: Demo Mode
+// ---------------------------------------------------------------------------
+
+export interface DemoSeedRequest {
+  mode?: string;
+  confirm_reset?: boolean;
+  include_reports?: boolean;
+  include_alerts?: boolean;
+  include_backtest_audits?: boolean;
+}
+
+export interface DemoSeedResponse {
+  mode: string;
+  summary: string;
+  organization_id: string | null;
+  project_id: string | null;
+  strategy_ids: string[];
+  created_counts: Record<string, number>;
+  reused_counts: Record<string, number>;
+  reset_counts: Record<string, number>;
+  generated_artifacts: string[];
+  warnings: string[];
+}
+
+export interface DemoStatusResponse {
+  demo_org_exists: boolean;
+  demo_project_exists: boolean;
+  strategy_count: number;
+  demo_strategy_names: string[];
+  generated_artifacts: string[];
+  last_seeded_at: string | null;
+  summary: string;
+}
