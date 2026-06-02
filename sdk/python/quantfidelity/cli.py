@@ -133,6 +133,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "even if local validation finds issues (prints a warning instead)."
         ),
     )
+    p_ingest.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help=(
+            "Print the full server response as JSON instead of a concise "
+            "human-readable summary."
+        ),
+    )
 
     # ── example ─────────────────────────────────────────────────────────
     p_example = sub.add_parser(
@@ -254,6 +263,35 @@ def _resolve_api_key(args: argparse.Namespace) -> str | None:
     return os.environ.get("QUANTFIDELITY_API_KEY") or None
 
 
+def _resolve_base_url(args: argparse.Namespace) -> str:
+    """Resolve server base URL from --base-url flag or QUANTFIDELITY_BASE_URL env var.
+
+    --base-url flag (when non-default) takes precedence over env var.
+    """
+    import os
+
+    env_url = os.environ.get("QUANTFIDELITY_BASE_URL")
+    flag_url = getattr(args, "base_url", None)
+    if flag_url and flag_url != "http://localhost:8000":
+        return flag_url
+    if env_url:
+        return env_url
+    return flag_url or "http://localhost:8000"
+
+
+def _resolve_idempotency_key(args: argparse.Namespace) -> str | None:
+    """Resolve idempotency key from --idempotency-key flag or QUANTFIDELITY_IDEMPOTENCY_KEY env var.
+
+    --idempotency-key flag takes precedence over env var.
+    """
+    import os
+
+    flag_key = getattr(args, "idempotency_key", None)
+    if flag_key:
+        return flag_key
+    return os.environ.get("QUANTFIDELITY_IDEMPOTENCY_KEY") or None
+
+
 def _cmd_validate(args: argparse.Namespace) -> int:
     """Handle the ``validate`` sub-command."""
     try:
@@ -336,7 +374,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
 
     buffer_path = getattr(args, "buffer_path", None)
     client = QuantFidelityClient(
-        base_url=args.base_url,
+        base_url=_resolve_base_url(args),
         api_key=_resolve_api_key(args),
         buffer_path=buffer_path,
     )
@@ -344,20 +382,30 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         result = client.ingest_evidence_bundle(
             args.strategy_id,
             payload,
-            idempotency_key=getattr(args, "idempotency_key", None),
+            idempotency_key=_resolve_idempotency_key(args),
             buffer_on_failure=getattr(args, "buffer_on_failure", False),
         )
     except QuantFidelityError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    print(json.dumps(result, indent=2, default=str))
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2, default=str))
+    else:
+        print("Bundle ingested.")
+        print(f"  strategy_id:   {result.get('strategy_id', '—')}")
+        print(f"  created:       {result.get('created_count', '—')}")
+        print(f"  reused:        {result.get('reused_count', '—')}")
+        if result.get("idempotency_status"):
+            print(f"  idempotency:   {result['idempotency_status']}")
+        if result.get("ingestion_batch_id"):
+            print(f"  batch_id:      {result['ingestion_batch_id']}")
     return 0
 
 
 def _cmd_example(args: argparse.Namespace) -> int:
     """Handle the ``example`` sub-command."""
-    client = QuantFidelityClient(base_url=args.base_url, api_key=_resolve_api_key(args))
+    client = QuantFidelityClient(base_url=_resolve_base_url(args), api_key=_resolve_api_key(args))
     try:
         example = client.get_evidence_bundle_example(args.strategy_id)
     except QuantFidelityError as exc:
@@ -380,7 +428,7 @@ def _cmd_example(args: argparse.Namespace) -> int:
 
 def _cmd_health(args: argparse.Namespace) -> int:
     """Handle the ``health`` sub-command."""
-    client = QuantFidelityClient(base_url=args.base_url, api_key=_resolve_api_key(args))
+    client = QuantFidelityClient(base_url=_resolve_base_url(args), api_key=_resolve_api_key(args))
     try:
         result = client.health()
     except QuantFidelityError as exc:
@@ -404,7 +452,7 @@ def _cmd_buffer_flush(args: argparse.Namespace) -> int:
     """Handle the ``buffer flush`` sub-command."""
     buffer_path = getattr(args, "buffer_path", None)
     client = QuantFidelityClient(
-        base_url=args.base_url,
+        base_url=_resolve_base_url(args),
         api_key=_resolve_api_key(args),
         buffer_path=buffer_path,
     )

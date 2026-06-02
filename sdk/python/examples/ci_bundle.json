@@ -1,0 +1,109 @@
+{
+  "strategy_version": {
+    "label": "v2.1.0",
+    "git_commit": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+    "branch_name": "main",
+    "code_path": "strategies/mean_reversion.py",
+    "signal_name": "return_zscore",
+    "signal_description": "20-day return z-score mean reversion signal"
+  },
+  "config_snapshot": {
+    "label": "baseline-config-v2",
+    "strategy_version_label": "v2.1.0",
+    "config_json": {
+      "params": {
+        "lookback": 20,
+        "entry_z": 2.0,
+        "exit_z": 0.5,
+        "max_position_pct": 0.05
+      },
+      "assumptions": {
+        "transaction_cost_bps": 5,
+        "fill_model": "next_open",
+        "slippage_bps": 2,
+        "short_allowed": false
+      }
+    }
+  },
+  "universe_snapshot": {
+    "label": "sp500-top5-2024-q1",
+    "strategy_version_label": "v2.1.0",
+    "symbols": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"],
+    "metadata_json": {
+      "universe_type": "SP500",
+      "rebalance_freq": "monthly",
+      "market_cap_min_bn": 100,
+      "note": "CI test universe — not live data"
+    }
+  },
+  "signal_snapshot": {
+    "label": "signals-2024-01-02",
+    "strategy_version_label": "v2.1.0",
+    "universe_snapshot_label": "sp500-top5-2024-q1",
+    "signal_name": "return_zscore",
+    "rows": [
+      {"symbol": "AAPL",  "timestamp": "2024-01-02", "signal":  1.52},
+      {"symbol": "MSFT",  "timestamp": "2024-01-02", "signal": -0.83},
+      {"symbol": "NVDA",  "timestamp": "2024-01-02", "signal":  2.11}
+    ]
+  },
+  "dataset": {
+    "name": "SP500 Top-5 OHLCV CI",
+    "description": "Daily OHLCV for CI test universe. Synthetic data only.",
+    "dataset_type": "equity_prices"
+  },
+  "dataset_snapshot": {
+    "label": "ci-snap-2024-01-02",
+    "rows": [
+      {
+        "symbol": "AAPL",
+        "timestamp": "2024-01-02",
+        "open": 185.0,
+        "high": 188.5,
+        "low": 184.2,
+        "close": 185.64,
+        "volume": 72043900
+      },
+      {
+        "symbol": "MSFT",
+        "timestamp": "2024-01-02",
+        "open": 373.5,
+        "high": 376.0,
+        "low": 372.1,
+        "close": 374.02,
+        "volume": 21835400
+      }
+    ]
+  },
+  "strategy_run": {
+    "run_name": "ci-backtest-2024-q1",
+    "run_type": "backtest",
+    "strategy_version_label": "v2.1.0",
+    "dataset_snapshot_label": "ci-snap-2024-01-02",
+    "universe_snapshot_label": "sp500-top5-2024-q1",
+    "signal_snapshot_label": "signals-2024-01-02",
+    "params_json": {
+      "lookback": 20,
+      "entry_z": 2.0,
+      "exit_z": 0.5
+    },
+    "assumptions_json": {
+      "cost_bps": 5,
+      "fill_model": "next_open"
+    },
+    "metrics_json": {
+      "sharpe": 1.42,
+      "annual_return": 0.163,
+      "max_drawdown": -0.089,
+      "win_rate": 0.54,
+      "num_trades": 47
+    },
+    "universe_name": "SP500 Top-5 CI"
+  },
+  "actions": {
+    "run_backtest_audit": true,
+    "compute_reliability_score": true,
+    "generate_strategy_report": false,
+    "generate_alerts": true
+  }
+}

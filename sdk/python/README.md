@@ -113,6 +113,63 @@ qf ingest --strategy-id <uuid> --file bundle.json --validate-before-send --force
 
 ---
 
+## CI and automation
+
+### Environment variables
+
+| Variable                         | Default                   | Description                                    |
+|----------------------------------|---------------------------|------------------------------------------------|
+| `QUANTFIDELITY_BASE_URL`         | `http://localhost:8000`   | Server URL (overrides `--base-url` default)    |
+| `QUANTFIDELITY_API_KEY`          | —                         | API key; use `--api-key` flag or this env var  |
+| `QUANTFIDELITY_IDEMPOTENCY_KEY`  | —                         | Idempotency key; auto-generated if not set     |
+| `QUANTFIDELITY_STRATEGY_ID`      | —                         | Used by `scripts/ingest_evidence_bundle.sh`    |
+| `QUANTFIDELITY_BUNDLE_FILE`      | `sdk/python/examples/bundle.json` | Used by the ingest shell script        |
+
+### GitHub Actions
+
+See `.github/workflows/quantfidelity-ingest.example.yml` for a complete
+template workflow.  Key points:
+
+- `QUANTFIDELITY_API_KEY` is passed via `env:` from a GitHub Actions secret
+  and is never echoed or logged.
+- The idempotency key is built from `github.run_id` and `github.sha`.
+- The workflow validates before ingesting so CI fails fast on malformed bundles.
+
+### Shell scripts
+
+```bash
+# Ingest a bundle
+QUANTFIDELITY_STRATEGY_ID=<uuid> bash scripts/ingest_evidence_bundle.sh
+
+# Flush the offline buffer
+bash scripts/flush_qf_buffer.sh
+```
+
+### Quick example commands
+
+```bash
+# Validate the CI example bundle
+qf validate --file sdk/python/examples/ci_bundle.json
+
+# Ingest with concise summary (default)
+qf ingest --strategy-id <uuid> --file sdk/python/examples/ci_bundle.json
+
+# Ingest with full JSON output
+qf ingest --strategy-id <uuid> --file sdk/python/examples/ci_bundle.json --json
+
+# Dry run (no server call)
+qf ingest --strategy-id <uuid> --file sdk/python/examples/ci_bundle.json --dry-run
+```
+
+### Security note
+
+Never commit API keys to source control.  Use environment variables, GitHub
+Actions secrets, or a secret manager.  The offline buffer never stores API keys.
+
+See `docs/ci-ingestion.md` for the full CI integration guide.
+
+---
+
 ## Safe retries & idempotency
 
 ### Auto-retry with idempotency key
@@ -384,7 +441,7 @@ from quantfidelity.exceptions import (
 
 ---
 
-## Known limitations (M26)
+## Known limitations (M42)
 
 - **No async support** — synchronous `requests` only.  Async variant planned for a future milestone.
 - **No PyPI publish** — local editable install only.  `pip install quantfidelity` does not work yet.

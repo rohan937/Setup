@@ -1,0 +1,99 @@
+# QuantFidelity Evidence Ingestion (Example Template)
+#
+# This is a template workflow.  Copy it to your project's .github/workflows/
+# directory and adapt the inputs, secrets, and bundle file path to your needs.
+#
+# Required repository secret:
+#   QUANTFIDELITY_API_KEY  — your QuantFidelity API key
+#
+# For local-only setups without API key enforcement, remove the
+# QUANTFIDELITY_API_KEY lines from the env: block below.
+
+name: QuantFidelity Evidence Ingestion (Example Template)
+
+on:
+  # Trigger manually from the GitHub Actions UI or via API.
+  # Adapt 'push' or 'schedule' triggers for automated runs.
+  workflow_dispatch:
+    inputs:
+      strategy_id:
+        description: "UUID of the QuantFidelity strategy to ingest into"
+        required: true
+        default: ""
+      bundle_file:
+        description: "Path to the evidence bundle JSON file"
+        required: false
+        default: "sdk/python/examples/ci_bundle.json"
+
+jobs:
+  ingest:
+    name: Validate and Ingest Evidence Bundle
+    runs-on: ubuntu-latest
+
+    # Pass secrets via env: — GitHub Actions masks secret values in logs.
+    # NEVER echo or print $QUANTFIDELITY_API_KEY directly.
+    env:
+      QUANTFIDELITY_BASE_URL: ${{ vars.QUANTFIDELITY_BASE_URL || 'http://localhost:8000' }}
+      QUANTFIDELITY_API_KEY: ${{ secrets.QUANTFIDELITY_API_KEY }}
+      QUANTFIDELITY_STRATEGY_ID: ${{ github.event.inputs.strategy_id }}
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python ─────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # ── 3. Install SDK ───────────────────────────────────────────────
+      - name: Install QuantFidelity SDK
+        run: |
+          pip install --upgrade pip
+          pip install -e "sdk/python[dev]"
+          # Verify the CLI is available
+          qf --help
+
+      # ── 4. Validate bundle ───────────────────────────────────────────
+      # Fails fast if the bundle JSON is malformed or missing required fields.
+      - name: Validate evidence bundle
+        run: |
+          BUNDLE_FILE="${{ github.event.inputs.bundle_file || 'sdk/python/examples/ci_bundle.json' }}"
+          echo "Validating bundle: $BUNDLE_FILE"
+          qf validate --file "$BUNDLE_FILE"
+
+      # ── 5. Ingest bundle ─────────────────────────────────────────────
+      # The idempotency key is constructed from the run ID and commit SHA so:
+      #  - Each unique workflow run gets a unique key (no accidental dedup).
+      #  - Retries of the same run reuse the same key (safe deduplication).
+      # The key is assembled in a shell variable — the secret is never
+      # embedded inline in the YAML.
+      - name: Ingest evidence bundle
+        run: |
+          BUNDLE_FILE="${{ github.event.inputs.bundle_file || 'sdk/python/examples/ci_bundle.json' }}"
+          # Build idempotency key safely from public GitHub context values
+          RUN_ID="${{ github.run_id }}"
+          SHA="${{ github.sha }}"
+          IDEM_KEY="gh-${RUN_ID}-${SHA:0:8}"
+
+          echo "Bundle:          $BUNDLE_FILE"
+          echo "Strategy ID:     $QUANTFIDELITY_STRATEGY_ID"
+          echo "Idempotency key: $IDEM_KEY"
+          # Note: QUANTFIDELITY_API_KEY is in the environment but not printed.
+
+          qf ingest \
+            --strategy-id "$QUANTFIDELITY_STRATEGY_ID" \
+            --file "$BUNDLE_FILE" \
+            --idempotency-key "$IDEM_KEY" \
+            --buffer-on-failure
+
+      # ── Optional: flush buffer if previous run left records ──────────
+      # Uncomment this step if you want to flush any buffered records after
+      # a successful server connection.
+      #
+      # - name: Flush offline buffer (if any)
+      #   run: |
+      #     qf buffer flush --base-url "$QUANTFIDELITY_BASE_URL"

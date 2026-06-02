@@ -187,6 +187,7 @@ def test_ingest_success_prints_response(
                 "ingest",
                 "--strategy-id", STRATEGY_ID,
                 "--file", str(bundle_file),
+                "--json",
             ])
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
@@ -349,3 +350,95 @@ def test_cli_no_key_returns_none(monkeypatch):
 
     result = _resolve_api_key(FakeArgs())
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# M42: env var support tests
+# ---------------------------------------------------------------------------
+
+
+class TestEnvVarSupportM42:
+    def test_base_url_from_env_var(self, monkeypatch):
+        """QUANTFIDELITY_BASE_URL env var is used when --base-url not overridden."""
+        monkeypatch.setenv("QUANTFIDELITY_BASE_URL", "http://qf.test")
+        from quantfidelity.cli import _resolve_base_url
+
+        class FakeArgs:
+            base_url = "http://localhost:8000"
+
+        result = _resolve_base_url(FakeArgs())
+        assert result == "http://qf.test"
+
+    def test_base_url_flag_overrides_env(self, monkeypatch):
+        """--base-url flag takes precedence over QUANTFIDELITY_BASE_URL env var."""
+        monkeypatch.setenv("QUANTFIDELITY_BASE_URL", "http://env.test")
+        from quantfidelity.cli import _resolve_base_url
+
+        class FakeArgs:
+            base_url = "http://flag.test"
+
+        result = _resolve_base_url(FakeArgs())
+        assert result == "http://flag.test"
+
+    def test_idempotency_key_from_env(self, monkeypatch):
+        """QUANTFIDELITY_IDEMPOTENCY_KEY env var is used when --idempotency-key not set."""
+        monkeypatch.setenv("QUANTFIDELITY_IDEMPOTENCY_KEY", "env-key")
+        from quantfidelity.cli import _resolve_idempotency_key
+
+        class FakeArgs:
+            idempotency_key = None
+
+        result = _resolve_idempotency_key(FakeArgs())
+        assert result == "env-key"
+
+    def test_idempotency_key_flag_overrides_env(self, monkeypatch):
+        """--idempotency-key flag takes precedence over env var."""
+        monkeypatch.setenv("QUANTFIDELITY_IDEMPOTENCY_KEY", "env-key")
+        from quantfidelity.cli import _resolve_idempotency_key
+
+        class FakeArgs:
+            idempotency_key = "flag-key"
+
+        result = _resolve_idempotency_key(FakeArgs())
+        assert result == "flag-key"
+
+    def test_ingest_concise_summary_no_secret(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch
+    ):
+        """Default ingest output is concise and does not contain secrets."""
+        monkeypatch.delenv("QUANTFIDELITY_API_KEY", raising=False)
+        bundle_file = tmp_path / "bundle.json"
+        bundle_file.write_text(
+            json.dumps({"strategy_run": {"run_name": "ci-test", "run_type": "backtest"}})
+        )
+        fake_result = {
+            "strategy_id": STRATEGY_ID,
+            "created_count": 2,
+            "reused_count": 1,
+        }
+        with mock.patch(
+            "quantfidelity.client.QuantFidelityClient.ingest_evidence_bundle",
+            return_value=fake_result,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main([
+                    "ingest",
+                    "--strategy-id", STRATEGY_ID,
+                    "--file", str(bundle_file),
+                ])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "Bundle ingested." in captured.out
+        assert "qf_local_" not in captured.out
+        assert "secret" not in captured.out.lower()
+
+    def test_validate_ci_bundle(self, capsys: pytest.CaptureFixture):
+        """ci_bundle.json passes local validation."""
+        ci_bundle_path = (
+            Path(__file__).parent.parent / "examples" / "ci_bundle.json"
+        )
+        if not ci_bundle_path.exists():
+            pytest.skip(f"ci_bundle.json not found at {ci_bundle_path}")
+        with pytest.raises(SystemExit) as exc_info:
+            main(["validate", "--file", str(ci_bundle_path)])
+        assert exc_info.value.code == 0

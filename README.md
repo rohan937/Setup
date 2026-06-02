@@ -161,7 +161,76 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M41: Strategy Assumption Health Summary
+## Current milestone — M42: CI Evidence Ingestion Recipes v1
+
+**Status: complete.**
+
+### M42 deliverables
+
+- **New `docs/ci-ingestion.md`** — end-to-end CI ingestion guide: environment variable setup,
+  bundle validation, ingest command, idempotency, troubleshooting, and security notes.
+
+- **New `.github/workflows/quantfidelity-ingest.example.yml`** — GitHub Actions workflow template
+  (`workflow_dispatch` only). Uses `secrets.QUANTFIDELITY_API_KEY` — no hardcoded secrets.
+  Idempotency key derived from `${{ github.run_id }}-${{ github.sha }}` so reruns are safe.
+
+- **New `scripts/ingest_evidence_bundle.sh`** — shell script that validates a bundle file and
+  ingests it via the CLI. Reads `QUANTFIDELITY_BASE_URL`, `QUANTFIDELITY_API_KEY`,
+  `QUANTFIDELITY_STRATEGY_ID`, and optionally `QUANTFIDELITY_IDEMPOTENCY_KEY` from the environment.
+
+- **New `scripts/flush_qf_buffer.sh`** — shell script for buffer operations (list and flush pending
+  SDK buffer entries). Reads same environment variables.
+
+- **New `sdk/python/examples/ci_bundle.json`** — example evidence bundle for CI validation.
+  Validated with `Bundle is valid. No issues found.`
+
+- **New `sdk/python/examples/ci_ingest.py`** — Python example demonstrating programmatic
+  CI ingestion using the SDK.
+
+- **New `Makefile`** with targets:
+  - `sdk-test` — run the full SDK test suite.
+  - `sdk-validate-example` — validate `ci_bundle.json` via the CLI.
+  - `sdk-ingest-example-dry-run` — dry-run ingestion of the example bundle.
+  - `qf-buffer-list` — list pending buffer entries.
+
+- **CLI improvements in `sdk/python/quantfidelity/cli.py`**:
+  - `_resolve_base_url()` — resolves `--base-url` flag or `QUANTFIDELITY_BASE_URL` env var
+    (falls back to `http://localhost:8000`).
+  - `_resolve_idempotency_key()` — resolves `--idempotency-key` flag or `QUANTFIDELITY_IDEMPOTENCY_KEY` env var.
+  - Concise ingest success summary printed by default; `--json` flag outputs full JSON response.
+
+- **Environment variables**:
+  - `QUANTFIDELITY_BASE_URL` — API base URL (new in M42).
+  - `QUANTFIDELITY_API_KEY` — API key (from M24).
+  - `QUANTFIDELITY_STRATEGY_ID` — target strategy UUID.
+  - `QUANTFIDELITY_IDEMPOTENCY_KEY` — optional idempotency key (new in M42).
+
+- **SDK tests**: 32 passed in `test_cli.py` (includes new M42 env var tests) +
+  9 passed in `test_ci_recipes_m42.py`. Total SDK: 189 passed, 3 skipped.
+
+- **Backend**: unchanged. 1199 passed, 1 skipped.
+
+- **Frontend**: unchanged. Zero TypeScript errors, clean build (built in ~741ms).
+  One non-fatal chunk size warning (some chunks > 500 kB after minification) — non-blocking.
+
+- **Shell script syntax**: both `ingest_evidence_bundle.sh` and `flush_qf_buffer.sh`
+  pass `bash -n` syntax check (exit 0).
+
+- **Security**: API keys passed via environment variables or GitHub Actions secrets.
+  Keys are never printed in output, never hardcoded in examples or workflow files.
+
+- **No external APIs. No real secrets used. Not investment advice.**
+
+### What M42 does NOT build (by design)
+
+- No server-side scheduling, cron parser, or scheduled ingestion runner.
+- No Celery, task queue, or worker infrastructure.
+- No notification delivery (Slack, email, PagerDuty) on ingestion events.
+- No ingestion retry logic beyond what the SDK buffer already provides (M25).
+
+---
+
+## Previously completed — M41: Strategy Assumption Health Summary
 
 **Status: complete.**
 
