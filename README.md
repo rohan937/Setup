@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1275 tests, 1 skipped)
+│   └── tests/              Pytest tests (1292 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,73 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M46: Demo Mode + Data Seeder v2
+## Current milestone — M47: Research-to-Production Drift Engine v1
+
+**Status: complete.**
+
+### M47 deliverables
+
+- **New service `backend/app/services/strategy_drift.py`** — `compute_strategy_drift(strategy_id, mode, baseline_run_id, comparison_run_id, db)` and 5 helper functions: `_run_to_summary`, `_compute_metric_drifts`, `_compute_evidence_drifts`, `_compute_assumption_drifts`, `_compute_trust_drifts`, `_compute_drift_score`. No AI, no external APIs. Fully deterministic. Not investment advice.
+
+- **3 drift modes**:
+  - `latest_stage_pair` (default) — compares latest backtest run against the latest paper or live run.
+  - `selected_runs` — compares two caller-specified run IDs.
+  - `full_stage_path` — walks all stage transitions (backtest → paper → live) in order.
+
+- **4 drift dimensions**:
+  - **Metric drift** — per-metric direction and severity across 6 metrics: sharpe, sortino, annual_return, max_drawdown, turnover, volatility.
+  - **Evidence drift** — dataset health, signal quality, universe snapshot, and backtest trust score changes between runs.
+  - **Assumption drift** — uses M40 `classify_assumption_change()` to surface weakening/positive/review config changes between runs.
+  - **Trust drift** — backtest audit trust score delta and run health label comparison.
+
+- **Drift score (0–100)**:
+  - Starts at 100.
+  - High metric drift: −20.
+  - Medium metric drift: −10.
+  - Evidence deterioration: −10.
+  - Audit trust drop: −20.
+  - Weakening assumptions: −10.
+
+- **Drift status thresholds** (derived from drift score):
+  - `stable`: score >= 85.
+  - `watch`: score >= 70.
+  - `review`: score >= 50.
+  - `severe`: score < 50.
+  - `insufficient_evidence`: not enough runs to compare.
+
+- **New endpoint** `GET /api/strategies/{id}/drift`:
+  - Read-only. No `AuditTimelineEvent` created.
+  - Query params: `mode` (`latest_stage_pair` / `selected_runs` / `full_stage_path`), `baseline_run_id` (UUID, for selected_runs mode), `comparison_run_id` (UUID, for selected_runs mode).
+  - Returns `StrategyDriftResponse`. 404 for unknown strategy.
+
+- **New schemas `backend/app/schemas/strategy_drift.py`** — Pydantic request and response models for all drift dimensions and the top-level response.
+
+- **Frontend — `DriftPanel`** in `StrategyDetail.tsx`:
+  - Mode selector (latest_stage_pair / selected_runs / full_stage_path).
+  - Run pair header showing baseline vs. comparison run labels and types.
+  - Metric drift table (collapsible) — per-metric direction badges and severity indicators; drifted rows highlighted.
+  - Evidence drift table (collapsible) — dataset health, signal quality, universe, and backtest trust delta rows.
+  - Assumption drift section (collapsible) — weakening/positive/review config changes surfaced from M40.
+  - Trust drift section (collapsible) — audit trust score and run health label comparison.
+  - Drift score chip with drift status badge.
+  - Suggested checks panel.
+  - Auto-loads for each strategy on StrategyDetail page.
+
+- **17 new backend M47 tests** (`tests/test_strategy_drift_m47.py`). All 17 passed on first run.
+- **Backend total: 1292 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (64 modules, built in ~800ms). One non-fatal chunk size warning — not an error.
+- No external APIs. Deterministic. Not investment advice.
+
+### What M47 does NOT build (by design)
+
+- No live trading integration or broker API.
+- No external market data ingestion.
+- No automatic trading gates or circuit breakers based on drift.
+- No production incident management.
+
+---
+
+## Previously completed — M46: Demo Mode + Data Seeder v2
 
 **Status: complete.**
 

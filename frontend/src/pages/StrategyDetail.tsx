@@ -52,6 +52,10 @@ import type {
   StrategyTimelineAnalyticsResponse,
   TimelineAnalyticsBucket,
   TimelineInactivityGap,
+  StrategyDriftResponse,
+  MetricDriftItem,
+  EvidenceDriftItem,
+  AssumptionDriftItem,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -73,6 +77,7 @@ import {
   compareConfigSnapshotsV2,
   getStrategyAssumptionHealth,
   getStrategyTimelineAnalytics,
+  getStrategyDrift,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -4048,6 +4053,337 @@ function TimelineAnalyticsPanel({ analytics }: { analytics: StrategyTimelineAnal
 }
 
 // ---------------------------------------------------------------------------
+// M47: Drift Panel
+// ---------------------------------------------------------------------------
+
+function driftStatusClasses(status: string): string {
+  switch (status) {
+    case "stable": return "text-teal-400 bg-teal-900/20 border-teal-700/30";
+    case "watch": return "text-yellow-400 bg-yellow-900/20 border-yellow-700/30";
+    case "review": return "text-orange-400 bg-orange-900/20 border-orange-700/30";
+    case "severe": return "text-red-400 bg-red-900/20 border-red-700/30";
+    default: return "text-text-muted bg-bg-700 border-border";
+  }
+}
+
+function driftSeverityColor(severity: string): string {
+  switch (severity) {
+    case "high": return "text-red-400";
+    case "medium": return "text-yellow-400";
+    case "low": return "text-text-secondary";
+    default: return "text-text-muted";
+  }
+}
+
+function directionIcon(direction: string): string {
+  switch (direction) {
+    case "improved": return "▲";
+    case "deteriorated": return "▼";
+    case "changed": return "↔";
+    case "unchanged": return "—";
+    default: return "?";
+  }
+}
+
+function impactChipColor(level: string): string {
+  switch (level) {
+    case "high": return "text-red-400 bg-red-900/20 border-red-700/30";
+    case "medium": return "text-yellow-400 bg-yellow-900/20 border-yellow-700/30";
+    case "low": return "text-text-secondary bg-bg-700 border-border";
+    default: return "text-text-muted bg-bg-700 border-border";
+  }
+}
+
+function MetricDriftTable({ items }: { items: MetricDriftItem[] }) {
+  const [open, setOpen] = useState(false);
+  const visible = items.filter((r) => r.severity !== "none");
+  if (visible.length === 0) return null;
+  return (
+    <div className="rounded-control border border-border bg-bg-800">
+      <button
+        className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>Metric Drift <span className="text-text-muted">({visible.length} metric{visible.length !== 1 ? "s" : ""})</span></span>
+        <span className="text-text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border overflow-x-auto">
+          <table className="w-full text-left font-mono text-2xs">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="px-4 pb-1.5 pt-2.5 text-text-muted font-normal">Metric</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Baseline</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Comparison</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Delta</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Direction</th>
+                <th className="px-3 pb-1.5 pt-2.5 pr-4 text-text-muted font-normal">Severity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((r, i) => (
+                <tr key={i} className="border-b border-border/50 last:border-0">
+                  <td className="px-4 py-1.5 text-text-secondary">{r.metric}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{r.baseline_value !== null ? r.baseline_value.toFixed(4) : "—"}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{r.comparison_value !== null ? r.comparison_value.toFixed(4) : "—"}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{r.absolute_delta !== null ? r.absolute_delta.toFixed(4) : "—"}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{directionIcon(r.direction)}</td>
+                  <td className={`px-3 py-1.5 pr-4 ${driftSeverityColor(r.severity)}`}>{r.severity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EvidenceDriftTable({ items }: { items: EvidenceDriftItem[] }) {
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-control border border-border bg-bg-800">
+      <button
+        className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>Evidence Drift <span className="text-text-muted">({items.length} item{items.length !== 1 ? "s" : ""})</span></span>
+        <span className="text-text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border overflow-x-auto">
+          <table className="w-full text-left font-mono text-2xs">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="px-4 pb-1.5 pt-2.5 text-text-muted font-normal">Evidence</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Baseline</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Comparison</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Severity</th>
+                <th className="px-3 pb-1.5 pt-2.5 pr-4 text-text-muted font-normal">Explanation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((r, i) => (
+                <tr key={i} className="border-b border-border/50 last:border-0">
+                  <td className="px-4 py-1.5 text-text-secondary">{r.evidence_type}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{r.baseline_value !== null ? r.baseline_value.toFixed(4) : "—"}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{r.comparison_value !== null ? r.comparison_value.toFixed(4) : "—"}</td>
+                  <td className={`px-3 py-1.5 ${driftSeverityColor(r.severity)}`}>{r.severity}</td>
+                  <td className="px-3 py-1.5 pr-4 text-text-muted">{r.explanation}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssumptionDriftList({ items }: { items: AssumptionDriftItem[] }) {
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-control border border-border bg-bg-800">
+      <button
+        className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>Assumption Drift <span className="text-text-muted">({items.length} item{items.length !== 1 ? "s" : ""})</span></span>
+        <span className="text-text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border px-3 pb-3 pt-2 space-y-1.5">
+          {items.map((item, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-1.5">
+              <span className="font-mono text-2xs text-accent-300">{item.key_path}</span>
+              <span className="font-mono text-2xs text-text-muted">:</span>
+              <span className="font-mono text-2xs text-orange-400">{item.old_value !== null && item.old_value !== undefined ? JSON.stringify(item.old_value) : "—"}</span>
+              <span className="font-mono text-2xs text-text-muted">→</span>
+              <span className="font-mono text-2xs text-teal-400">{item.new_value !== null && item.new_value !== undefined ? JSON.stringify(item.new_value) : "—"}</span>
+              <span className={`rounded border px-1 py-0.5 font-mono text-2xs ${impactChipColor(item.impact_level)}`}>{item.impact_level}</span>
+              {item.suggested_check && (
+                <span className="font-mono text-2xs text-text-muted/70 w-full">↳ {item.suggested_check}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrustDriftList({ items }: { items: { dimension: string; severity: string; explanation: string; baseline_value: number | null; comparison_value: number | null; delta: number | null }[] }) {
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-control border border-border bg-bg-800">
+      <button
+        className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>Trust Drift <span className="text-text-muted">({items.length} item{items.length !== 1 ? "s" : ""})</span></span>
+        <span className="text-text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border overflow-x-auto">
+          <table className="w-full text-left font-mono text-2xs">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="px-4 pb-1.5 pt-2.5 text-text-muted font-normal">Dimension</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Baseline</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Comparison</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Delta</th>
+                <th className="px-3 pb-1.5 pt-2.5 pr-4 text-text-muted font-normal">Severity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((r, i) => (
+                <tr key={i} className="border-b border-border/50 last:border-0">
+                  <td className="px-4 py-1.5 text-text-secondary">{r.dimension}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{r.baseline_value !== null ? r.baseline_value.toFixed(4) : "—"}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{r.comparison_value !== null ? r.comparison_value.toFixed(4) : "—"}</td>
+                  <td className="px-3 py-1.5 text-text-muted">{r.delta !== null ? r.delta.toFixed(4) : "—"}</td>
+                  <td className={`px-3 py-1.5 pr-4 ${driftSeverityColor(r.severity)}`}>{r.severity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DriftPanel({
+  drift,
+  onModeChange,
+}: {
+  drift: StrategyDriftResponse;
+  onModeChange: (mode: string) => void;
+}) {
+  const statusClasses = driftStatusClasses(drift.drift_status);
+  const modes = ["latest_stage_pair", "full_stage_path", "selected_runs"];
+
+  if (drift.drift_status === "insufficient_evidence") {
+    return (
+      <div className="rounded-card border border-border bg-bg-900 p-4 space-y-3">
+        <p className="caption">Research-to-Production Drift</p>
+        <div className="rounded-control border border-border bg-bg-800 px-3 py-2">
+          <p className="font-mono text-2xs text-text-muted">Need at least 2 runs to compute drift.</p>
+        </div>
+        {drift.suggested_checks.length > 0 && (
+          <div>
+            <p className="caption mb-1">Suggested Checks</p>
+            <ul className="space-y-0.5">
+              {drift.suggested_checks.map((c, i) => (
+                <li key={i} className="font-mono text-2xs text-text-secondary">☐ {c}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-card border border-border bg-bg-900 p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="caption">Research-to-Production Drift</p>
+        <p className="font-mono text-2xs text-text-muted/60">{drift.generated_at.slice(0, 19).replace("T", " ")} UTC</p>
+      </div>
+
+      {/* A. Summary strip */}
+      <div className="flex items-center flex-wrap gap-3">
+        <span className="font-mono text-lg text-text-primary">
+          {drift.drift_score !== null ? drift.drift_score.toFixed(1) : "—"}
+        </span>
+        <span className={`rounded border px-2 py-0.5 font-mono text-2xs ${statusClasses}`}>{drift.drift_status}</span>
+        <div className="flex items-center gap-1 ml-auto">
+          {modes.map((m) => (
+            <button
+              key={m}
+              onClick={() => onModeChange(m)}
+              className={`rounded border px-2 py-0.5 font-mono text-2xs transition-colors ${
+                drift.mode === m
+                  ? "border-accent-300/50 bg-accent-300/10 text-accent-300"
+                  : "border-border bg-bg-800 text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              {m.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Deterministic summary */}
+      <p className="font-mono text-2xs text-text-secondary">{drift.deterministic_summary}</p>
+
+      {/* B. Run pair header */}
+      {(drift.baseline_run || drift.comparison_run) && (
+        <div className="rounded-control border border-border bg-bg-800 px-3 py-2 space-y-1">
+          {drift.baseline_run && (
+            <p className="font-mono text-2xs text-text-muted">
+              <span className="text-text-secondary">Baseline:</span> {drift.baseline_run.run_type} — {drift.baseline_run.run_name}{" "}
+              <span className="text-text-muted/60">({drift.baseline_run.created_at.slice(0, 10)})</span>
+            </p>
+          )}
+          {drift.comparison_run && (
+            <p className="font-mono text-2xs text-text-muted">
+              <span className="text-text-secondary">Comparison:</span> {drift.comparison_run.run_type} — {drift.comparison_run.run_name}{" "}
+              <span className="text-text-muted/60">({drift.comparison_run.created_at.slice(0, 10)})</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* C. Highlighted drifts */}
+      {drift.highlighted_drifts.length > 0 && (
+        <div className="space-y-0.5">
+          {drift.highlighted_drifts.map((h, i) => (
+            <div key={i} className="flex items-start gap-1.5 rounded border border-amber-700/30 bg-amber-900/10 px-2 py-1">
+              <span className="font-mono text-2xs text-amber-400">!</span>
+              <span className="font-mono text-2xs text-amber-300/80">{h}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* D. Metric drift table */}
+      <MetricDriftTable items={drift.metric_drifts} />
+
+      {/* E. Evidence drift table */}
+      <EvidenceDriftTable items={drift.evidence_drifts} />
+
+      {/* F. Assumption drift */}
+      <AssumptionDriftList items={drift.assumption_drifts} />
+
+      {/* G. Trust drift */}
+      <TrustDriftList items={drift.trust_drifts} />
+
+      {/* H. Suggested checks */}
+      {drift.suggested_checks.length > 0 && (
+        <div>
+          <p className="caption mb-1.5">Suggested Checks</p>
+          <ul className="space-y-0.5">
+            {drift.suggested_checks.map((c, i) => (
+              <li key={i} className="font-mono text-2xs text-text-secondary">☐ {c}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* I. Disclaimer */}
+      <p className="font-mono text-2xs text-text-muted/40">
+        Deterministic drift analysis. Not investment advice.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -4134,6 +4470,9 @@ export default function StrategyDetail() {
 
   // M43: timeline analytics
   const [timelineAnalytics, setTimelineAnalytics] = useState<StrategyTimelineAnalyticsResponse | null>(null);
+
+  // M47: drift
+  const [driftData, setDriftData] = useState<StrategyDriftResponse | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -4236,6 +4575,8 @@ export default function StrategyDetail() {
     getStrategyAssumptionHealth(id).then(setAssumptionHealth).catch(() => setAssumptionHealth(null));
     // M43: load timeline analytics in parallel
     getStrategyTimelineAnalytics(id).then(setTimelineAnalytics).catch(() => setTimelineAnalytics(null));
+    // M47: load drift in parallel
+    getStrategyDrift(id).then(setDriftData).catch(() => setDriftData(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -4672,6 +5013,16 @@ export default function StrategyDetail() {
 
       {/* M43: Timeline Analytics */}
       {timelineAnalytics && <TimelineAnalyticsPanel analytics={timelineAnalytics} />}
+
+      {/* M47: Drift Panel */}
+      {driftData && (
+        <DriftPanel
+          drift={driftData}
+          onModeChange={(m) => {
+            getStrategyDrift(id!, { mode: m }).then(setDriftData).catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

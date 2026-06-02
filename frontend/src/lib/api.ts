@@ -81,6 +81,7 @@ import type {
   DemoSeedRequest,
   DemoSeedResponse,
   DemoStatusResponse,
+  StrategyDriftResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -938,4 +939,22 @@ export async function seedDemoData(payload: DemoSeedRequest): Promise<DemoSeedRe
 
 export async function getDemoStatus(): Promise<DemoStatusResponse> {
   return request<DemoStatusResponse>("/api/admin/demo-status");
+}
+
+// ---------------------------------------------------------------------------
+// M47: Strategy Drift
+// ---------------------------------------------------------------------------
+
+export async function getStrategyDrift(
+  strategyId: string,
+  params?: { mode?: string; baseline_run_id?: string; comparison_run_id?: string },
+): Promise<StrategyDriftResponse> {
+  const qs = new URLSearchParams();
+  if (params?.mode) qs.set("mode", params.mode);
+  if (params?.baseline_run_id) qs.set("baseline_run_id", params.baseline_run_id);
+  if (params?.comparison_run_id) qs.set("comparison_run_id", params.comparison_run_id);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return request<StrategyDriftResponse>(
+    `/api/strategies/${strategyId}/drift${query}`,
+  );
 }

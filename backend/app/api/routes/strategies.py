@@ -117,6 +117,19 @@ from app.schemas.version_lineage import (
     StrategyVersionTransition,
     StrategyVersionLineageResponse,
 )
+from app.schemas.strategy_drift import (
+    AssumptionDriftItem,
+    EvidenceDriftItem,
+    MetricDriftItem,
+    StrategyDriftResponse,
+    StrategyDriftRunSummary,
+    TrustDriftItem,
+)
+from app.services.strategy_drift import (
+    StrategyDriftData,
+    StrategyDriftRunSummaryData,
+    compute_strategy_drift,
+)
 from app.services.version_lineage import (
     get_strategy_version_lineage,
     StrategyVersionLineageData,
@@ -3760,4 +3773,127 @@ def get_strategy_assumption_health(
         review_change_count=result.get("review_change_count", 0),
         suggested_checks=result.get("suggested_checks", []),
         deterministic_summary=result["deterministic_summary"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# M47: GET /api/strategies/{strategy_id}/drift
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/drift",
+    response_model=StrategyDriftResponse,
+)
+def get_strategy_drift(
+    strategy_id: uuid.UUID,
+    mode: str = Query(
+        default="latest_stage_pair",
+        description="latest_stage_pair | selected_runs | full_stage_path",
+    ),
+    baseline_run_id: uuid.UUID | None = Query(default=None),
+    comparison_run_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> StrategyDriftResponse:
+    """Return drift analysis between two strategy runs.
+
+    Deterministic — no AI, no causal claims, no investment advice.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    valid_modes = ("latest_stage_pair", "selected_runs", "full_stage_path")
+    if mode not in valid_modes:
+        raise HTTPException(status_code=400, detail=f"Invalid mode: {mode!r}")
+
+    try:
+        result: StrategyDriftData = compute_strategy_drift(
+            strategy_id,
+            db,
+            mode=mode,
+            baseline_run_id=baseline_run_id,
+            comparison_run_id=comparison_run_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def _run_schema(r: StrategyDriftRunSummaryData | None) -> StrategyDriftRunSummary | None:
+        if r is None:
+            return None
+        return StrategyDriftRunSummary(
+            run_id=r.run_id,
+            run_name=r.run_name,
+            run_type=r.run_type,
+            status=r.status,
+            created_at=r.created_at,
+            completed_at=r.completed_at,
+            metrics_json=r.metrics_json,
+            assumptions_json=r.assumptions_json,
+            strategy_version_label=r.strategy_version_label,
+            dataset_health=r.dataset_health,
+            signal_quality=r.signal_quality,
+            universe_symbol_count=r.universe_symbol_count,
+            backtest_trust=r.backtest_trust,
+            run_health_label=r.run_health_label,
+        )
+
+    return StrategyDriftResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        mode=result.mode,
+        generated_at=result.generated_at,
+        drift_score=result.drift_score,
+        drift_status=result.drift_status,
+        baseline_run=_run_schema(result.baseline_run),
+        comparison_run=_run_schema(result.comparison_run),
+        stage_path=result.stage_path,
+        metric_drifts=[
+            MetricDriftItem(
+                metric=m.metric,
+                baseline_value=m.baseline_value,
+                comparison_value=m.comparison_value,
+                absolute_delta=m.absolute_delta,
+                percent_delta=m.percent_delta,
+                direction=m.direction,
+                severity=m.severity,
+            )
+            for m in result.metric_drifts
+        ],
+        evidence_drifts=[
+            EvidenceDriftItem(
+                evidence_type=e.evidence_type,
+                baseline_value=e.baseline_value,
+                comparison_value=e.comparison_value,
+                delta=e.delta,
+                severity=e.severity,
+                explanation=e.explanation,
+            )
+            for e in result.evidence_drifts
+        ],
+        assumption_drifts=[
+            AssumptionDriftItem(
+                key_path=a.key_path,
+                old_value=a.old_value,
+                new_value=a.new_value,
+                change_type=a.change_type,
+                impact_level=a.impact_level,
+                suggested_check=a.suggested_check,
+            )
+            for a in result.assumption_drifts
+        ],
+        trust_drifts=[
+            TrustDriftItem(
+                dimension=t.dimension,
+                baseline_value=t.baseline_value,
+                comparison_value=t.comparison_value,
+                delta=t.delta,
+                severity=t.severity,
+                explanation=t.explanation,
+            )
+            for t in result.trust_drifts
+        ],
+        highlighted_drifts=result.highlighted_drifts,
+        suggested_checks=result.suggested_checks,
+        deterministic_summary=result.deterministic_summary,
     )

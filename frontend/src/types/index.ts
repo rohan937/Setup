@@ -2544,3 +2544,80 @@ export interface DemoStatusResponse {
   last_seeded_at: string | null;
   summary: string;
 }
+
+// ---------------------------------------------------------------------------
+// M47: Strategy Drift
+// ---------------------------------------------------------------------------
+
+export interface StrategyDriftRunSummary {
+  run_id: string;
+  run_name: string;
+  run_type: string;
+  status: string;
+  run_health_label: string;
+  created_at: string;
+  completed_at: string | null;
+  strategy_version_label: string | null;
+  dataset_health: number | null;
+  signal_quality: number | null;
+  backtest_trust: number | null;
+  universe_symbol_count: number | null;
+  metrics_json: Record<string, unknown> | null;
+  assumptions_json: Record<string, unknown> | null;
+}
+
+export interface MetricDriftItem {
+  metric: string;
+  direction: string;
+  severity: string;
+  baseline_value: number | null;
+  comparison_value: number | null;
+  absolute_delta: number | null;
+  percent_delta: number | null;
+}
+
+export interface EvidenceDriftItem {
+  evidence_type: string;
+  severity: string;
+  explanation: string;
+  baseline_value: number | null;
+  comparison_value: number | null;
+  delta: number | null;
+}
+
+export interface AssumptionDriftItem {
+  key_path: string;
+  change_type: string;
+  impact_level: string;
+  old_value: unknown;
+  new_value: unknown;
+  suggested_check: string | null;
+}
+
+export interface TrustDriftItem {
+  dimension: string;
+  severity: string;
+  explanation: string;
+  baseline_value: number | null;
+  comparison_value: number | null;
+  delta: number | null;
+}
+
+export interface StrategyDriftResponse {
+  strategy_id: string;
+  strategy_name: string;
+  mode: string;
+  drift_status: string;
+  deterministic_summary: string;
+  generated_at: string;
+  drift_score: number | null;
+  baseline_run: StrategyDriftRunSummary | null;
+  comparison_run: StrategyDriftRunSummary | null;
+  stage_path: unknown[];
+  metric_drifts: MetricDriftItem[];
+  evidence_drifts: EvidenceDriftItem[];
+  assumption_drifts: AssumptionDriftItem[];
+  trust_drifts: TrustDriftItem[];
+  highlighted_drifts: string[];
+  suggested_checks: string[];
+}
