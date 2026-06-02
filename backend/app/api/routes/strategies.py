@@ -3897,3 +3897,75 @@ def get_strategy_drift(
         suggested_checks=result.suggested_checks,
         deterministic_summary=result.deterministic_summary,
     )
+
+
+# ---------------------------------------------------------------------------
+# M48: GET /api/strategies/{strategy_id}/freshness
+# ---------------------------------------------------------------------------
+
+from app.schemas.evidence_freshness import (  # noqa: E402
+    EvidenceFreshnessItem,
+    StrategyEvidenceFreshnessResponse,
+)
+from app.services.evidence_freshness import (  # noqa: E402
+    EvidenceFreshnessItemData,
+    StrategyEvidenceFreshnessData,
+    compute_evidence_freshness,
+)
+
+
+@router.get(
+    "/strategies/{strategy_id}/freshness",
+    response_model=StrategyEvidenceFreshnessResponse,
+)
+def get_strategy_freshness(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyEvidenceFreshnessResponse:
+    """Return deterministic evidence freshness scorecard for a strategy.
+
+    Checks 10 evidence types and returns freshness status, counts, and
+    suggested refresh actions. Read-only — no AuditTimelineEvent created.
+    Language is hedged: no investment advice, no trading recommendations.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        result = compute_evidence_freshness(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return StrategyEvidenceFreshnessResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        overall_freshness_score=result.overall_freshness_score,
+        freshness_status=result.freshness_status,
+        stale_count=result.stale_count,
+        missing_count=result.missing_count,
+        aging_count=result.aging_count,
+        fresh_count=result.fresh_count,
+        evidence_items=[
+            EvidenceFreshnessItem(
+                evidence_type=i.evidence_type,
+                label=i.label,
+                latest_at=i.latest_at,
+                days_since_latest=i.days_since_latest,
+                count=i.count,
+                status=i.status,
+                threshold_days=i.threshold_days,
+                severity=i.severity,
+                summary=i.summary,
+                suggested_check=i.suggested_check,
+                latest_object_id=i.latest_object_id,
+                latest_object_label=i.latest_object_label,
+            )
+            for i in result.evidence_items
+        ],
+        oldest_evidence_type=result.oldest_evidence_type,
+        freshest_evidence_type=result.freshest_evidence_type,
+        suggested_refresh_order=result.suggested_refresh_order,
+        deterministic_summary=result.deterministic_summary,
+    )

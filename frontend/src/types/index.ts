@@ -2621,3 +2621,46 @@ export interface StrategyDriftResponse {
   highlighted_drifts: string[];
   suggested_checks: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M48: Evidence Freshness
+// ---------------------------------------------------------------------------
+
+export type EvidenceFreshnessStatus =
+  | "fresh"
+  | "aging"
+  | "stale"
+  | "missing"
+  | "missing_evidence";
+
+export interface EvidenceFreshnessItem {
+  evidence_type: string;
+  label: string;
+  status: EvidenceFreshnessStatus;
+  severity: string;
+  summary: string;
+  latest_at: string | null;
+  days_since_latest: number | null;
+  count: number;
+  threshold_days: number;
+  suggested_check: string | null;
+  latest_object_id: string | null;
+  latest_object_label: string | null;
+}
+
+export interface StrategyEvidenceFreshnessResponse {
+  strategy_id: string;
+  strategy_name: string;
+  freshness_status: string;
+  deterministic_summary: string;
+  generated_at: string;
+  overall_freshness_score: number | null;
+  stale_count: number;
+  missing_count: number;
+  aging_count: number;
+  fresh_count: number;
+  evidence_items: EvidenceFreshnessItem[];
+  oldest_evidence_type: string | null;
+  freshest_evidence_type: string | null;
+  suggested_refresh_order: string[];
+}

@@ -56,6 +56,8 @@ import type {
   MetricDriftItem,
   EvidenceDriftItem,
   AssumptionDriftItem,
+  StrategyEvidenceFreshnessResponse,
+  EvidenceFreshnessItem,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -78,6 +80,7 @@ import {
   getStrategyAssumptionHealth,
   getStrategyTimelineAnalytics,
   getStrategyDrift,
+  getStrategyEvidenceFreshness,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -4256,6 +4259,155 @@ function TrustDriftList({ items }: { items: { dimension: string; severity: strin
   );
 }
 
+function freshnessStatusClasses(status: string): { text: string; bg: string; border: string } {
+  switch (status) {
+    case "fresh":
+      return { text: "text-teal-400", bg: "bg-teal-900/20", border: "border-teal-700/30" };
+    case "aging":
+      return { text: "text-yellow-400", bg: "bg-yellow-900/20", border: "border-yellow-700/30" };
+    case "stale":
+      return { text: "text-red-400", bg: "bg-red-900/20", border: "border-red-700/30" };
+    case "missing":
+    case "missing_evidence":
+    default:
+      return { text: "text-text-muted", bg: "bg-bg-700", border: "border-border" };
+  }
+}
+
+function freshnessSeverityColor(severity: string): string {
+  switch (severity) {
+    case "high":
+      return "text-red-400";
+    case "medium":
+      return "text-yellow-400";
+    case "low":
+      return "text-text-secondary";
+    default:
+      return "text-text-muted";
+  }
+}
+
+function freshnessScoreColor(score: number | null): string {
+  if (score === null) return "text-text-muted";
+  if (score >= 85) return "text-teal-400";
+  if (score >= 65) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function FreshnessPanel({ freshness }: { freshness: StrategyEvidenceFreshnessResponse }) {
+  const [refreshExpanded, setRefreshExpanded] = useState(false);
+  const overallClasses = freshnessStatusClasses(freshness.freshness_status);
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      {/* Header */}
+      <div className="border-b border-border px-4 py-2.5 flex items-center justify-between gap-2">
+        <p className="caption">Evidence Freshness</p>
+        <span className="font-mono text-2xs text-text-muted">
+          {new Date(freshness.generated_at).toLocaleString("en-US", {
+            month: "short", day: "numeric", year: "numeric",
+            hour: "2-digit", minute: "2-digit",
+          })}
+        </span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* A. Summary strip */}
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`mono-num text-lg font-bold ${freshnessScoreColor(freshness.overall_freshness_score)}`}>
+            {freshness.overall_freshness_score !== null ? freshness.overall_freshness_score : "—"}
+          </span>
+          <span className={`rounded px-2 py-0.5 font-mono text-2xs border ${overallClasses.text} ${overallClasses.bg} ${overallClasses.border}`}>
+            {freshness.freshness_status}
+          </span>
+          <div className="flex flex-wrap gap-2 font-mono text-2xs">
+            {freshness.fresh_count > 0 && (
+              <span className="text-teal-400">{freshness.fresh_count} fresh</span>
+            )}
+            {freshness.aging_count > 0 && (
+              <span className="text-yellow-400">{freshness.aging_count} aging</span>
+            )}
+            {freshness.stale_count > 0 && (
+              <span className="text-red-400">{freshness.stale_count} stale</span>
+            )}
+            {freshness.missing_count > 0 && (
+              <span className="text-text-muted">{freshness.missing_count} missing</span>
+            )}
+          </div>
+        </div>
+
+        {/* B. Deterministic summary */}
+        {freshness.deterministic_summary && (
+          <p className="font-mono text-2xs text-text-muted italic leading-relaxed">
+            {freshness.deterministic_summary}
+          </p>
+        )}
+
+        {/* C. Evidence items table */}
+        {freshness.evidence_items.length > 0 && (
+          <div className="overflow-x-auto rounded-control border border-border">
+            <table className="w-full min-w-[480px] text-left">
+              <thead>
+                <tr className="border-b border-border bg-bg-600">
+                  <th className="px-3 py-1.5 font-mono text-2xs text-text-muted">Evidence Type</th>
+                  <th className="px-3 py-1.5 font-mono text-2xs text-text-muted">Latest</th>
+                  <th className="px-3 py-1.5 font-mono text-2xs text-text-muted">Days</th>
+                  <th className="px-3 py-1.5 font-mono text-2xs text-text-muted">Count</th>
+                  <th className="px-3 py-1.5 pr-4 font-mono text-2xs text-text-muted">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {freshness.evidence_items.map((item: EvidenceFreshnessItem, idx: number) => {
+                  const sc = freshnessStatusClasses(item.status);
+                  return (
+                    <tr key={idx} className="border-b border-border/50 last:border-0 hover:bg-bg-600/40">
+                      <td className="px-3 py-1.5 font-mono text-2xs text-text-secondary">{item.label}</td>
+                      <td className="px-3 py-1.5 font-mono text-2xs text-text-muted">
+                        {item.latest_at ? fmtDate(item.latest_at) : "—"}
+                      </td>
+                      <td className={`px-3 py-1.5 font-mono text-2xs ${item.days_since_latest !== null ? freshnessSeverityColor(item.severity) : "text-text-muted"}`}>
+                        {item.days_since_latest !== null ? item.days_since_latest : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 font-mono text-2xs text-text-muted">{item.count}</td>
+                      <td className="px-3 py-1.5 pr-4">
+                        <span className={`rounded px-1.5 py-0.5 font-mono text-2xs border ${sc.text} ${sc.bg} ${sc.border}`}>
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* D. Suggested refresh order (collapsible) */}
+        {freshness.suggested_refresh_order.length > 0 && (
+          <div>
+            <button
+              onClick={() => setRefreshExpanded((v) => !v)}
+              className="flex items-center gap-1.5 font-mono text-2xs text-text-secondary hover:text-text-primary transition-colors"
+            >
+              <span className="text-text-muted">{refreshExpanded ? "▾" : "▸"}</span>
+              Refresh Priority
+            </button>
+            {refreshExpanded && (
+              <ul className="mt-2 space-y-0.5 pl-3">
+                {freshness.suggested_refresh_order.map((item: string, idx: number) => (
+                  <li key={idx} className="font-mono text-2xs text-text-secondary">
+                    <span className="text-text-muted mr-1">•</span>{item}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DriftPanel({
   drift,
   onModeChange,
@@ -4473,6 +4625,7 @@ export default function StrategyDetail() {
 
   // M47: drift
   const [driftData, setDriftData] = useState<StrategyDriftResponse | null>(null);
+  const [freshness, setFreshness] = useState<StrategyEvidenceFreshnessResponse | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -4577,6 +4730,8 @@ export default function StrategyDetail() {
     getStrategyTimelineAnalytics(id).then(setTimelineAnalytics).catch(() => setTimelineAnalytics(null));
     // M47: load drift in parallel
     getStrategyDrift(id).then(setDriftData).catch(() => setDriftData(null));
+    // M48: load evidence freshness in parallel
+    getStrategyEvidenceFreshness(id).then(setFreshness).catch(() => setFreshness(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -5023,6 +5178,9 @@ export default function StrategyDetail() {
           }}
         />
       )}
+
+      {/* M48: Evidence Freshness */}
+      {freshness && <FreshnessPanel freshness={freshness} />}
     </div>
   );
 }

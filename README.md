@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1292 tests, 1 skipped)
+│   └── tests/              Pytest tests (1311 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,73 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M47: Research-to-Production Drift Engine v1
+## Current milestone — M48: Evidence Freshness Monitor v1
+
+**Status: complete.**
+
+### M48 deliverables
+
+- **New service `backend/app/services/evidence_freshness.py`** — `compute_evidence_freshness(strategy_id, db)` queries 10 evidence types for each strategy. No AI, no external APIs. Fully deterministic. Not investment advice.
+
+- **10 evidence types queried**:
+  `strategy_runs`, `dataset_snapshots`, `signal_snapshots`, `universe_snapshots`,
+  `config_snapshots`, `backtest_audits`, `reliability_scores`, `reports`, `alerts`,
+  `timeline_events`.
+
+- **Per-type freshness thresholds** (days since most recent record):
+  - `strategy_runs`: fresh <= 14, aging <= 30.
+  - `dataset_snapshots`: fresh <= 14, aging <= 45.
+  - `signal_snapshots`: fresh <= 14, aging <= 30.
+  - `universe_snapshots`: fresh <= 30, aging <= 90.
+  - `config_snapshots`: fresh <= 30, aging <= 90.
+  - `backtest_audits`: fresh <= 14, aging <= 45.
+  - `reliability_scores`: fresh <= 7, aging <= 30.
+  - `reports`: fresh <= 30, aging <= 90.
+  - `alerts`: fresh <= 14, aging <= 45.
+  - `timeline_events`: fresh <= 14, aging <= 45.
+
+- **Overall freshness score (0–100)**: weighted average of SCORE_MAP (fresh=100, aging=70, stale=35, missing=0) across evidence types.
+  - Weights: `strategy_runs` / `dataset_snapshots` / `signal_snapshots` / `backtest_audits` = 15% each.
+  - `universe_snapshots` / `config_snapshots` / `reliability_scores` = 10% each.
+  - `reports` / `timeline_events` = 5% each.
+  - `alerts` excluded from weighted calculation.
+
+- **Freshness status thresholds**:
+  - `fresh`: overall score >= 85.
+  - `aging`: overall score >= 65.
+  - `stale`: overall score < 65.
+  - `missing_evidence`: fewer than 3 scored evidence types.
+
+- **Suggested refresh order**: stale evidence types first, then missing important types, then aging types.
+
+- **New endpoint** `GET /api/strategies/{id}/freshness`:
+  - Read-only. No `AuditTimelineEvent` created.
+  - 404 for unknown strategy.
+  - Returns `EvidenceFreshnessResponse`.
+
+- **New schemas `backend/app/schemas/evidence_freshness.py`** — Pydantic request and response models.
+
+- **Frontend — `FreshnessPanel`** in `StrategyDetail.tsx`:
+  - Status summary showing overall freshness score and freshness status badge.
+  - Evidence items table with per-type freshness chips (fresh / aging / stale / missing), days since last record, and threshold context.
+  - Suggested refresh priority list.
+  - Auto-loads for each strategy on the StrategyDetail page.
+
+- **19 new backend M48 tests** (`tests/test_evidence_freshness_m48.py`). All 19 passed on first run.
+- **Backend total: 1311 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (built in ~840ms). One JS chunk (562.90 kB raw / 123.72 kB gzip) + one CSS chunk (32.60 kB raw / 6.72 kB gzip).
+- No external APIs. Deterministic. Not investment advice.
+
+### What M48 does NOT build (by design)
+
+- No live polling or real-time freshness streaming.
+- No scheduler or automated refresh triggers.
+- No notification integration (email, Slack, PagerDuty).
+- No automated evidence refresh or data re-ingestion.
+
+---
+
+## Previously completed — M47: Research-to-Production Drift Engine v1
 
 **Status: complete.**
 

@@ -82,6 +82,7 @@ import type {
   DemoSeedResponse,
   DemoStatusResponse,
   StrategyDriftResponse,
+  StrategyEvidenceFreshnessResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -956,5 +957,17 @@ export async function getStrategyDrift(
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return request<StrategyDriftResponse>(
     `/api/strategies/${strategyId}/drift${query}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M48: Evidence Freshness
+// ---------------------------------------------------------------------------
+
+export async function getStrategyEvidenceFreshness(
+  strategyId: string,
+): Promise<StrategyEvidenceFreshnessResponse> {
+  return request<StrategyEvidenceFreshnessResponse>(
+    `/api/strategies/${strategyId}/freshness`,
   );
 }
