@@ -2313,3 +2313,49 @@ export interface StrategyAssumptionHealthResponse {
   review_change_count: number;
   suggested_checks: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M43: Timeline Analytics
+// ---------------------------------------------------------------------------
+
+export interface TimelineAnalyticsBucket {
+  bucket_start: string;
+  bucket_end: string;
+  total_events: number;
+  event_type_counts: Record<string, number>;
+  source_type_counts: Record<string, number>;
+  evidence_category_counts: Record<string, number>;
+}
+
+export interface TimelineInactivityGap {
+  gap_start: string;
+  gap_end: string;
+  gap_days: number;
+  previous_event_title: string | null;
+  next_event_title: string | null;
+}
+
+export type TimelineStalenessStatus = "active" | "watch" | "stale" | "no_activity";
+
+export interface StrategyTimelineAnalyticsResponse {
+  strategy_id: string;
+  strategy_name: string;
+  bucket: string;
+  staleness_status: TimelineStalenessStatus;
+  deterministic_summary: string;
+  generated_at: string;
+  lookback_days: number;
+  total_events: number;
+  active_bucket_count: number;
+  empty_bucket_count: number;
+  most_active_bucket_event_count: number;
+  latest_event_at: string | null;
+  most_active_bucket_start: string | null;
+  days_since_latest_event: number | null;
+  longest_inactivity_gap_days: number | null;
+  dominant_event_type: string | null;
+  dominant_evidence_category: string | null;
+  buckets: TimelineAnalyticsBucket[];
+  gaps: TimelineInactivityGap[];
+  suggested_checks: string[];
+}

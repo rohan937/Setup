@@ -49,6 +49,9 @@ import type {
   ConfigDiffSection,
   StrategyAssumptionHealthResponse,
   AssumptionCategoryScorecard,
+  StrategyTimelineAnalyticsResponse,
+  TimelineAnalyticsBucket,
+  TimelineInactivityGap,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -69,6 +72,7 @@ import {
   getUniverseSnapshotCoverageAnalysis,
   compareConfigSnapshotsV2,
   getStrategyAssumptionHealth,
+  getStrategyTimelineAnalytics,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -3839,6 +3843,211 @@ function AssumptionHealthPanel({ health }: { health: StrategyAssumptionHealthRes
 }
 
 // ---------------------------------------------------------------------------
+// M43: TimelineAnalyticsPanel
+// ---------------------------------------------------------------------------
+
+function stalenessBadgeClass(status: string): string {
+  switch (status) {
+    case "active":      return "text-teal-400 bg-teal-900/20 border border-teal-700/30";
+    case "watch":       return "text-yellow-400 bg-yellow-900/20 border border-yellow-700/30";
+    case "stale":       return "text-red-400 bg-red-900/20 border border-red-700/30";
+    case "no_activity": return "text-text-muted bg-bg-700 border border-border";
+    default:            return "text-text-muted bg-bg-700 border border-border";
+  }
+}
+
+function categoryColor(cat: string): string {
+  switch (cat) {
+    case "run":         return "bg-accent-500/20 text-accent-400 border-accent-500/30";
+    case "data":        return "bg-blue-900/20 text-blue-400 border-blue-700/30";
+    case "backtest":    return "bg-yellow-900/20 text-yellow-400 border-yellow-700/30";
+    case "config":      return "bg-bg-600 text-text-muted border-border";
+    case "universe":    return "bg-teal-900/20 text-teal-400 border-teal-700/30";
+    case "signal":      return "bg-cyan-900/20 text-cyan-400 border-cyan-700/30";
+    case "reliability": return "bg-green-900/20 text-green-400 border-green-700/30";
+    case "report":      return "bg-purple-900/20 text-purple-400 border-purple-700/30";
+    case "alert":       return "bg-red-900/20 text-red-400 border-red-700/30";
+    case "ingestion":   return "bg-orange-900/20 text-orange-400 border-orange-700/30";
+    default:            return "bg-bg-600 text-text-secondary border-border";
+  }
+}
+
+function barColor(count: number): string {
+  if (count === 0)  return "bg-bg-600";
+  if (count <= 2)   return "bg-teal-700/60";
+  if (count <= 5)   return "bg-teal-600/80";
+  return "bg-teal-500";
+}
+
+function TimelineAnalyticsPanel({ analytics }: { analytics: StrategyTimelineAnalyticsResponse }) {
+  // B: limit to last 26 buckets
+  const displayBuckets: TimelineAnalyticsBucket[] = analytics.buckets.slice(-26);
+  const maxEvents = Math.max(...displayBuckets.map((b) => b.total_events), 1);
+
+  // C: aggregate evidence_category_counts across all buckets
+  const categoryTotals: Record<string, number> = {};
+  for (const bucket of analytics.buckets) {
+    for (const [cat, cnt] of Object.entries(bucket.evidence_category_counts)) {
+      categoryTotals[cat] = (categoryTotals[cat] ?? 0) + cnt;
+    }
+  }
+  const topCategories = Object.entries(categoryTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+
+  // D: gaps with 14+ days
+  const displayGaps: TimelineInactivityGap[] = analytics.gaps.slice(0, 5);
+
+  const bucketLabel = analytics.bucket === "weekly" ? "weekly" : analytics.bucket ?? "period";
+
+  return (
+    <div className="rounded-panel border border-border bg-bg-900 p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-mono text-xs font-semibold text-text-primary">Timeline Analytics</h3>
+        <span className="font-mono text-2xs text-text-muted">{analytics.generated_at.slice(0, 10)}</span>
+      </div>
+
+      {/* A. Summary strip */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-mono text-2xs text-text-muted">
+          Total events: <span className="text-text-primary font-semibold">{analytics.total_events}</span>
+        </span>
+        {analytics.days_since_latest_event != null && (
+          <span className="font-mono text-2xs text-text-muted">
+            Last event: <span className="text-text-secondary">{analytics.days_since_latest_event}d ago</span>
+          </span>
+        )}
+        <span className={`rounded px-2 py-0.5 font-mono text-2xs ${stalenessBadgeClass(analytics.staleness_status)}`}>
+          {analytics.staleness_status.replace("_", " ")}
+        </span>
+        {analytics.dominant_evidence_category && (
+          <span className={`rounded border px-2 py-0.5 font-mono text-2xs ${categoryColor(analytics.dominant_evidence_category)}`}>
+            {analytics.dominant_evidence_category}
+          </span>
+        )}
+        {analytics.longest_inactivity_gap_days != null && analytics.longest_inactivity_gap_days > 0 && (
+          <span className="font-mono text-2xs text-text-muted">
+            Longest gap: <span className="text-text-secondary">{analytics.longest_inactivity_gap_days}d</span>
+          </span>
+        )}
+      </div>
+
+      {/* B. Activity bar chart */}
+      {displayBuckets.length > 0 && (
+        <div>
+          <p className="mb-1.5 font-mono text-2xs font-semibold uppercase tracking-wider text-text-muted/60">
+            Event Activity ({bucketLabel})
+          </p>
+          <div className="flex items-end gap-px" style={{ height: "48px" }}>
+            {displayBuckets.map((bucket, i) => {
+              const heightPct = bucket.total_events > 0
+                ? Math.max(8, Math.round((bucket.total_events / maxEvents) * 100))
+                : 4;
+              return (
+                <div
+                  key={i}
+                  className="flex flex-col items-center flex-1 min-w-0"
+                  style={{ height: "48px", justifyContent: "flex-end" }}
+                >
+                  <div
+                    className={`w-full rounded-sm ${barColor(bucket.total_events)}`}
+                    style={{ height: `${heightPct}%` }}
+                    title={`${bucket.bucket_start.slice(0, 10)} – ${bucket.bucket_end.slice(0, 10)}: ${bucket.total_events} event${bucket.total_events !== 1 ? "s" : ""}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-start gap-px mt-0.5">
+            {displayBuckets.map((bucket, i) => (
+              <div key={i} className="flex-1 min-w-0 text-center">
+                {bucket.total_events > 0 && (
+                  <span className="font-mono text-2xs text-text-muted/50 leading-none" style={{ fontSize: "9px" }}>
+                    {bucket.total_events}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* C. Evidence category mix */}
+      {topCategories.length > 0 && (
+        <div>
+          <p className="mb-1.5 font-mono text-2xs font-semibold uppercase tracking-wider text-text-muted/60">
+            Evidence Categories
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {topCategories.map(([cat, count]) => (
+              <span
+                key={cat}
+                className={`rounded border px-2 py-0.5 font-mono text-2xs ${categoryColor(cat)}`}
+              >
+                {cat} <span className="opacity-70">{count}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* D. Inactivity gaps */}
+      {displayGaps.length > 0 && (
+        <div>
+          <p className="mb-1.5 font-mono text-2xs font-semibold uppercase tracking-wider text-text-muted/60">
+            Inactivity Gaps (14+ days)
+          </p>
+          <ul className="space-y-1">
+            {displayGaps.map((gap, i) => (
+              <li key={i} className="font-mono text-2xs text-text-secondary">
+                <span className="text-text-primary">{gap.gap_days}d</span>
+                {" "}
+                <span className="text-text-muted">
+                  ({gap.gap_start.slice(0, 10)} – {gap.gap_end.slice(0, 10)})
+                </span>
+                {gap.previous_event_title && (
+                  <span className="text-text-muted"> after &ldquo;{gap.previous_event_title}&rdquo;</span>
+                )}
+                {gap.next_event_title && (
+                  <span className="text-text-muted"> before &ldquo;{gap.next_event_title}&rdquo;</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* E. Deterministic summary */}
+      {analytics.deterministic_summary && (
+        <p className="font-mono text-2xs italic text-text-muted">{analytics.deterministic_summary}</p>
+      )}
+
+      {/* F. Suggested checks */}
+      {analytics.suggested_checks.length > 0 && (
+        <div>
+          <p className="mb-1 font-mono text-2xs font-semibold uppercase tracking-wider text-text-muted/60">
+            Suggested Checks
+          </p>
+          <ul className="space-y-0.5">
+            {analytics.suggested_checks.map((check, i) => (
+              <li key={i} className="font-mono text-2xs text-text-secondary before:content-['–'] before:mr-1.5 before:text-text-muted">
+                {check}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* G. Disclaimer */}
+      <p className="font-mono text-2xs text-text-muted/40">
+        Deterministic timeline analytics. Not investment advice.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -3922,6 +4131,9 @@ export default function StrategyDetail() {
 
   // M41: assumption health
   const [assumptionHealth, setAssumptionHealth] = useState<StrategyAssumptionHealthResponse | null>(null);
+
+  // M43: timeline analytics
+  const [timelineAnalytics, setTimelineAnalytics] = useState<StrategyTimelineAnalyticsResponse | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -4022,6 +4234,8 @@ export default function StrategyDetail() {
     getStrategyVersionLineage(id).then(setVersionLineage).catch(() => setVersionLineage(null));
     // M41: load assumption health in parallel
     getStrategyAssumptionHealth(id).then(setAssumptionHealth).catch(() => setAssumptionHealth(null));
+    // M43: load timeline analytics in parallel
+    getStrategyTimelineAnalytics(id).then(setTimelineAnalytics).catch(() => setTimelineAnalytics(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -4455,6 +4669,9 @@ export default function StrategyDetail() {
 
       {/* M41: Assumption Health */}
       {assumptionHealth && <AssumptionHealthPanel health={assumptionHealth} />}
+
+      {/* M43: Timeline Analytics */}
+      {timelineAnalytics && <TimelineAnalyticsPanel analytics={timelineAnalytics} />}
     </div>
   );
 }

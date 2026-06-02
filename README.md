@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1199 tests, 1 skipped)
+│   └── tests/              Pytest tests (1223 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,86 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M42: CI Evidence Ingestion Recipes v1
+## Current milestone — M43: Strategy Timeline Analytics v1
+
+**Status: complete.**
+
+### M43 deliverables
+
+- **New service `backend/app/services/timeline_analytics.py`** — `compute_strategy_timeline_analytics(strategy_id, db, bucket, lookback_days)` assembles time-bucketed activity data and gap analysis from `AuditTimelineEvent` records. No AI, no external APIs, deterministic.
+
+  - **`TimelineAnalyticsBucketData` dataclass** — one entry per time bucket:
+    - `bucket_label` — human-readable period label (e.g. `"2026-W22"`, `"2026-05"`, `"2026-05-30"`).
+    - `bucket_start` / `bucket_end` — ISO timestamp boundaries.
+    - `total_events` — count of all events in the bucket.
+    - `event_type_counts` — dict of event type → count.
+    - `source_type_counts` — dict of source type → count.
+    - `evidence_category_counts` — dict of evidence category → count (same 11 categories as M29: `run` / `data` / `backtest` / `config` / `universe` / `signal` / `reliability` / `report` / `alert` / `ingestion` / `other`).
+
+  - **`TimelineInactivityGapData` dataclass** — one entry per gap >= 14 days:
+    - `gap_start` / `gap_end` — ISO timestamps bounding the gap.
+    - `gap_days` — length of the gap in days.
+    - `preceding_event_type` / `following_event_type` — event types on either side of the gap (null if no preceding/following event).
+
+  - **`StrategyTimelineAnalyticsData` dataclass** — top-level response:
+    - `strategy_id`, `bucket`, `lookback_days`, `generated_at`.
+    - `buckets` — list of `TimelineAnalyticsBucketData` in chronological order.
+    - `total_events_in_window` — sum of all events across all buckets.
+    - `active_buckets` — count of buckets with at least one event.
+    - `empty_buckets` — count of buckets with zero events.
+    - `peak_bucket_label` / `peak_bucket_count` — label and count of the busiest bucket.
+    - `staleness_status` — `active` (event within 14 days), `watch` (15–45 days), `stale` (> 45 days), `no_activity` (no events in window).
+    - `days_since_last_event` — float or null.
+    - `inactivity_gaps` — list of `TimelineInactivityGapData` for gaps >= 14 days, sorted longest-first, capped at 10.
+    - `evidence_category_mix` — dict of evidence category → total count across all buckets.
+    - `deterministic_summary` — rule-based text summary; no AI, no investment advice.
+    - `suggested_checks` — deterministic list of actionable checks based on staleness and gap analysis.
+
+- **New endpoint** `GET /api/strategies/{id}/timeline/analytics`:
+  - Query params: `bucket` (`day` / `week` / `month`, default `week`), `lookback_days` (int, default `180`, max `730`).
+  - Returns `StrategyTimelineAnalyticsResponse`. Read-only — no `AuditTimelineEvent` created.
+  - 404 for unknown strategy.
+
+- **Activity buckets**: each contains `total_events`, `event_type_counts`, `source_type_counts`, `evidence_category_counts` per time period.
+
+- **Evidence categories** reused from M29 `strategy_timeline` service: `run` / `data` / `backtest` / `config` / `universe` / `signal` / `reliability` / `report` / `alert` / `ingestion` / `other`.
+
+- **Staleness status rules**:
+  - `active`: last event within 14 days.
+  - `watch`: last event 15–45 days ago.
+  - `stale`: last event > 45 days ago.
+  - `no_activity`: no events in the lookback window.
+
+- **Gap analysis**: identifies inactivity gaps >= 14 days between consecutive events, sorted longest-first, capped at 10 gaps.
+
+- **Deterministic summary and suggested checks**: no AI, no investment advice.
+
+- **New schemas `backend/app/schemas/timeline_analytics.py`**:
+  `TimelineAnalyticsBucket`, `TimelineInactivityGap`, `StrategyTimelineAnalyticsResponse`.
+
+- **Frontend — `TimelineAnalyticsPanel`** in `StrategyDetail.tsx`:
+  - Summary strip: total events, active buckets, empty buckets, peak bucket, staleness status badge, days since last event.
+  - Bucket selector (day / week / month) and lookback selector (30 / 90 / 180 / 365 days).
+  - Div-based activity bar chart — one bar per bucket, height proportional to `total_events`, no chart library required.
+  - Evidence category mix panel showing category → count breakdown across the window.
+  - Inactivity gaps table showing gap start, end, length in days, and surrounding event types.
+  - Suggested checks panel.
+
+- **24 new backend M43 tests** (`tests/test_timeline_analytics_m43.py`). All 24 passed on first run.
+- **Backend total: 1223 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in 791ms).
+- No external APIs. Read-only. Not investment advice.
+
+### What M43 does NOT build (by design)
+
+- No live polling or real-time activity streaming.
+- No AI activity summaries or anomaly detection.
+- No cross-strategy timeline comparison.
+- No notification scheduling based on gap thresholds.
+
+---
+
+## Previously completed — M42: CI Evidence Ingestion Recipes v1
 
 **Status: complete.**
 

@@ -203,6 +203,17 @@ from app.schemas.signal_quality import (
     SignalTimestampCoverageRead,
     SymbolSignalQualityRead,
 )
+from app.schemas.timeline_analytics import (
+    TimelineAnalyticsBucket,
+    TimelineInactivityGap,
+    StrategyTimelineAnalyticsResponse,
+)
+from app.services.timeline_analytics import (
+    compute_strategy_timeline_analytics,
+    TimelineAnalyticsBucketData,
+    TimelineInactivityGapData,
+    StrategyTimelineAnalyticsData,
+)
 
 router = APIRouter(tags=["strategies"])
 
@@ -1611,6 +1622,83 @@ def compare_strategy_runs(
         )
 
     return compare_runs(run_a, run_b)
+
+
+# ---------------------------------------------------------------------------
+# M43: GET /api/strategies/{strategy_id}/timeline/analytics
+# NOTE: registered BEFORE /drilldown and /timeline so "analytics" is matched
+# as a literal path segment.
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/timeline/analytics",
+    response_model=StrategyTimelineAnalyticsResponse,
+)
+def get_strategy_timeline_analytics(
+    strategy_id: uuid.UUID,
+    bucket: str = Query(default="week", description="Bucket size: day, week, or month"),
+    lookback_days: int = Query(default=180, ge=1, le=730),
+    db: Session = Depends(get_db),
+) -> StrategyTimelineAnalyticsResponse:
+    """Return deterministic timeline activity analytics for a strategy.
+
+    Buckets events by day/week/month, computes inactivity gaps, staleness
+    status, and suggested checks.  No AI, no live market data, read-only.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    if bucket not in ("day", "week", "month"):
+        raise HTTPException(status_code=400, detail=f"Invalid bucket: {bucket!r}")
+    try:
+        result = compute_strategy_timeline_analytics(
+            strategy_id, db, bucket=bucket, lookback_days=lookback_days
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return StrategyTimelineAnalyticsResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        bucket=result.bucket,
+        lookback_days=result.lookback_days,
+        total_events=result.total_events,
+        active_bucket_count=result.active_bucket_count,
+        empty_bucket_count=result.empty_bucket_count,
+        latest_event_at=result.latest_event_at,
+        days_since_latest_event=result.days_since_latest_event,
+        most_active_bucket_start=result.most_active_bucket_start,
+        most_active_bucket_event_count=result.most_active_bucket_event_count,
+        dominant_event_type=result.dominant_event_type,
+        dominant_evidence_category=result.dominant_evidence_category,
+        longest_inactivity_gap_days=result.longest_inactivity_gap_days,
+        buckets=[
+            TimelineAnalyticsBucket(
+                bucket_start=b.bucket_start,
+                bucket_end=b.bucket_end,
+                total_events=b.total_events,
+                event_type_counts=b.event_type_counts,
+                source_type_counts=b.source_type_counts,
+                evidence_category_counts=b.evidence_category_counts,
+            )
+            for b in result.buckets
+        ],
+        gaps=[
+            TimelineInactivityGap(
+                gap_start=g.gap_start,
+                gap_end=g.gap_end,
+                gap_days=g.gap_days,
+                previous_event_title=g.previous_event_title,
+                next_event_title=g.next_event_title,
+            )
+            for g in result.gaps
+        ],
+        staleness_status=result.staleness_status,
+        deterministic_summary=result.deterministic_summary,
+        suggested_checks=result.suggested_checks,
+    )
 
 
 # ---------------------------------------------------------------------------

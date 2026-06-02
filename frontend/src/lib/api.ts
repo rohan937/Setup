@@ -74,6 +74,7 @@ import type {
   UniverseCoverageAnalysisResponse,
   ConfigSnapshotComparisonV2Response,
   StrategyAssumptionHealthResponse,
+  StrategyTimelineAnalyticsResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -877,5 +878,22 @@ export async function getStrategyAssumptionHealth(
 ): Promise<StrategyAssumptionHealthResponse> {
   return request<StrategyAssumptionHealthResponse>(
     `/api/strategies/${strategyId}/assumption-health`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M43: Timeline Analytics
+// ---------------------------------------------------------------------------
+
+export async function getStrategyTimelineAnalytics(
+  strategyId: string,
+  params?: { bucket?: string; lookback_days?: number },
+): Promise<StrategyTimelineAnalyticsResponse> {
+  const qs = new URLSearchParams();
+  if (params?.bucket) qs.set("bucket", params.bucket);
+  if (params?.lookback_days != null) qs.set("lookback_days", String(params.lookback_days));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return request<StrategyTimelineAnalyticsResponse>(
+    `/api/strategies/${strategyId}/timeline/analytics${query}`,
   );
 }
