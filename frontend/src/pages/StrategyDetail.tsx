@@ -5,6 +5,13 @@ import type {
   BacktestIssue,
   BacktestStatus,
   CostSensitivityScenario,
+  CostSensitivitySweep,
+  CostSweepScenario,
+  FillSensitivity,
+  FillSensitivityScenario,
+  ImprovementCheck,
+  PenaltyAttribution,
+  PenaltyAttributionCategory,
   DataEvidenceSummary,
   EvidenceBundleRequest,
   EvidenceBundleResponse,
@@ -1067,6 +1074,234 @@ function CostSensitivityTable({ scenarios, baseSharpe, baseReturn }: {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M36: V3 extended audit panel — cost sweep, fill sensitivity, penalty
+//       attribution, and improvement checks
+// ---------------------------------------------------------------------------
+
+function trustImpactBadge(impact: string): string {
+  switch (impact) {
+    case "high":
+      return "text-fidelity-low";
+    case "medium":
+      return "text-fidelity-medium";
+    case "low":
+      return "text-fidelity-high";
+    default:
+      return "text-text-muted";
+  }
+}
+
+function priorityBadgeStyle(priority: string): string {
+  switch (priority) {
+    case "high":
+      return "border-fidelity-low/30 bg-fidelity-low/10 text-fidelity-low";
+    case "medium":
+      return "border-fidelity-medium/30 bg-fidelity-medium/10 text-fidelity-medium";
+    default:
+      return "border-border bg-bg-600 text-text-muted";
+  }
+}
+
+function BacktestV3Panel({ audit }: { audit: BacktestAudit }) {
+  const sweep = audit.cost_sensitivity_sweep_json as CostSensitivitySweep | null;
+  const fillSens = audit.fill_sensitivity_json as FillSensitivity | null;
+  const penalty = audit.penalty_attribution_json as PenaltyAttribution | null;
+  const checks = audit.improvement_checks_json as ImprovementCheck[] | null;
+
+  if (!sweep && !fillSens && !penalty && !checks) return null;
+
+  const sortedChecks = checks
+    ? [...checks].sort((a, b) => {
+        const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+        return (order[a.priority] ?? 3) - (order[b.priority] ?? 3);
+      })
+    : [];
+
+  return (
+    <div className="mt-3 rounded-card border border-border bg-bg-700 p-3 space-y-2">
+      <p className="caption text-text-muted">M36 Analysis</p>
+
+      {/* Section 1: Cost Sweep */}
+      {sweep && (
+        <details className="rounded-control border border-border/50 bg-bg-800">
+          <summary className="flex cursor-pointer items-center justify-between px-3 py-2 list-none">
+            <div className="flex items-center gap-2">
+              <span className="caption">Cost Sweep</span>
+              {sweep.most_fragile_scenario && (
+                <span className="font-mono text-2xs text-text-muted">
+                  fragile: {sweep.most_fragile_scenario}
+                </span>
+              )}
+            </div>
+          </summary>
+          <div className="border-t border-border/50 px-3 py-2 space-y-2">
+            <p className="font-mono text-2xs text-text-secondary leading-relaxed">
+              {sweep.deterministic_summary}
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left font-mono text-2xs">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="py-1 pr-3 text-text-muted font-normal">Scenario</th>
+                    <th className="py-1 pr-3 text-text-muted font-normal">Cost bps</th>
+                    <th className="py-1 pr-3 text-text-muted font-normal">Adj. Return</th>
+                    <th className="py-1 pr-3 text-text-muted font-normal">Adj. Sharpe</th>
+                    <th className="py-1 text-text-muted font-normal">Trust Impact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(sweep.scenarios as CostSweepScenario[]).map((s, i) => (
+                    <tr key={i} className="border-b border-border/20 last:border-0">
+                      <td className="py-1 pr-3 text-text-secondary">{s.scenario_label}</td>
+                      <td className="py-1 pr-3 text-text-secondary">{s.total_cost_bps}</td>
+                      <td className="py-1 pr-3 text-text-secondary">
+                        {s.adjusted_annual_return !== null
+                          ? `${(s.adjusted_annual_return * 100).toFixed(1)}%`
+                          : "—"}
+                      </td>
+                      <td className="py-1 pr-3 text-text-secondary">
+                        {s.adjusted_sharpe !== null ? s.adjusted_sharpe.toFixed(2) : "—"}
+                      </td>
+                      <td className={`py-1 ${trustImpactBadge(s.trust_impact)}`}>
+                        {s.trust_impact}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {sweep.warnings.map((w, i) => (
+              <p key={i} className="font-mono text-2xs text-text-muted">⚠ {w}</p>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Section 2: Fill Sensitivity */}
+      {fillSens && (
+        <details className="rounded-control border border-border/50 bg-bg-800">
+          <summary className="flex cursor-pointer items-center justify-between px-3 py-2 list-none">
+            <div className="flex items-center gap-2">
+              <span className="caption">Fill Sensitivity</span>
+              <span className={`rounded-chip border px-1.5 py-0.5 font-mono text-2xs ${fragilityLevelBadge(fillSens.fill_realism_level)}`}>
+                {fillSens.fill_realism_level}
+              </span>
+            </div>
+          </summary>
+          <div className="border-t border-border/50 px-3 py-2 space-y-2">
+            <p className="font-mono text-2xs text-text-secondary leading-relaxed">
+              {fillSens.deterministic_summary}
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left font-mono text-2xs">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="py-1 pr-3 text-text-muted font-normal">Scenario</th>
+                    <th className="py-1 pr-3 text-text-muted font-normal">Fill Model</th>
+                    <th className="py-1 pr-3 text-text-muted font-normal">Slippage</th>
+                    <th className="py-1 pr-3 text-text-muted font-normal">Penalty Est.</th>
+                    <th className="py-1 text-text-muted font-normal">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(fillSens.scenarios as FillSensitivityScenario[]).map((s, i) => (
+                    <tr key={i} className="border-b border-border/20 last:border-0">
+                      <td className="py-1 pr-3 text-text-secondary">{s.scenario_label}</td>
+                      <td className="py-1 pr-3 text-text-secondary">{s.assumed_fill_model}</td>
+                      <td className="py-1 pr-3 text-text-secondary">{s.slippage_bps_assumption} bps</td>
+                      <td className="py-1 pr-3 text-text-secondary">{s.trust_penalty_estimate}</td>
+                      <td className="py-1 text-text-muted">{s.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {fillSens.warnings.map((w, i) => (
+              <p key={i} className="font-mono text-2xs text-text-muted">⚠ {w}</p>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Section 3: Penalty Attribution */}
+      {penalty && (
+        <details className="rounded-control border border-border/50 bg-bg-800">
+          <summary className="flex cursor-pointer items-center justify-between px-3 py-2 list-none">
+            <div className="flex items-center gap-2">
+              <span className="caption">Penalty Attribution</span>
+              {penalty.largest_penalty_category !== null && (
+                <span className="font-mono text-2xs text-fidelity-medium">
+                  top: {penalty.largest_penalty_category}
+                </span>
+              )}
+            </div>
+          </summary>
+          <div className="border-t border-border/50 px-3 py-2 space-y-2">
+            <p className="font-mono text-2xs text-text-secondary leading-relaxed">
+              {penalty.deterministic_summary}
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left font-mono text-2xs">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="py-1 pr-3 text-text-muted font-normal">Category</th>
+                    <th className="py-1 pr-3 text-text-muted font-normal">Issues</th>
+                    <th className="py-1 pr-3 text-text-muted font-normal">Penalty</th>
+                    <th className="py-1 text-text-muted font-normal">Suggested Check</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(penalty.categories as PenaltyAttributionCategory[]).map((c, i) => (
+                    <tr key={i} className="border-b border-border/20 last:border-0">
+                      <td className="py-1 pr-3 text-text-secondary">{c.category}</td>
+                      <td className="py-1 pr-3 text-text-secondary">{c.issue_count}</td>
+                      <td className="py-1 pr-3 text-fidelity-medium">
+                        -{c.estimated_score_penalty}pts
+                      </td>
+                      <td className="py-1 text-text-muted">{c.suggested_check}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+      )}
+
+      {/* Section 4: Improvement Checks */}
+      {sortedChecks.length > 0 && (
+        <details className="rounded-control border border-border/50 bg-bg-800">
+          <summary className="flex cursor-pointer items-center px-3 py-2 list-none">
+            <span className="caption">Improvement Checks</span>
+            <span className="ml-2 font-mono text-2xs text-text-muted">
+              {sortedChecks.length} item{sortedChecks.length !== 1 ? "s" : ""}
+            </span>
+          </summary>
+          <div className="border-t border-border/50 px-3 py-2 space-y-2">
+            {sortedChecks.map((c) => (
+              <div key={c.check_key} className="flex items-start gap-2">
+                <span
+                  className={`mt-0.5 shrink-0 rounded border px-1.5 py-0.5 font-mono text-2xs leading-none ${priorityBadgeStyle(c.priority)}`}
+                >
+                  {c.priority}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-mono text-xs text-text-secondary">{c.title}</p>
+                  <p className="font-mono text-2xs text-text-muted leading-relaxed">{c.description}</p>
+                  {c.evidence && (
+                    <p className="font-mono text-2xs text-text-muted/60 mt-0.5">{c.evidence}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -3059,6 +3294,7 @@ export default function StrategyDetail() {
                       {audits[r.id] && (
                         <div>
                           <BacktestAuditPanel audit={audits[r.id]} />
+                          <BacktestV3Panel audit={audits[r.id]} />
                           <button
                             onClick={() => handleAuditRun(r.id)}
                             disabled={auditingRunId === r.id}

@@ -565,6 +565,75 @@ export interface FragilitySummary {
   key_concerns: string[];
 }
 
+// ---------------------------------------------------------------------------
+// M36: Cost sweep, fill sensitivity, penalty attribution, improvement checks
+// ---------------------------------------------------------------------------
+
+export interface CostSweepScenario {
+  scenario_label: string;
+  trust_impact: string;
+  total_cost_bps: number;
+  incremental_cost_bps: number;
+  estimated_cost_drag: number | null;
+  adjusted_annual_return: number | null;
+  adjusted_sharpe: number | null;
+  sharpe_delta: number | null;
+}
+
+export interface CostSensitivitySweep {
+  baseline_cost_bps: number;
+  turnover: number;
+  base_annual_return: number;
+  base_sharpe: number;
+  scenarios: CostSweepScenario[];
+  most_fragile_scenario: string;
+  deterministic_summary: string;
+  warnings: string[];
+}
+
+export interface FillSensitivityScenario {
+  scenario_label: string;
+  assumed_fill_model: string;
+  execution_timing_assumption: string;
+  slippage_bps_assumption: number;
+  trust_penalty_estimate: string;
+  reason: string;
+}
+
+export interface FillSensitivity {
+  reported_fill_model: string;
+  fill_realism_level: string;
+  worst_case_scenario: string;
+  deterministic_summary: string;
+  scenarios: FillSensitivityScenario[];
+  warnings: string[];
+}
+
+export interface PenaltyAttributionCategory {
+  category: string;
+  issue_count: number;
+  severity_weight: number;
+  estimated_score_penalty: number;
+  top_issue_titles: string[];
+  suggested_check: string;
+}
+
+export interface PenaltyAttribution {
+  total_estimated_penalty: number;
+  largest_penalty_category: string | null;
+  deterministic_summary: string;
+  categories: PenaltyAttributionCategory[];
+}
+
+export interface ImprovementCheck {
+  check_key: string;
+  title: string;
+  description: string;
+  related_category: string;
+  priority: string;
+  evidence: string;
+}
+
 export interface BacktestAudit {
   id: string;
   strategy_run_id: string;
@@ -581,6 +650,11 @@ export interface BacktestAudit {
   cost_sensitivity_json: CostSensitivityResult | null;
   fill_realism_json: FillRealismResult | null;
   fragility_summary_json: FragilitySummary | null;
+  // M36: extended analysis blobs
+  cost_sensitivity_sweep_json: CostSensitivitySweep | null;
+  fill_sensitivity_json: FillSensitivity | null;
+  penalty_attribution_json: PenaltyAttribution | null;
+  improvement_checks_json: ImprovementCheck[] | null;
   issues: BacktestIssue[];
   created_at: string;
   updated_at: string;
@@ -795,6 +869,13 @@ export interface BacktestAuditListItem {
   // M13: extracted for quick display (null = unknown/unavailable)
   cost_fragility_level: string | null;
   fill_realism_level: string | null;
+  // M36: extended sweep blobs (also available inline)
+  cost_sensitivity_sweep_json: CostSensitivitySweep | null;
+  fill_sensitivity_json: FillSensitivity | null;
+  // M36: extracted for quick display (null = unknown/unavailable)
+  largest_penalty_category: string | null;
+  most_fragile_cost_scenario: string | null;
+  worst_fill_scenario: string | null;
   created_at: string;
   updated_at: string;
 }

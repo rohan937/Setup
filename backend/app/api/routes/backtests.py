@@ -117,6 +117,11 @@ def _build_audit_detail(audit: BacktestAudit) -> BacktestAuditDetail:
         cost_sensitivity_json=audit.cost_sensitivity_json,
         fill_realism_json=audit.fill_realism_json,
         fragility_summary_json=audit.fragility_summary_json,
+        # M36: pass through extended v3 analysis blobs
+        cost_sensitivity_sweep_json=getattr(audit, "cost_sensitivity_sweep_json", None),
+        fill_sensitivity_json=getattr(audit, "fill_sensitivity_json", None),
+        penalty_attribution_json=getattr(audit, "penalty_attribution_json", None),
+        improvement_checks_json=getattr(audit, "improvement_checks_json", None),
         created_at=audit.created_at,
         updated_at=audit.updated_at,
         issues=[BacktestIssueRead.model_validate(i) for i in audit.issues],
@@ -155,6 +160,11 @@ def _build_list_item(audit: BacktestAudit) -> BacktestAuditListItem:
         cost_sensitivity_json=audit.cost_sensitivity_json,
         fill_realism_json=audit.fill_realism_json,
         fragility_summary_json=audit.fragility_summary_json,
+        # M36: pass through extended v3 analysis blobs
+        cost_sensitivity_sweep_json=getattr(audit, "cost_sensitivity_sweep_json", None),
+        fill_sensitivity_json=getattr(audit, "fill_sensitivity_json", None),
+        penalty_attribution_json=getattr(audit, "penalty_attribution_json", None),
+        improvement_checks_json=getattr(audit, "improvement_checks_json", None),
         created_at=audit.created_at,
         updated_at=audit.updated_at,
         strategy_id=run.strategy_id if run else uuid.UUID(int=0),
@@ -165,6 +175,16 @@ def _build_list_item(audit: BacktestAudit) -> BacktestAuditListItem:
         top_issues=[BacktestIssueRead.model_validate(i) for i in sorted_issues[:3]],
         cost_fragility_level=cost_fragility_level,
         fill_realism_level=fill_realism_level,
+        # M36: extracted quick-display fields for list view
+        largest_penalty_category=(
+            (getattr(audit, "penalty_attribution_json", None) or {}).get("largest_penalty_category")
+        ),
+        most_fragile_cost_scenario=(
+            (getattr(audit, "cost_sensitivity_sweep_json", None) or {}).get("most_fragile_scenario")
+        ),
+        worst_fill_scenario=(
+            (getattr(audit, "fill_sensitivity_json", None) or {}).get("worst_case_scenario")
+        ),
     )
 
 
@@ -233,6 +253,11 @@ def create_backtest_audit(
         cost_sensitivity_json=result.cost_sensitivity_json,
         fill_realism_json=result.fill_realism_json,
         fragility_summary_json=result.fragility_summary_json,
+        # M36: persist extended v3 analysis blobs
+        cost_sensitivity_sweep_json=result.cost_sensitivity_sweep_json,
+        fill_sensitivity_json=result.fill_sensitivity_json,
+        penalty_attribution_json=result.penalty_attribution_json,
+        improvement_checks_json=result.improvement_checks_json,
     )
     db.add(audit)
     db.flush()

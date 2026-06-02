@@ -111,6 +111,11 @@ class BacktestAuditRead(BaseModel):
     cost_sensitivity_json: dict[str, Any] | None = None
     fill_realism_json: dict[str, Any] | None = None
     fragility_summary_json: dict[str, Any] | None = None
+    # M36: extended v3 analysis blobs (None for audits created before M36)
+    cost_sensitivity_sweep_json: dict[str, Any] | None = None
+    fill_sensitivity_json: dict[str, Any] | None = None
+    penalty_attribution_json: dict[str, Any] | None = None
+    improvement_checks_json: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -134,3 +139,7 @@ class BacktestAuditListItem(BacktestAuditRead):
     # M13: extracted fragility levels for quick display (None when not available).
     cost_fragility_level: str | None = None
     fill_realism_level: str | None = None
+    # M36: extracted quick-display fields for list view.
+    largest_penalty_category: str | None = None
+    most_fragile_cost_scenario: str | None = None
+    worst_fill_scenario: str | None = None

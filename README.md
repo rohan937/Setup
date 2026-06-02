@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1069 tests, 1 skipped)
+│   └── tests/              Pytest tests (1094 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,55 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M35: Strategy Version Lineage Tracker v1
+## Current milestone — M36: Backtest Reality Check v3 — Sensitivity + Attribution
+
+**Status: complete.**
+
+### M36 deliverables
+
+- **Migration** `0014_m36_backtest_audit_v3.py` — adds 4 nullable JSON columns to `backtest_audits`:
+  `cost_sensitivity_sweep_json`, `fill_sensitivity_json`, `penalty_attribution_json`, `improvement_checks_json`.
+  All existing columns preserved. Safe to run on existing databases.
+
+- **Service** `backend/app/services/backtest_reality.py` — extended with 4 new analysis functions,
+  all integrated into `run_backtest_reality_check()`. No AI, no external APIs, deterministic.
+
+  - **Cost sensitivity sweep** — 6 scenarios (assumed, 2×, 3×, 5× cost, +10 bps, +25 bps).
+    Adjusts `annual_return` and Sharpe by incremental cost drag per scenario.
+    `trust_impact`: `low` if ratio >= 1.5, `medium` if >= 1.0, `high` if < 1.0.
+    Approximation only — not a full re-backtest.
+
+  - **Fill sensitivity** — 5 rule-based scenarios.
+    `fill_realism_level`: `high_concern` for same-close or exact-fill models,
+    `medium_concern` for mid without slippage, `low_concern` for next-bar.
+    No market simulation.
+
+  - **Penalty attribution** — maps existing `BacktestIssue` records to 9 categories.
+    Applies severity weights: critical 25, high 15, medium 8, low 3.
+    Computes `largest_penalty_category`.
+
+  - **Improvement checks** — prioritized deterministic list generated from missing assumptions,
+    high-concern fill models, missing dataset links, critical issues, missing borrow cost.
+
+- **Schemas** — `BacktestAudit` and `BacktestAuditListItem` updated with 4 new optional fields.
+
+- **Frontend** — `BacktestV3Panel` in `StrategyDetail.tsx` with 4 collapsible sections
+  (cost sensitivity sweep, fill sensitivity, penalty attribution, improvement checks).
+  `Backtests.tsx` shows compact v3 chips when v3 data is present.
+
+- **25 new backend M36 tests** (`tests/test_backtest_reality_v3_m36.py`). Total: 1094 passed, 1 skipped.
+- **Zero TypeScript errors**, clean production build (63 modules, built in 790ms).
+- No external APIs. Deterministic. Not investment advice. Not a full re-backtest — approximations only.
+
+### What M36 does NOT build (by design)
+
+- No full backtest re-simulation or broker API fills.
+- No live execution data or AI explanations.
+- No market impact modeling or order-book simulation.
+
+---
+
+## Previously completed — M35: Strategy Version Lineage Tracker v1
 
 **Status: complete.**
 

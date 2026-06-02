@@ -113,6 +113,11 @@ class AuditResult:
     cost_sensitivity_json: dict | None = None
     fill_realism_json: dict | None = None
     fragility_summary_json: dict | None = None
+    # M36: extended v3 analysis blobs.
+    cost_sensitivity_sweep_json: dict | None = None
+    fill_sensitivity_json: dict | None = None
+    penalty_attribution_json: dict | None = None
+    improvement_checks_json: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -1313,6 +1318,432 @@ def _issues_from_fill_realism(
 
 
 # ---------------------------------------------------------------------------
+# M36 — Cost sensitivity sweep
+# ---------------------------------------------------------------------------
+
+def _run_cost_sensitivity_sweep(run: "StrategyRun") -> dict | None:
+    """A. Extended cost sweep: 6 scenarios relative to the run's assumed total cost."""
+    metrics: dict = run.metrics_json or {}
+    assumptions: dict = run.assumptions_json or {}
+    warnings: list[str] = []
+
+    base_cost = float(assumptions.get("transaction_cost_bps") or 0)
+    slippage = float(assumptions.get("slippage_bps") or 0)
+    total_cost = base_cost + slippage
+    turnover = float(metrics.get("turnover") or 0)
+    base_return = float(metrics.get("annual_return") or 0)
+    base_sharpe = float(metrics.get("sharpe") or 0)
+    volatility = float(metrics.get("volatility") or 0)
+
+    if not assumptions.get("transaction_cost_bps"):
+        warnings.append(
+            "transaction_cost_bps missing; sweep uses 0 bps baseline only for "
+            "sensitivity approximation."
+        )
+    if not turnover:
+        warnings.append(
+            "turnover missing; cost drag estimates are not computed."
+        )
+
+    scenarios_spec = [
+        ("assumed_cost", total_cost),
+        ("2x_cost", total_cost * 2),
+        ("3x_cost", total_cost * 3),
+        ("5x_cost", total_cost * 5),
+        ("assumed_plus_10bps", total_cost + 10),
+        ("assumed_plus_25bps", total_cost + 25),
+    ]
+
+    result_scenarios: list[dict] = []
+    for label, scenario_cost in scenarios_spec:
+        incremental = scenario_cost - total_cost
+        cost_drag = round((incremental / 10_000) * turnover, 4) if turnover > 0 else None
+        adj_return: float | None = None
+        if base_return != 0 and cost_drag is not None:
+            adj_return = round(base_return - cost_drag, 4)
+
+        adj_sharpe: float | None = None
+        if adj_return is not None and volatility > 0:
+            adj_sharpe = round(adj_return / volatility, 3)
+        elif base_sharpe != 0 and cost_drag is not None and volatility > 0:
+            adj_sharpe = round(base_sharpe - (cost_drag / volatility), 3)
+
+        sharpe_delta: float | None = None
+        if adj_sharpe is not None:
+            sharpe_delta = round(adj_sharpe - base_sharpe, 3)
+
+        if adj_sharpe is None:
+            trust_impact = "unknown"
+        elif adj_sharpe >= 1.5:
+            trust_impact = "low"
+        elif adj_sharpe >= 1.0:
+            trust_impact = "medium"
+        else:
+            trust_impact = "high"
+
+        result_scenarios.append({
+            "scenario_label": label,
+            "total_cost_bps": scenario_cost,
+            "incremental_cost_bps": incremental,
+            "estimated_cost_drag": cost_drag,
+            "adjusted_annual_return": adj_return,
+            "adjusted_sharpe": adj_sharpe,
+            "sharpe_delta": sharpe_delta,
+            "trust_impact": trust_impact,
+        })
+
+    high_scenarios = [s for s in result_scenarios if s["trust_impact"] == "high"]
+    most_fragile = (
+        high_scenarios[0]["scenario_label"]
+        if high_scenarios
+        else result_scenarios[-1]["scenario_label"]
+    )
+
+    summary_parts: list[str] = [
+        f"Baseline cost assumption: {total_cost:.0f} bps."
+        if total_cost > 0
+        else "No cost baseline provided."
+    ]
+    high_count = len(high_scenarios)
+    if high_count > 0:
+        summary_parts.append(
+            f"{high_count} scenario(s) estimate high trust impact under elevated costs."
+        )
+    else:
+        summary_parts.append(
+            "Estimated trust impact is manageable under all scenarios."
+        )
+    summary_parts.append(
+        "This is a deterministic approximation, not a full re-backtest."
+    )
+
+    return {
+        "baseline_cost_bps": total_cost,
+        "turnover": turnover,
+        "base_annual_return": base_return,
+        "base_sharpe": base_sharpe,
+        "scenarios": result_scenarios,
+        "most_fragile_scenario": most_fragile,
+        "deterministic_summary": " ".join(summary_parts),
+        "warnings": warnings,
+    }
+
+
+# ---------------------------------------------------------------------------
+# M36 — Fill sensitivity
+# ---------------------------------------------------------------------------
+
+def _run_fill_sensitivity(run: "StrategyRun") -> dict | None:
+    """B. Rule-based fill sensitivity across 5 scenario labels."""
+    assumptions: dict = run.assumptions_json or {}
+    metrics: dict = run.metrics_json or {}
+
+    reported_fill = str(assumptions.get("fill_model") or "unknown")
+    slippage_bps = float(assumptions.get("slippage_bps") or 0)
+    exec_timing = str(assumptions.get("execution_timing") or "unknown")
+    turnover = float(metrics.get("turnover") or 0)
+
+    _HIGH_CONCERN = {"close", "same_close", "same_bar", "exact_price", "open", "prev_close", "last"}
+    _MED_CONCERN = {"mid", "vwap", "twap", "mid_price"}
+    _LOW_CONCERN = {
+        "next_bar_open", "next_close", "conservative",
+        "mid_plus_5bps", "slippage_adjusted", "next_open",
+    }
+
+    fill_key = reported_fill.lower().replace(" ", "_")
+    if fill_key in _HIGH_CONCERN:
+        fill_realism = "high_concern"
+    elif fill_key in _MED_CONCERN:
+        fill_realism = "low_concern" if slippage_bps > 0 else "medium_concern"
+    elif fill_key in _LOW_CONCERN:
+        fill_realism = "low_concern"
+    else:
+        fill_realism = "unknown"
+
+    rep_penalty = (
+        "high" if fill_realism == "high_concern"
+        else "medium" if fill_realism == "medium_concern"
+        else "low" if fill_realism == "low_concern"
+        else "unknown"
+    )
+
+    scenarios = [
+        {
+            "scenario_label": "reported_fill",
+            "assumed_fill_model": reported_fill,
+            "slippage_bps_assumption": slippage_bps,
+            "execution_timing_assumption": exec_timing,
+            "trust_penalty_estimate": rep_penalty,
+            "reason": f"As reported ({reported_fill}).",
+        },
+        {
+            "scenario_label": "mid_plus_slippage",
+            "assumed_fill_model": "mid",
+            "slippage_bps_assumption": max(slippage_bps, 5.0),
+            "execution_timing_assumption": "next_bar",
+            "trust_penalty_estimate": "medium",
+            "reason": "Mid-price with slippage is a standard conservative assumption.",
+        },
+        {
+            "scenario_label": "next_bar_open",
+            "assumed_fill_model": "next_bar_open",
+            "slippage_bps_assumption": max(slippage_bps, 5.0),
+            "execution_timing_assumption": "next_bar",
+            "trust_penalty_estimate": "low",
+            "reason": "Next-bar-open is more conservative than same-bar fills.",
+        },
+        {
+            "scenario_label": "worst_side_fill",
+            "assumed_fill_model": "worst_side",
+            "slippage_bps_assumption": max(slippage_bps * 2, 20.0),
+            "execution_timing_assumption": "next_bar",
+            "trust_penalty_estimate": "high" if turnover > 0.5 else "medium",
+            "reason": (
+                "Worst-side fill with doubled slippage."
+                + (" High concern given turnover." if turnover > 0.5 else "")
+            ),
+        },
+        {
+            "scenario_label": "conservative_fill",
+            "assumed_fill_model": "conservative",
+            "slippage_bps_assumption": max(slippage_bps * 1.5, 10.0),
+            "execution_timing_assumption": "next_bar",
+            "trust_penalty_estimate": "high" if turnover > 1.0 else "medium",
+            "reason": (
+                "Conservative fill approximation."
+                + (" High turnover increases penalty." if turnover > 1.0 else "")
+            ),
+        },
+    ]
+
+    worst = next(
+        (s for s in scenarios if s["trust_penalty_estimate"] == "high"),
+        scenarios[-1],
+    )
+
+    if fill_realism == "high_concern":
+        note = (
+            "Same-close or exact fills may overstate backtest performance by "
+            "avoiding realistic market impact."
+        )
+    elif fill_realism == "medium_concern":
+        note = (
+            "Fill assumption is moderately realistic; explicit slippage "
+            "assumptions are recommended."
+        )
+    elif fill_realism == "low_concern":
+        note = "Fill assumption appears conservative and realistic."
+    else:
+        note = "Fill model not recognized; review fill assumption manually."
+
+    return {
+        "reported_fill_model": reported_fill,
+        "fill_realism_level": fill_realism,
+        "scenarios": scenarios,
+        "worst_case_scenario": worst["scenario_label"],
+        "deterministic_summary": (
+            note + " This analysis uses rule-based estimation, not market simulation."
+        ),
+        "warnings": [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# M36 — Penalty attribution
+# ---------------------------------------------------------------------------
+
+def _build_penalty_attribution(issues: list[AuditIssue]) -> dict | None:
+    """C. Attribute the trust-score penalty across logical categories."""
+    _KEYWORDS = {
+        "lookahead": "lookahead_risk",
+        "look_ahead": "lookahead_risk",
+        "cost": "transaction_cost_realism",
+        "transaction": "transaction_cost_realism",
+        "slippage": "fill_realism",
+        "fill": "fill_realism",
+        "liquidity": "liquidity_realism",
+        "volume": "liquidity_realism",
+        "borrow": "borrow_realism",
+        "short": "borrow_realism",
+        "data": "data_quality",
+        "quality": "data_quality",
+        "sample": "sample_size_confidence",
+        "trade_count": "sample_size_confidence",
+        "sharpe": "metric_plausibility",
+        "return": "metric_plausibility",
+    }
+    _SEVERITY_WEIGHTS: dict[str, int] = {
+        "critical": 25,
+        "high": 15,
+        "medium": 8,
+        "low": 3,
+    }
+    _SUGGESTED_CHECKS: dict[str, str] = {
+        "lookahead_risk": "Review all signal calculations to ensure no future data is used.",
+        "transaction_cost_realism": (
+            "Add explicit transaction_cost_bps and slippage_bps assumptions."
+        ),
+        "fill_realism": (
+            "Replace same-close or exact fill with next-bar or slippage-adjusted fill model."
+        ),
+        "liquidity_realism": "Add liquidity constraints or volume checks to the strategy.",
+        "borrow_realism": "Add borrow_cost_bps when shorting is enabled.",
+        "data_quality": "Review data quality issues before trusting backtest results.",
+        "sample_size_confidence": (
+            "Add trade_count to support sample-size confidence checks."
+        ),
+        "metric_plausibility": "Verify reported metrics are computed correctly.",
+        "missing_evidence": (
+            "Link dataset snapshot and add assumptions to improve audit coverage."
+        ),
+    }
+
+    cats: dict[str, dict] = {}
+    for issue in issues:
+        cat = "missing_evidence"
+        text = (
+            f"{issue.issue_type or ''} "
+            f"{issue.description or ''}"
+        ).lower()
+        for kw, c in _KEYWORDS.items():
+            if kw in text:
+                cat = c
+                break
+        cats.setdefault(cat, {"issues": [], "penalty": 0})
+        cats[cat]["issues"].append(issue)
+        cats[cat]["penalty"] += _SEVERITY_WEIGHTS.get(issue.severity, 3)
+
+    result_cats: list[dict] = []
+    for cat, info in sorted(cats.items(), key=lambda x: -x[1]["penalty"]):
+        titles = [
+            i.title
+            for i in info["issues"][:3]
+            if i.title
+        ]
+        result_cats.append({
+            "category": cat,
+            "issue_count": len(info["issues"]),
+            "severity_weight": info["penalty"],
+            "estimated_score_penalty": min(info["penalty"], 30),
+            "top_issue_titles": titles,
+            "suggested_check": _SUGGESTED_CHECKS.get(cat, "Review flagged issues."),
+        })
+
+    total = sum(c["estimated_score_penalty"] for c in result_cats)
+    largest = result_cats[0]["category"] if result_cats else None
+    summary = f"{len(result_cats)} issue category(ies) identified."
+    if largest:
+        summary += (
+            f" {largest.replace('_', ' ').title()} contributes the most to the "
+            "estimated trust score reduction."
+        )
+    summary += " This attribution is an approximation based on logged issues."
+
+    return {
+        "categories": result_cats,
+        "total_estimated_penalty": total,
+        "largest_penalty_category": largest,
+        "deterministic_summary": summary,
+    }
+
+
+# ---------------------------------------------------------------------------
+# M36 — Improvement checks
+# ---------------------------------------------------------------------------
+
+def _generate_improvement_checks(
+    run: "StrategyRun",
+    issues: list[AuditIssue],
+    fill_sensitivity: dict | None,
+) -> list[dict]:
+    """D. Generate prioritised, actionable improvement checks for this run."""
+    checks: list[dict] = []
+    assumptions: dict = run.assumptions_json or {}
+    metrics: dict = run.metrics_json or {}
+    _priority_order = {"high": 0, "medium": 1, "low": 2}
+
+    if not assumptions.get("transaction_cost_bps"):
+        checks.append({
+            "check_key": "add_cost_assumption",
+            "title": "Add explicit transaction_cost_bps and slippage_bps assumptions",
+            "description": (
+                "Cost assumptions are required for meaningful cost sensitivity analysis."
+            ),
+            "related_category": "transaction_cost_realism",
+            "priority": "high",
+            "evidence": "transaction_cost_bps not found in assumptions_json",
+        })
+
+    if (
+        fill_sensitivity is not None
+        and fill_sensitivity.get("fill_realism_level") == "high_concern"
+    ):
+        checks.append({
+            "check_key": "improve_fill_model",
+            "title": "Replace same-close or exact fill with a more realistic fill model",
+            "description": (
+                "Same-close fills can overstate performance. Consider next-bar-open "
+                "or slippage-adjusted fill."
+            ),
+            "related_category": "fill_realism",
+            "priority": "high",
+            "evidence": (
+                f"Reported fill model: {fill_sensitivity.get('reported_fill_model')}"
+            ),
+        })
+
+    if not metrics.get("trade_count"):
+        checks.append({
+            "check_key": "add_trade_count",
+            "title": "Add trade_count to metrics",
+            "description": "Trade count enables sample-size confidence checks.",
+            "related_category": "sample_size_confidence",
+            "priority": "medium",
+            "evidence": "trade_count not found in metrics_json",
+        })
+
+    if run.dataset_snapshot_id is None:
+        checks.append({
+            "check_key": "link_dataset",
+            "title": "Link a dataset snapshot to this run",
+            "description": (
+                "Dataset evidence allows data quality to be verified in the audit."
+            ),
+            "related_category": "data_quality",
+            "priority": "medium",
+            "evidence": "No dataset snapshot linked to this run",
+        })
+
+    critical_issues = [i for i in issues if i.severity == "critical"]
+    if critical_issues:
+        checks.append({
+            "check_key": "resolve_critical_issues",
+            "title": f"Review {len(critical_issues)} critical backtest issue(s)",
+            "description": (
+                "Critical issues may fundamentally compromise backtest reliability."
+            ),
+            "related_category": "missing_evidence",
+            "priority": "high",
+            "evidence": "; ".join(
+                i.title for i in critical_issues[:2] if i.title
+            ),
+        })
+
+    if assumptions.get("short_enabled") and not assumptions.get("borrow_cost_bps"):
+        checks.append({
+            "check_key": "add_borrow_cost",
+            "title": "Add borrow_cost_bps when shorting is enabled",
+            "description": "Borrow costs can significantly impact short-side returns.",
+            "related_category": "borrow_realism",
+            "priority": "medium",
+            "evidence": "short_enabled=True but borrow_cost_bps not set",
+        })
+
+    checks.sort(key=lambda c: _priority_order.get(c.get("priority", "low"), 2))
+    return checks
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -1385,6 +1816,15 @@ def run_backtest_audit(
     status = _overall_status(trust_score)
     summary = _build_summary(issues, trust_score, status)
 
+    # ------------------------------------------------------------------
+    # M36 extended analyses (run after issues are finalised so attribution
+    # reflects the complete issue list).
+    # ------------------------------------------------------------------
+    cost_sensitivity_sweep = _run_cost_sensitivity_sweep(run)
+    fill_sensitivity = _run_fill_sensitivity(run)
+    penalty_attribution = _build_penalty_attribution(issues)
+    improvement_checks = _generate_improvement_checks(run, issues, fill_sensitivity)
+
     return AuditResult(
         issues=issues,
         trust_score=trust_score,
@@ -1400,4 +1840,8 @@ def run_backtest_audit(
         cost_sensitivity_json=cost_sensitivity,
         fill_realism_json=fill_realism,
         fragility_summary_json=fragility_summary,
+        cost_sensitivity_sweep_json=cost_sensitivity_sweep,
+        fill_sensitivity_json=fill_sensitivity,
+        penalty_attribution_json=penalty_attribution,
+        improvement_checks_json={"checks": improvement_checks},
     )

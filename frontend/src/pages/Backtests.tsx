@@ -5,6 +5,8 @@ import type {
   BacktestIssue,
   BacktestStatus,
   CostSensitivityScenario,
+  CostSensitivitySweep,
+  FillSensitivity,
 } from "@/types";
 import { getBacktestAudits } from "@/lib/api";
 
@@ -153,6 +155,52 @@ function CostSensitivityStrip({
   );
 }
 
+// ---------------------------------------------------------------------------
+// M36: compact helpers
+// ---------------------------------------------------------------------------
+
+function M36MetaChips({
+  audit,
+}: {
+  audit: BacktestAuditListItem;
+}) {
+  const sweep = audit.cost_sensitivity_sweep_json as CostSensitivitySweep | null;
+  const fill = audit.fill_sensitivity_json as FillSensitivity | null;
+  const hasChips =
+    audit.largest_penalty_category !== null ||
+    (sweep !== null && sweep.most_fragile_scenario) ||
+    (fill !== null && fill.fill_realism_level === "high_concern") ||
+    audit.most_fragile_cost_scenario !== null ||
+    audit.worst_fill_scenario !== null;
+
+  if (!hasChips) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {audit.largest_penalty_category !== null && (
+        <span className="rounded-chip border border-fidelity-medium/30 bg-fidelity-medium/10 px-2 py-0.5 font-mono text-2xs text-fidelity-medium">
+          top issue: {audit.largest_penalty_category}
+        </span>
+      )}
+      {(audit.most_fragile_cost_scenario !== null || (sweep !== null && sweep.most_fragile_scenario)) && (
+        <span className="font-mono text-2xs text-text-muted">
+          cost: {audit.most_fragile_cost_scenario ?? sweep?.most_fragile_scenario}
+        </span>
+      )}
+      {(fill !== null && fill.fill_realism_level === "high_concern") && (
+        <span className="rounded-chip border border-fidelity-low/30 bg-fidelity-low/10 px-2 py-0.5 font-mono text-2xs text-fidelity-low">
+          fill: high concern
+        </span>
+      )}
+      {audit.worst_fill_scenario !== null && (
+        <span className="font-mono text-2xs text-text-muted">
+          worst fill: {audit.worst_fill_scenario}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function AuditCard({ audit }: { audit: BacktestAuditListItem }) {
   const cs = audit.cost_sensitivity_json;
   const fr = audit.fill_realism_json;
@@ -224,6 +272,9 @@ function AuditCard({ audit }: { audit: BacktestAuditListItem }) {
           )}
         </div>
       )}
+
+      {/* M36: compact sweep/fill/penalty metadata chips */}
+      <M36MetaChips audit={audit} />
 
       {/* M13: Cost sensitivity scenario strip */}
       {hasCsScenarios && (

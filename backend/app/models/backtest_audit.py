@@ -51,6 +51,13 @@ class BacktestAudit(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     fill_realism_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     fragility_summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # M36: extended v3 analysis columns.
+    # Nullable — populated by run_backtest_audit; existing audits return null.
+    cost_sensitivity_sweep_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    fill_sensitivity_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    penalty_attribution_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    improvement_checks_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Relationships
     strategy_run: Mapped["StrategyRun"] = relationship(  # noqa: F821
         "StrategyRun",
