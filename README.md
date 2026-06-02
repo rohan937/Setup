@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1117 tests, 1 skipped)
+│   └── tests/              Pytest tests (1140 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,68 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M37: Dataset Snapshot Quality Drill-Down v2
+## Current milestone — M38: Signal Quality Drill-Down v2
+
+**Status: complete.**
+
+### M38 deliverables
+
+- **Migration** `0016_m38_signal_quality_drilldown.py` — adds 4 nullable JSON columns to `signal_snapshots`:
+  `signal_distribution_json`, `symbol_quality_json`, `signal_row_quality_json`, `signal_quality_summary_json`.
+  All existing columns preserved. Safe to run on existing databases.
+
+- **New service** `backend/app/services/signal_quality_drilldown.py` — deterministic signal quality analysis
+  service. Does not modify `signal_snapshots.py`. No AI, no external APIs. Six exported functions:
+  - `compute_signal_distribution(rows)` — per-signal analysis: `value_count`, `missing_count`,
+    `non_numeric_count`, `mean`, `median`, `min`, `max`, `stddev`, `zero_count`, `positive_count`,
+    `negative_count`, `outlier_count` (IQR-based), extreme z-score counts, zero-variance detection,
+    `distribution_status` (`clean` / `review` / `weak` / `unusable`).
+  - `compute_symbol_quality(rows)` — per-symbol analysis: `missing_rate`, `mean`, `stddev`,
+    `outlier_count`, `duplicate_timestamp_count`, `quality_status`; sorted by worst status; capped at 200.
+  - `compute_timestamp_coverage(rows)` — totals: `total`, `duplicate_symbol_timestamp`, `invalid_timestamps`.
+  - `compute_signal_row_quality_samples(rows)` — row evidence samples capped at 10 per type:
+    missing signals, non-numeric signals, duplicate sym+ts, outliers, invalid timestamps.
+  - `compute_signal_quality_summary(distribution, symbol_quality, timestamp_coverage)` — aggregated summary
+    with status counts, totals, worst signals/symbols list, suggested checks.
+  - `compute_signal_quality_drilldown(rows)` — orchestrates all functions into a single response.
+
+- **Snapshot creation updated** — `POST /api/strategies/{id}/signal-snapshots` now computes and stores
+  all 4 quality JSON fields on every new snapshot. Gracefully skips quality computation if it fails
+  (does not block ingestion).
+
+- **New endpoint** `GET /api/signal-snapshots/{id}/quality-drilldown` — returns stored quality fields
+  if present; computes on-the-fly from snapshot rows if stored fields are null. 404 for unknown snapshot.
+
+- **New schemas** `backend/app/schemas/signal_quality.py`:
+  `SignalDistributionRead`, `SymbolQualityRead`, `TimestampCoverageRead`,
+  `SignalRowQualitySamplesRead`, `SignalQualitySummaryRead`, `SignalQualityDrilldownResponse`.
+
+- **Frontend** — `SignalQualityDrilldownPanel` in `StrategyDetail.tsx`:
+  - Summary strip (status counts by signal distribution status).
+  - Distribution card (collapsible, per-signal stats: value count, missing/non-numeric, mean/median/min/max/stddev,
+    zero/positive/negative counts, outlier count, distribution status).
+  - Symbol quality table (per-symbol missing rate, mean, stddev, outlier count, duplicate timestamp count,
+    quality status).
+  - Row evidence samples (grouped by sample type with row data).
+  - Suggested checks panel.
+  - "Inspect Quality" button per snapshot row in the StrategyDetail signal snapshots section opens the
+    drill-down panel.
+
+- **23 new backend M38 tests** (`tests/test_signal_quality_drilldown_m38.py`).
+- **Backend total: 1140 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in 753ms).
+- No external APIs. Deterministic. Not investment advice.
+
+### What M38 does NOT build (by design)
+
+- No factor IC/IR computation or alpha decay analysis.
+- No external feature store integration.
+- No automatic signal repair or correction.
+- No AI explanations of signal quality.
+
+---
+
+## Previously completed — M37: Dataset Snapshot Quality Drill-Down v2
 
 **Status: complete.**
 

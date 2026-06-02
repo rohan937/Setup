@@ -40,6 +40,9 @@ import type {
   TimelineEvent,
   UniverseSnapshotRead,
   UniverseSnapshotSummary,
+  SignalQualityDrilldownResponse,
+  SymbolSignalQuality,
+  SignalRowQualitySample,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -56,6 +59,7 @@ import {
   getStrategyVersionLineage,
   ingestEvidenceBundle,
   runBacktestAudit,
+  getSignalSnapshotQualityDrilldown,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -758,9 +762,11 @@ function SignalEvidenceChip({ sig }: { sig: SignalSnapshotSummary }) {
 function SignalEvidencePanel({
   signalSnapshots,
   onLogSignal,
+  onInspectQuality,
 }: {
   signalSnapshots: SignalSnapshotRead[];
   onLogSignal: () => void;
+  onInspectQuality?: (snapshotId: string) => void;
 }) {
   return (
     <div className="rounded-card border border-border bg-bg-700">
@@ -804,9 +810,19 @@ function SignalEvidencePanel({
                     </span>
                   </div>
                 </div>
-                <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
-                  {fmtDateShort(ss.created_at)}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {onInspectQuality && (
+                    <button
+                      onClick={() => onInspectQuality(ss.id)}
+                      className="rounded-control border border-border px-2 py-0.5 font-mono text-2xs text-text-muted hover:border-accent-500/40 hover:text-accent-300"
+                    >
+                      Inspect Quality
+                    </button>
+                  )}
+                  <span className="font-mono text-2xs text-text-muted whitespace-nowrap">
+                    {fmtDateShort(ss.created_at)}
+                  </span>
+                </div>
               </div>
             ))}
             {signalSnapshots.length > 5 && (
@@ -2376,6 +2392,308 @@ function TrendPanel({ title, trend }: { title: string; trend: TrendSummary }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// M38: Signal Quality Drilldown panel
+// ---------------------------------------------------------------------------
+
+function signalStatusColor(status: string): string {
+  switch (status) {
+    case "clean": return "text-teal-400";
+    case "review": return "text-yellow-400";
+    case "weak": return "text-orange-400";
+    case "unusable": return "text-red-400";
+    default: return "text-text-muted";
+  }
+}
+
+function SignalQualityDrilldownPanel({ drilldown }: { drilldown: SignalQualityDrilldownResponse }) {
+  const [distExpanded, setDistExpanded] = useState(false);
+  const [symExpanded, setSymExpanded] = useState(false);
+  const [rowExpanded, setRowExpanded] = useState(false);
+  const s = drilldown.quality_summary;
+  const dist = drilldown.signal_distribution;
+  const ts = drilldown.timestamp_coverage;
+
+  const rowQualityEntries = (
+    Object.entries(drilldown.row_quality) as [string, SignalRowQualitySample[]][]
+  ).filter(([, samples]) => samples.length > 0);
+
+  const displayedSymbols = drilldown.symbol_quality.slice(0, 20);
+  const extraSymbols = drilldown.symbol_quality.length - 20;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      {/* Header */}
+      <div className="border-b border-border px-4 py-2.5 flex items-center justify-between gap-2">
+        <p className="caption">
+          Signal Quality Drill-Down:{" "}
+          <span className="text-accent-300">{drilldown.label}</span>
+        </p>
+        <div className="flex items-center gap-3">
+          {drilldown.signal_name && (
+            <span className="font-mono text-2xs text-accent-300/80">{drilldown.signal_name}</span>
+          )}
+          <span className={`mono-num font-bold text-lg ${scoreColor(drilldown.quality_score)}`}>
+            {drilldown.quality_score != null ? drilldown.quality_score : "—"}
+            <span className="text-sm font-normal text-text-muted">/100</span>
+          </span>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* A. Summary strip */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-2xs">
+          <span className="text-text-muted">
+            <span className="text-text-secondary">{s.total_rows.toLocaleString()}</span> rows
+          </span>
+          <span className="text-text-muted">
+            <span className="text-text-secondary">{s.symbol_count}</span> symbols
+          </span>
+          <span className="text-text-muted">
+            <span className="text-text-secondary">{s.signal_value_count.toLocaleString()}</span> values
+          </span>
+          {s.missing_signal_count > 0 && (
+            <span className="text-text-muted">
+              <span className="text-yellow-400">{s.missing_signal_count}</span> missing
+            </span>
+          )}
+          {s.non_numeric_signal_count > 0 && (
+            <span className="text-text-muted">
+              <span className="text-orange-400">{s.non_numeric_signal_count}</span> non-numeric
+            </span>
+          )}
+          {s.outlier_count > 0 && (
+            <span className="text-text-muted">
+              <span className="text-fidelity-medium">{s.outlier_count}</span> outliers
+            </span>
+          )}
+          {s.duplicate_symbol_timestamp_count > 0 && (
+            <span className="text-text-muted">
+              <span className="text-fidelity-low">{s.duplicate_symbol_timestamp_count}</span> dup sym/ts
+            </span>
+          )}
+          {s.invalid_timestamp_count > 0 && (
+            <span className="text-text-muted">
+              <span className="text-fidelity-low">{s.invalid_timestamp_count}</span> bad timestamps
+            </span>
+          )}
+          <span>
+            <span className="text-teal-400">{s.clean_symbol_count} clean</span>
+            {" · "}
+            <span className="text-yellow-400">{s.review_symbol_count} review</span>
+            {" · "}
+            <span className="text-orange-400">{s.weak_symbol_count} weak</span>
+            {" · "}
+            <span className="text-red-400">{s.unusable_symbol_count} unusable</span>
+          </span>
+        </div>
+
+        {/* Timestamp coverage strip */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-2xs text-text-muted">
+          <span>
+            ts status: <span className={signalStatusColor(ts.timestamp_status)}>{ts.timestamp_status}</span>
+          </span>
+          {ts.min_timestamp && (
+            <span>{ts.min_timestamp.slice(0, 10)} – {ts.max_timestamp?.slice(0, 10) ?? "?"}</span>
+          )}
+          {ts.duplicate_symbol_timestamp_count > 0 && (
+            <span><span className="text-fidelity-low">{ts.duplicate_symbol_timestamp_count}</span> dup sym/ts</span>
+          )}
+          {ts.invalid_timestamp_count > 0 && (
+            <span><span className="text-fidelity-low">{ts.invalid_timestamp_count}</span> invalid ts</span>
+          )}
+          {ts.symbols_with_gaps_count != null && ts.symbols_with_gaps_count > 0 && (
+            <span><span className="text-yellow-400">{ts.symbols_with_gaps_count}</span> symbols w/ gaps</span>
+          )}
+        </div>
+
+        {/* B. Signal distribution (collapsible) */}
+        <div className="rounded-control border border-border bg-bg-800">
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+            onClick={() => setDistExpanded((v) => !v)}
+          >
+            <span>
+              Signal Distribution{" "}
+              <span className="font-mono text-2xs text-text-muted">({dist.signal_column})</span>
+            </span>
+            <span className="flex items-center gap-2">
+              <span className={signalStatusColor(dist.distribution_status)}>{dist.distribution_status}</span>
+              <span className="text-text-muted">{distExpanded ? "▲" : "▼"}</span>
+            </span>
+          </button>
+          {distExpanded && (
+            <div className="border-t border-border px-3 pb-3 pt-2 space-y-2">
+              {/* Stats grid */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 font-mono text-2xs sm:grid-cols-4">
+                <span className="text-text-muted">mean: <span className="text-text-secondary">{dist.mean_value?.toFixed(4) ?? "—"}</span></span>
+                <span className="text-text-muted">median: <span className="text-text-secondary">{dist.median_value?.toFixed(4) ?? "—"}</span></span>
+                <span className="text-text-muted">min: <span className="text-text-secondary">{dist.min_value?.toFixed(4) ?? "—"}</span></span>
+                <span className="text-text-muted">max: <span className="text-text-secondary">{dist.max_value?.toFixed(4) ?? "—"}</span></span>
+                <span className="text-text-muted">stddev: <span className="text-text-secondary">{dist.stddev_value?.toFixed(4) ?? "—"}</span></span>
+                <span className="text-text-muted">unique: <span className="text-text-secondary">{dist.unique_value_count.toLocaleString()}</span></span>
+                <span className="text-text-muted">values: <span className="text-text-secondary">{dist.value_count.toLocaleString()}</span></span>
+                <span className="text-text-muted">missing: <span className="text-yellow-400">{dist.missing_count}</span></span>
+              </div>
+              {/* Counts */}
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-2xs text-text-muted">
+                <span>+: <span className="text-teal-400">{dist.positive_count.toLocaleString()}</span></span>
+                <span>zero: <span className="text-text-secondary">{dist.zero_count.toLocaleString()}</span></span>
+                <span>-: <span className="text-orange-400">{dist.negative_count.toLocaleString()}</span></span>
+                <span>outliers: <span className="text-fidelity-medium">{dist.outlier_count}</span></span>
+                <span>extreme+: <span className="text-fidelity-low">{dist.extreme_positive_count}</span></span>
+                <span>extreme-: <span className="text-fidelity-low">{dist.extreme_negative_count}</span></span>
+                <span>non-numeric: <span className="text-orange-400">{dist.non_numeric_count}</span></span>
+              </div>
+              {/* Issues */}
+              {dist.issues.length > 0 && (
+                <ul className="space-y-0.5 pt-1">
+                  {dist.issues.map((issue, i) => (
+                    <li key={i} className="font-mono text-2xs text-fidelity-medium">• {issue}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* C. Symbol quality table (collapsible) */}
+        {drilldown.symbol_quality.length > 0 && (
+          <div className="rounded-control border border-border bg-bg-800">
+            <button
+              className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+              onClick={() => setSymExpanded((v) => !v)}
+            >
+              <span>Symbol Quality <span className="text-text-muted">({drilldown.symbol_quality.length})</span></span>
+              <span className="text-text-muted">{symExpanded ? "▲" : "▼"}</span>
+            </button>
+            {symExpanded && (
+              <div className="border-t border-border overflow-x-auto">
+                <table className="w-full text-left font-mono text-2xs">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="px-4 pb-1.5 pt-2.5 text-text-muted font-normal">Symbol</th>
+                      <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">Rows</th>
+                      <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">Miss%</th>
+                      <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">Mean</th>
+                      <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">Stddev</th>
+                      <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">Outliers</th>
+                      <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">DupTS</th>
+                      <th className="px-3 pb-1.5 pt-2.5 pr-4 text-text-muted font-normal">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedSymbols.map((sym: SymbolSignalQuality) => (
+                      <tr key={sym.symbol} className="border-b border-border/40 hover:bg-bg-700/50">
+                        <td className="px-4 py-1.5 text-text-primary">{sym.symbol}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-text-secondary">{sym.row_count}</td>
+                        <td className={`px-3 py-1.5 text-right tabular-nums ${sym.missing_rate > 0.1 ? "text-yellow-400" : "text-text-muted"}`}>
+                          {(sym.missing_rate * 100).toFixed(1)}%
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-text-secondary">
+                          {sym.mean_value != null ? sym.mean_value.toFixed(4) : "—"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-text-muted">
+                          {sym.stddev_value != null ? sym.stddev_value.toFixed(4) : "—"}
+                        </td>
+                        <td className={`px-3 py-1.5 text-right tabular-nums ${sym.outlier_count > 0 ? "text-fidelity-medium" : "text-text-muted"}`}>
+                          {sym.outlier_count}
+                        </td>
+                        <td className={`px-3 py-1.5 text-right tabular-nums ${sym.duplicate_timestamp_count > 0 ? "text-fidelity-low" : "text-text-muted"}`}>
+                          {sym.duplicate_timestamp_count}
+                        </td>
+                        <td className={`px-3 py-1.5 pr-4 ${signalStatusColor(sym.quality_status)}`}>
+                          {sym.quality_status}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {extraSymbols > 0 && (
+                  <p className="px-4 py-2 font-mono text-2xs text-text-muted/60">
+                    and {extraSymbols} more symbol{extraSymbols !== 1 ? "s" : ""}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* D. Row evidence (collapsible) */}
+        {rowQualityEntries.length > 0 && (
+          <div className="rounded-control border border-border bg-bg-800">
+            <button
+              className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+              onClick={() => setRowExpanded((v) => !v)}
+            >
+              <span>Row Evidence Samples <span className="text-text-muted">({rowQualityEntries.length} type{rowQualityEntries.length !== 1 ? "s" : ""})</span></span>
+              <span className="text-text-muted">{rowExpanded ? "▲" : "▼"}</span>
+            </button>
+            {rowExpanded && (
+              <div className="border-t border-border px-3 pb-3 pt-2 space-y-3">
+                {rowQualityEntries.map(([key, samples]) => (
+                  <div key={key}>
+                    <p className="font-mono text-2xs text-text-muted mb-1">{key.replace(/_/g, " ")}</p>
+                    <ul className="space-y-0.5">
+                      {(samples as SignalRowQualitySample[]).slice(0, 5).map((sample, i) => (
+                        <li key={i} className="font-mono text-2xs text-text-secondary flex flex-wrap gap-2">
+                          <span className="text-text-muted">row {sample.row_index}</span>
+                          {sample.symbol && <span className="text-accent-300">{sample.symbol}</span>}
+                          {sample.timestamp && <span className="text-text-muted">{sample.timestamp.slice(0, 10)}</span>}
+                          {sample.signal_value && <span className="text-text-secondary">val:{sample.signal_value}</span>}
+                          <span className={sample.severity === "error" ? "text-fidelity-low" : "text-fidelity-medium"}>
+                            [{sample.severity}]
+                          </span>
+                          <span className="text-text-muted">{sample.summary}</span>
+                        </li>
+                      ))}
+                      {samples.length > 5 && (
+                        <li className="font-mono text-2xs text-text-muted/60">
+                          + {samples.length - 5} more
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* E. Suggested checks */}
+        {s.suggested_checks.length > 0 && (
+          <div>
+            <p className="caption mb-1.5">Suggested Checks</p>
+            <ul className="space-y-0.5">
+              {s.suggested_checks.map((item, i) => (
+                <li key={i} className="font-mono text-2xs text-text-secondary">
+                  ☐ {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* F. Warnings + disclaimer */}
+        {drilldown.warnings.length > 0 && (
+          <div className="space-y-1">
+            {drilldown.warnings.map((w, i) => (
+              <div key={i} className="flex gap-2 rounded-control border border-fidelity-medium/30 bg-fidelity-medium/5 px-3 py-1.5">
+                <span className="shrink-0 font-mono text-2xs text-fidelity-medium">!</span>
+                <p className="font-mono text-2xs text-fidelity-medium">{w}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="font-mono text-2xs text-text-muted/50">
+          Signal quality analysis is deterministic. Not investment advice.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function EvidenceTrendsPanel({ trends }: { trends: StrategyEvidenceTrendsResponse }) {
   return (
     <div className="rounded-card border border-border bg-bg-700">
@@ -2877,6 +3195,11 @@ export default function StrategyDetail() {
   // M35: version lineage
   const [versionLineage, setVersionLineage] = useState<StrategyVersionLineageResponse | null>(null);
 
+  // M38: signal quality drilldown
+  const [signalDrilldown, setSignalDrilldown] = useState<SignalQualityDrilldownResponse | null>(null);
+  const [signalDrilldownId, setSignalDrilldownId] = useState<string | null>(null);
+  const [signalDrilldownLoading, setSignalDrilldownLoading] = useState(false);
+
   async function handleGenerateReport() {
     if (!id) return;
     setGeneratingReport(true);
@@ -3202,6 +3525,13 @@ export default function StrategyDetail() {
       <SignalEvidencePanel
         signalSnapshots={strategy.signal_snapshots}
         onLogSignal={() => setSignalSnapshotDrawerOpen(true)}
+        onInspectQuality={(snapId) => {
+          setSignalDrilldownId(snapId);
+          setSignalDrilldownLoading(true);
+          getSignalSnapshotQualityDrilldown(snapId)
+            .then((d) => { setSignalDrilldown(d); setSignalDrilldownLoading(false); })
+            .catch(() => setSignalDrilldownLoading(false));
+        }}
       />
 
       {/* M15: Version & Config Evidence */}
@@ -3349,6 +3679,14 @@ export default function StrategyDetail() {
 
       {/* M35: Version Lineage */}
       {versionLineage && <VersionLineagePanel lineage={versionLineage} />}
+
+      {/* M38: Signal Quality Drilldown */}
+      {signalDrilldown && signalDrilldownId && (
+        <SignalQualityDrilldownPanel drilldown={signalDrilldown} />
+      )}
+      {signalDrilldownLoading && (
+        <p className="font-mono text-2xs text-text-muted">Loading signal quality…</p>
+      )}
     </div>
   );
 }

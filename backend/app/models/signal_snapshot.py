@@ -69,6 +69,12 @@ class SignalSnapshot(Base):
     # Optional metadata dict; stored verbatim.
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # M38: Signal quality drilldown JSON fields.
+    signal_distribution_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    symbol_quality_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    signal_row_quality_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    signal_quality_summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

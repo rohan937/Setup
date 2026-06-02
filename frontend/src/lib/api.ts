@@ -70,6 +70,7 @@ import type {
   MultiRunComparisonResponse,
   StrategyVersionLineageResponse,
   DatasetQualityDrilldownResponse,
+  SignalQualityDrilldownResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -823,5 +824,17 @@ export async function getDatasetSnapshotQualityDrilldown(
 ): Promise<DatasetQualityDrilldownResponse> {
   return request<DatasetQualityDrilldownResponse>(
     `/api/dataset-snapshots/${snapshotId}/quality-drilldown`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M38: Signal Quality Drilldown
+// ---------------------------------------------------------------------------
+
+export async function getSignalSnapshotQualityDrilldown(
+  snapshotId: string,
+): Promise<SignalQualityDrilldownResponse> {
+  return request<SignalQualityDrilldownResponse>(
+    `/api/signal-snapshots/${snapshotId}/quality-drilldown`,
   );
 }

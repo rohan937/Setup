@@ -2036,3 +2036,108 @@ export interface DatasetQualityDrilldownResponse {
   quality_summary: DatasetQualitySummary;
   warnings: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M38: Signal Quality Drilldown
+// ---------------------------------------------------------------------------
+
+export interface SignalDistribution {
+  signal_column: string;
+  distribution_status: string;
+  value_count: number;
+  missing_count: number;
+  non_numeric_count: number;
+  zero_count: number;
+  positive_count: number;
+  negative_count: number;
+  unique_value_count: number;
+  outlier_count: number;
+  extreme_positive_count: number;
+  extreme_negative_count: number;
+  mean_value: number | null;
+  median_value: number | null;
+  min_value: number | null;
+  max_value: number | null;
+  stddev_value: number | null;
+  issues: string[];
+}
+
+export interface SymbolSignalQuality {
+  symbol: string;
+  quality_status: string;
+  row_count: number;
+  signal_value_count: number;
+  missing_signal_count: number;
+  non_numeric_count: number;
+  duplicate_timestamp_count: number;
+  outlier_count: number;
+  missing_rate: number;
+  min_timestamp: string | null;
+  max_timestamp: string | null;
+  mean_value: number | null;
+  stddev_value: number | null;
+  issues: string[];
+}
+
+export interface SignalTimestampCoverage {
+  timestamp_status: string;
+  total_timestamp_count: number;
+  duplicate_symbol_timestamp_count: number;
+  invalid_timestamp_count: number;
+  min_timestamp: string | null;
+  max_timestamp: string | null;
+  symbols_with_gaps_count: number | null;
+}
+
+export interface SignalRowQualitySample {
+  row_index: number;
+  issue_type: string;
+  severity: string;
+  summary: string;
+  symbol: string | null;
+  timestamp: string | null;
+  signal_value: string | null;
+  evidence_json: Record<string, unknown>;
+}
+
+export interface SignalRowQualitySamples {
+  missing_signal_rows: SignalRowQualitySample[];
+  non_numeric_signal_rows: SignalRowQualitySample[];
+  duplicate_symbol_timestamp_rows: SignalRowQualitySample[];
+  outlier_signal_rows: SignalRowQualitySample[];
+  invalid_timestamp_rows: SignalRowQualitySample[];
+}
+
+export interface SignalQualitySummary {
+  total_rows: number;
+  symbol_count: number;
+  signal_value_count: number;
+  missing_signal_count: number;
+  non_numeric_signal_count: number;
+  outlier_count: number;
+  duplicate_symbol_timestamp_count: number;
+  invalid_timestamp_count: number;
+  clean_symbol_count: number;
+  review_symbol_count: number;
+  weak_symbol_count: number;
+  unusable_symbol_count: number;
+  worst_symbols: string[];
+  suggested_checks: string[];
+}
+
+export interface SignalQualityDrilldownResponse {
+  snapshot_id: string;
+  strategy_id: string;
+  label: string;
+  signal_name: string | null;
+  quality_score: number | null;
+  row_count: number;
+  symbol_count: number;
+  generated_at: string;
+  signal_distribution: SignalDistribution;
+  symbol_quality: SymbolSignalQuality[];
+  timestamp_coverage: SignalTimestampCoverage;
+  row_quality: SignalRowQualitySamples;
+  quality_summary: SignalQualitySummary;
+  warnings: string[];
+}

@@ -25,6 +25,9 @@
   GET  /api/strategies/{strategy_id}/signal-snapshots
   GET  /api/strategies/{strategy_id}/signal-snapshots/compare
   GET  /api/signal-snapshots/{snapshot_id}
+
+  M38 signal quality drilldown:
+  GET  /api/signal-snapshots/{snapshot_id}/quality-drilldown
 """
 
 from __future__ import annotations
@@ -173,6 +176,15 @@ from app.services.signal_snapshots import (
     compute_signal_hash,
     normalize_signal_rows,
     summarize_signal_snapshot,
+)
+from app.schemas.signal_quality import (
+    SignalDistributionRead,
+    SignalQualityDrilldownResponse,
+    SignalQualitySummaryRead,
+    SignalRowQualitySampleRead,
+    SignalRowQualitySamplesRead,
+    SignalTimestampCoverageRead,
+    SymbolSignalQualityRead,
 )
 
 router = APIRouter(tags=["strategies"])
@@ -2763,6 +2775,20 @@ def create_signal_snapshot(
     db.commit()
     db.refresh(snapshot)
 
+    # M38: Compute and store signal quality drilldown fields (non-blocking).
+    try:
+        from app.services.signal_quality_drilldown import compute_signal_quality_drilldown
+        drilldown = compute_signal_quality_drilldown(snapshot)
+        snapshot.signal_distribution_json = drilldown["signal_distribution"]
+        snapshot.symbol_quality_json = drilldown["symbol_quality"]
+        snapshot.signal_row_quality_json = drilldown["row_quality"]
+        snapshot.signal_quality_summary_json = drilldown["quality_summary"]
+        db.flush()
+        db.commit()
+        db.refresh(snapshot)
+    except Exception:
+        pass
+
     return SignalSnapshotRead.model_validate(snapshot)
 
 
@@ -2796,6 +2822,167 @@ def list_signal_snapshots(
 
     snapshots = q.order_by(SignalSnapshot.created_at.desc()).all()
     return [SignalSnapshotRead.model_validate(s) for s in snapshots]
+
+
+# ---------------------------------------------------------------------------
+# M38: GET /api/signal-snapshots/{snapshot_id}/quality-drilldown
+# NOTE: registered BEFORE the detail route so the literal "/quality-drilldown"
+# segment is matched before any {snapshot_id} handler.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/signal-snapshots/{snapshot_id}/quality-drilldown",
+    response_model=SignalQualityDrilldownResponse,
+)
+def get_signal_quality_drilldown(
+    snapshot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> SignalQualityDrilldownResponse:
+    """Return signal quality drilldown for a signal snapshot.
+
+    Uses stored drilldown JSON fields if available; computes on-the-fly otherwise.
+    Returns 404 if the snapshot does not exist.
+    """
+    from datetime import timezone as _tz
+
+    snapshot = (
+        db.query(SignalSnapshot)
+        .filter(SignalSnapshot.id == snapshot_id)
+        .first()
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Signal snapshot not found")
+
+    warnings: list[str] = []
+
+    # Prefer stored fields; compute on the fly if null.
+    dist_data = snapshot.signal_distribution_json
+    sym_data = snapshot.symbol_quality_json
+    row_data = snapshot.signal_row_quality_json
+    summary_data = snapshot.signal_quality_summary_json
+
+    if dist_data is None or sym_data is None or row_data is None or summary_data is None:
+        if snapshot.rows_json:
+            try:
+                from app.services.signal_quality_drilldown import compute_signal_quality_drilldown
+                drilldown = compute_signal_quality_drilldown(snapshot)
+                dist_data = drilldown["signal_distribution"]
+                sym_data = drilldown["symbol_quality"]
+                row_data = drilldown["row_quality"]
+                summary_data = drilldown["quality_summary"]
+            except Exception as exc:
+                warnings.append(f"Drilldown computation failed: {exc}")
+        else:
+            warnings.append("No rows_json available; drilldown data is empty")
+
+    # Build timestamp coverage from stored or compute.
+    ts_cov_data: dict = {}
+    if snapshot.rows_json:
+        try:
+            from app.services.signal_quality_drilldown import compute_timestamp_coverage
+            ts_cov_data = compute_timestamp_coverage(snapshot.rows_json)
+        except Exception:
+            ts_cov_data = {}
+
+    # Fall back to empty structures.
+    if dist_data is None:
+        dist_data = {
+            "signal_column": "signal",
+            "value_count": 0,
+            "missing_count": 0,
+            "non_numeric_count": 0,
+            "mean_value": None,
+            "median_value": None,
+            "min_value": None,
+            "max_value": None,
+            "stddev_value": None,
+            "zero_count": 0,
+            "positive_count": 0,
+            "negative_count": 0,
+            "unique_value_count": 0,
+            "outlier_count": 0,
+            "extreme_positive_count": 0,
+            "extreme_negative_count": 0,
+            "distribution_status": "unusable",
+            "issues": ["No data available"],
+        }
+    if sym_data is None:
+        sym_data = []
+    if row_data is None:
+        row_data = {
+            "missing_signal_rows": [],
+            "non_numeric_signal_rows": [],
+            "duplicate_symbol_timestamp_rows": [],
+            "outlier_signal_rows": [],
+            "invalid_timestamp_rows": [],
+        }
+    if summary_data is None:
+        summary_data = {
+            "total_rows": snapshot.row_count,
+            "symbol_count": snapshot.symbol_count,
+            "signal_value_count": 0,
+            "missing_signal_count": 0,
+            "non_numeric_signal_count": 0,
+            "outlier_count": 0,
+            "duplicate_symbol_timestamp_count": 0,
+            "invalid_timestamp_count": 0,
+            "clean_symbol_count": 0,
+            "review_symbol_count": 0,
+            "weak_symbol_count": 0,
+            "unusable_symbol_count": 0,
+            "worst_symbols": [],
+            "suggested_checks": [],
+        }
+    if not ts_cov_data:
+        ts_cov_data = {
+            "total_timestamp_count": 0,
+            "duplicate_symbol_timestamp_count": 0,
+            "invalid_timestamp_count": 0,
+            "min_timestamp": snapshot.min_timestamp,
+            "max_timestamp": snapshot.max_timestamp,
+            "symbols_with_gaps_count": None,
+            "timestamp_status": "clean",
+        }
+
+    now = datetime.now(_tz.utc)
+
+    return SignalQualityDrilldownResponse(
+        snapshot_id=str(snapshot.id),
+        strategy_id=str(snapshot.strategy_id),
+        label=snapshot.label,
+        signal_name=snapshot.signal_name,
+        quality_score=snapshot.quality_score,
+        row_count=snapshot.row_count,
+        symbol_count=snapshot.symbol_count,
+        generated_at=now,
+        signal_distribution=SignalDistributionRead.model_validate(dist_data),
+        symbol_quality=[SymbolSignalQualityRead.model_validate(s) for s in sym_data],
+        timestamp_coverage=SignalTimestampCoverageRead.model_validate(ts_cov_data),
+        row_quality=SignalRowQualitySamplesRead(
+            missing_signal_rows=[
+                SignalRowQualitySampleRead.model_validate(r)
+                for r in row_data.get("missing_signal_rows", [])
+            ],
+            non_numeric_signal_rows=[
+                SignalRowQualitySampleRead.model_validate(r)
+                for r in row_data.get("non_numeric_signal_rows", [])
+            ],
+            duplicate_symbol_timestamp_rows=[
+                SignalRowQualitySampleRead.model_validate(r)
+                for r in row_data.get("duplicate_symbol_timestamp_rows", [])
+            ],
+            outlier_signal_rows=[
+                SignalRowQualitySampleRead.model_validate(r)
+                for r in row_data.get("outlier_signal_rows", [])
+            ],
+            invalid_timestamp_rows=[
+                SignalRowQualitySampleRead.model_validate(r)
+                for r in row_data.get("invalid_timestamp_rows", [])
+            ],
+        ),
+        quality_summary=SignalQualitySummaryRead.model_validate(summary_data),
+        warnings=warnings,
+    )
 
 
 # ---------------------------------------------------------------------------
