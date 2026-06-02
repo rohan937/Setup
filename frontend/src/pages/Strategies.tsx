@@ -118,6 +118,12 @@ export default function Strategies() {
           Portfolio View
         </button>
         <button
+          onClick={() => navigate("/strategies/run-compare")}
+          className="rounded-control border border-border bg-bg-700 px-3.5 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-500/50 hover:text-accent-300"
+        >
+          Compare Runs
+        </button>
+        <button
           onClick={() => navigate("/evidence/coverage")}
           className="rounded-control border border-border bg-bg-700 px-3.5 py-1.5 text-xs font-medium text-text-secondary hover:border-accent-500/50 hover:text-accent-300"
         >

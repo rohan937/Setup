@@ -292,7 +292,14 @@ export default function Portfolio() {
         tag="Analysis"
         title="Portfolio Overview"
         subtitle="Evidence state across all active strategies."
-      />
+      >
+        <Link
+          to="/strategies/run-compare"
+          className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+        >
+          Compare Runs →
+        </Link>
+      </PageHeader>
 
       {error && (
         <div className="rounded border border-red-800 bg-red-900/20 px-4 py-3 font-mono text-xs text-red-300">

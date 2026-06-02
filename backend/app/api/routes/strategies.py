@@ -52,6 +52,15 @@ from app.models.strategy_run import StrategyRun
 from app.models.strategy_version import StrategyVersion
 from app.models.universe_snapshot import UniverseSnapshot
 from app.schemas.comparison import RunComparisonResponse
+from app.schemas.multi_run_comparison import (
+    MultiRunComparisonRequest,
+    MultiRunComparisonResponse,
+    MultiRunItemSchema,
+    MultiRunRankingItemSchema,
+    RunAssumptionsSchema,
+    RunEvidenceSummarySchema,
+    RunMetricsSchema,
+)
 from app.schemas.strategy import (
     ConfigComparisonResponse,
     ConfigComparisonSectionOut,
@@ -632,6 +641,138 @@ def compare_strategies_endpoint(
         generated_at=result.generated_at,
     )
 
+
+
+# ---------------------------------------------------------------------------
+# POST /api/strategies/runs/compare-multi  (M34)
+# Must be registered BEFORE GET /strategies/{strategy_id} so "runs" is not
+# captured as a strategy_id path parameter.
+# ---------------------------------------------------------------------------
+
+@router.post("/strategies/runs/compare-multi", response_model=MultiRunComparisonResponse)
+def compare_multi_runs(
+    payload: MultiRunComparisonRequest,
+    db: Session = Depends(get_db),
+) -> MultiRunComparisonResponse:
+    """Compare the latest (or selected) run from 2–4 strategies side-by-side.
+
+    Evidence-based, deterministic — never investment advice or causal claims.
+    """
+    from app.services.multi_run_comparison import (
+        compare_multi_strategy_runs,
+        MultiRunItemData,
+        RunEvidenceSummaryData,
+    )
+
+    if len(payload.strategy_ids) < 2:
+        raise HTTPException(status_code=422, detail="At least 2 strategy IDs required.")
+    if len(payload.strategy_ids) > 4:
+        raise HTTPException(status_code=422, detail="At most 4 strategy IDs may be compared.")
+
+    try:
+        ids = [uuid.UUID(s) for s in payload.strategy_ids]
+    except ValueError:
+        raise HTTPException(status_code=422, detail="One or more strategy IDs are not valid UUIDs.")
+
+    run_ids: list[uuid.UUID] | None = None
+    if payload.run_ids:
+        try:
+            run_ids = [uuid.UUID(r) for r in payload.run_ids]
+        except ValueError:
+            raise HTTPException(status_code=422, detail="One or more run IDs are not valid UUIDs.")
+
+    try:
+        result = compare_multi_strategy_runs(ids, db, mode=payload.mode, run_ids=run_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    def _evidence_schema(ev: RunEvidenceSummaryData) -> RunEvidenceSummarySchema:
+        return RunEvidenceSummarySchema(
+            dataset_health_score=ev.dataset_health_score,
+            dataset_issue_count=ev.dataset_issue_count,
+            dataset_label=ev.dataset_label,
+            signal_quality_score=ev.signal_quality_score,
+            signal_missing_count=ev.signal_missing_count,
+            signal_label=ev.signal_label,
+            universe_symbol_count=ev.universe_symbol_count,
+            universe_label=ev.universe_label,
+            backtest_trust_score=ev.backtest_trust_score,
+            backtest_status=ev.backtest_status,
+            backtest_issue_count=ev.backtest_issue_count,
+            cost_fragility_level=ev.cost_fragility_level,
+            fill_realism_level=ev.fill_realism_level,
+            run_health_label=ev.run_health_label,
+        )
+
+    def _item_schema(item: MultiRunItemData) -> MultiRunItemSchema:
+        return MultiRunItemSchema(
+            strategy_id=item.strategy_id,
+            strategy_name=item.strategy_name,
+            asset_class=item.asset_class,
+            status=item.status,
+            run_id=item.run_id,
+            run_name=item.run_name,
+            run_type=item.run_type,
+            run_status=item.run_status,
+            completed_at=item.completed_at,
+            created_at=item.created_at,
+            strategy_version_label=item.strategy_version_label,
+            open_alert_count=item.open_alert_count,
+            reliability_score=item.reliability_score,
+            reliability_status=item.reliability_status,
+            evidence_coverage_score=item.evidence_coverage_score,
+            metrics=RunMetricsSchema(
+                sharpe=item.metrics.sharpe,
+                sortino=item.metrics.sortino,
+                annual_return=item.metrics.annual_return,
+                volatility=item.metrics.volatility,
+                max_drawdown=item.metrics.max_drawdown,
+                turnover=item.metrics.turnover,
+                hit_rate=item.metrics.hit_rate,
+                trade_count=item.metrics.trade_count,
+                alpha_bps=item.metrics.alpha_bps,
+                transaction_cost_bps=item.metrics.transaction_cost_bps,
+                slippage_bps=item.metrics.slippage_bps,
+            ),
+            assumptions=RunAssumptionsSchema(
+                transaction_cost_bps=item.assumptions.transaction_cost_bps,
+                slippage_bps=item.assumptions.slippage_bps,
+                fill_model=item.assumptions.fill_model,
+                borrow_cost_bps=item.assumptions.borrow_cost_bps,
+                short_enabled=item.assumptions.short_enabled,
+                execution_timing=item.assumptions.execution_timing,
+            ),
+            evidence=_evidence_schema(item.evidence),
+        )
+
+    def _ranking_schema(r) -> MultiRunRankingItemSchema:  # type: ignore[type-arg]
+        return MultiRunRankingItemSchema(
+            rank=r.rank,
+            strategy_id=r.strategy_id,
+            strategy_name=r.strategy_name,
+            value=r.value,
+            value_label=r.value_label,
+            run_name=r.run_name,
+        )
+
+    rankings_out: dict[str, list[MultiRunRankingItemSchema]] = {
+        dim: [_ranking_schema(r) for r in ranking_list]
+        for dim, ranking_list in result.rankings.items()
+    }
+
+    return MultiRunComparisonResponse(
+        compared_at=result.compared_at,
+        mode=result.mode,
+        items=[_item_schema(i) for i in result.items],
+        metric_matrix=result.metric_matrix,
+        assumption_matrix=result.assumption_matrix,
+        evidence_matrix=result.evidence_matrix,
+        rankings=rankings_out,
+        gaps=result.gaps,
+        shared_gaps=result.shared_gaps,
+        highlighted_differences=result.highlighted_differences,
+        deterministic_explanation=result.deterministic_explanation,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1709,3 +1709,98 @@ export interface PortfolioOverview {
   suggested_next_steps: string[];
   deterministic_summary: string;
 }
+
+// ---------------------------------------------------------------------------
+// M34: Multi-Run Comparison
+// ---------------------------------------------------------------------------
+
+export interface RunMetrics {
+  sharpe: number | null;
+  sortino: number | null;
+  annual_return: number | null;
+  volatility: number | null;
+  max_drawdown: number | null;
+  turnover: number | null;
+  hit_rate: number | null;
+  trade_count: number | null;
+  alpha_bps: number | null;
+  transaction_cost_bps: number | null;
+  slippage_bps: number | null;
+}
+
+export interface RunAssumptions {
+  transaction_cost_bps: number | null;
+  slippage_bps: number | null;
+  borrow_cost_bps: number | null;
+  fill_model: string | null;
+  short_enabled: boolean | null;
+  execution_timing: string | null;
+}
+
+export interface RunEvidenceSummary {
+  dataset_health_score: number | null;
+  signal_quality_score: number | null;
+  universe_symbol_count: number | null;
+  backtest_trust_score: number | null;
+  dataset_issue_count: number;
+  signal_missing_count: number;
+  backtest_issue_count: number;
+  dataset_label: string | null;
+  signal_label: string | null;
+  universe_label: string | null;
+  backtest_status: string | null;
+  cost_fragility_level: string | null;
+  fill_realism_level: string | null;
+  run_health_label: string;
+}
+
+export interface MultiRunComparisonItem {
+  strategy_id: string;
+  strategy_name: string;
+  asset_class: string;
+  status: string;
+  run_id: string;
+  run_name: string;
+  run_type: string;
+  run_status: string;
+  completed_at: string | null;
+  strategy_version_label: string | null;
+  created_at: string;
+  open_alert_count: number;
+  reliability_score: number | null;
+  reliability_status: string | null;
+  evidence_coverage_score: number | null;
+  metrics: RunMetrics;
+  assumptions: RunAssumptions;
+  evidence: RunEvidenceSummary;
+}
+
+export interface MultiRunRankingItem {
+  rank: number;
+  strategy_id: string;
+  strategy_name: string;
+  value_label: string;
+  run_name: string;
+  value: number | null;
+}
+
+export interface MultiRunComparisonRequest {
+  strategy_ids: string[];
+  mode?: string;
+  run_ids?: string[];
+}
+
+export interface MultiRunComparisonResponse {
+  compared_at: string;
+  mode: string;
+  deterministic_explanation: string;
+  items: MultiRunComparisonItem[];
+  metric_matrix: Record<string, Record<string, number | null>>;
+  assumption_matrix: Record<string, Record<string, number | null>>;
+  evidence_matrix: Record<string, Record<string, number | null>>;
+  rankings: Record<string, MultiRunRankingItem[]>;
+  gaps: Record<string, string[]>;
+  shared_gaps: string[];
+  highlighted_differences: string[];
+  suggested_next_steps: string[];
+}

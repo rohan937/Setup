@@ -3,6 +3,7 @@ import AppShell from "@/components/AppShell";
 import Dashboard from "@/pages/Dashboard";
 import Strategies from "@/pages/Strategies";
 import StrategyComparison from "@/pages/StrategyComparison";
+import MultiRunComparison from "@/pages/MultiRunComparison";
 import StrategyDetail from "@/pages/StrategyDetail";
 import EvidenceCoverage from "@/pages/EvidenceCoverage";
 import Portfolio from "@/pages/Portfolio";
@@ -22,6 +23,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="strategies" element={<Strategies />} />
         <Route path="strategies/compare" element={<StrategyComparison />} />
+        <Route path="strategies/run-compare" element={<MultiRunComparison />} />
         <Route path="strategies/:id" element={<StrategyDetail />} />
         <Route path="timeline" element={<Timeline />} />
         <Route path="evidence/coverage" element={<EvidenceCoverage />} />

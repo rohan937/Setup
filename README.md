@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1024 tests, 1 skipped)
+│   └── tests/              Pytest tests (1046 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,49 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M33: Evidence Quality Alerts v1
+## Current milestone — M34: Multi-Strategy Run Comparison v1
+
+**Status: complete.**
+
+### M34 deliverables
+
+- **New `backend/app/services/multi_run_comparison.py`** — deterministic multi-strategy run comparison service.
+  No AI, no external APIs, read-only. Compares 2–4 strategies using their latest (or selected) runs.
+
+- **New endpoint** `POST /api/strategies/runs/compare-multi`:
+  - Registered BEFORE `GET /strategies/{strategy_id}` to avoid routing collision.
+  - **Request**: `strategy_ids` (2–4 UUIDs), `mode` (`latest` or `selected`), optional `run_ids` map for selected mode.
+  - **Per-run data collected**: metrics (`sharpe`, `annual_return`, `drawdown`, etc.), assumptions (`cost`, `fill_model`, etc.), evidence (dataset health, signal quality, universe, backtest trust, reliability).
+  - **Comparison output**: `metric_matrix`, `assumption_matrix`, `evidence_matrix` (all as dicts keyed by strategy_id), 5 rankings (by trust / data / signal / reliability / coverage, nulls last), per-strategy gaps, shared gaps, `highlighted_differences`, `deterministic_explanation`.
+
+- **Ranking language**: "Highest logged trust score", "Strongest linked data health", "Most complete evidence" — never "best strategy", never "most profitable".
+
+- **Deterministic explanation**: no investment language, ends with "Not an investment recommendation."
+
+- **New schema file** `app/schemas/multi_run_comparison.py` — request and response Pydantic models.
+
+- **Frontend — `MultiRunComparison.tsx`** at route `/strategies/run-compare`:
+  - Strategy selector panel, per-run cards, evidence matrix, metric matrix, assumption matrix, rankings panel, per-strategy gaps, shared gaps, disclaimer.
+
+- **Nav integration**: not added to the sidebar nav. Accessed via links from the Strategies and Portfolio pages.
+
+- **Strategies page**: "Compare Runs" button added to `Strategies.tsx`.
+
+- **Portfolio page**: "Compare Runs →" link added to `Portfolio.tsx`.
+
+- **22 new backend M34 tests** (`tests/test_multi_run_comparison_m34.py`).
+- **Backend total: 1046 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in 782ms).
+- No external APIs. Read-only. Not investment advice.
+
+### What M34 does NOT build (by design)
+
+- No P&L comparison or live performance comparison.
+- No AI ranking or cross-strategy optimization.
+
+---
+
+## Previously completed — M33: Evidence Quality Alerts v1
 
 **Status: complete.**
 

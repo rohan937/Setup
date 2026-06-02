@@ -66,6 +66,8 @@ import type {
   StrategyEvidenceTrendsResponse,
   StrategyExportResponse,
   PortfolioOverview,
+  MultiRunComparisonRequest,
+  MultiRunComparisonResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -791,4 +793,13 @@ export async function getPortfolioOverview(params?: {
   return request<PortfolioOverview>(
     `/api/portfolio/overview${q ? `?${q}` : ""}`,
   );
+}
+
+export async function compareStrategyRunsMulti(
+  payload: MultiRunComparisonRequest,
+): Promise<MultiRunComparisonResponse> {
+  return request<MultiRunComparisonResponse>("/api/strategies/runs/compare-multi", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
