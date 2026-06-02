@@ -28,6 +28,9 @@
 
   M38 signal quality drilldown:
   GET  /api/signal-snapshots/{snapshot_id}/quality-drilldown
+
+  M39 universe coverage analysis:
+  GET  /api/universe-snapshots/{snapshot_id}/coverage-analysis
 """
 
 from __future__ import annotations
@@ -2443,6 +2446,19 @@ def create_universe_snapshot(
     db.commit()
     db.refresh(snapshot)
 
+    # M39: Compute and store universe coverage analysis fields (non-blocking).
+    try:
+        from app.services.universe_coverage import compute_universe_coverage_analysis
+        result = compute_universe_coverage_analysis(snapshot.id, db)
+        snapshot.coverage_analysis_json = result["coverage_analysis"]
+        snapshot.symbol_quality_json = result["symbol_quality"]
+        snapshot.universe_delta_json = result["universe_delta"]
+        snapshot.universe_quality_summary_json = result["universe_quality_summary"]
+        db.commit()
+        db.refresh(snapshot)
+    except Exception:
+        pass
+
     return UniverseSnapshotRead.model_validate(snapshot)
 
 
@@ -2476,6 +2492,127 @@ def list_universe_snapshots(
 
     snapshots = q.order_by(UniverseSnapshot.created_at.desc()).all()
     return [UniverseSnapshotRead.model_validate(s) for s in snapshots]
+
+
+# ---------------------------------------------------------------------------
+# M39: GET /api/universe-snapshots/{snapshot_id}/coverage-analysis
+# NOTE: registered BEFORE the detail route so the literal "/coverage-analysis"
+# segment is matched before any {snapshot_id} handler.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/universe-snapshots/{snapshot_id}/coverage-analysis",
+)
+def get_universe_coverage_analysis(
+    snapshot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """Return universe coverage analysis for a universe snapshot.
+
+    Always recomputes the delta (for freshness).
+    Uses stored fields for other sections if available, or recomputes.
+    Returns 404 if the snapshot does not exist.
+    """
+    from datetime import timezone as _tz
+    from app.schemas.universe_coverage import (
+        UniverseCoverageAnalysisRead,
+        UniverseCoverageAnalysisResponse,
+        UniverseDeltaRead,
+        UniverseMetadataBreakdownRead,
+        UniverseQualitySummaryRead,
+        UniverseSymbolQualityRead,
+    )
+    from app.services.universe_coverage import (
+        compute_metadata_breakdown,
+        compute_symbol_quality,
+        compute_universe_coverage_analysis,
+        compute_universe_delta,
+        compute_universe_quality_summary,
+    )
+
+    snapshot = (
+        db.query(UniverseSnapshot)
+        .filter(UniverseSnapshot.id == snapshot_id)
+        .first()
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Universe snapshot not found")
+
+    warnings: list[str] = []
+
+    # Always recompute delta and run linkage for freshness.
+    delta_data = compute_universe_delta(snapshot, db)
+
+    from app.services.universe_coverage import compute_run_linkage
+    run_link_data = compute_run_linkage(snapshot, db)
+
+    # Use stored fields for other sections if available, else recompute.
+    sym_data = snapshot.symbol_quality_json
+    summary_data = snapshot.universe_quality_summary_json
+
+    if sym_data is None:
+        try:
+            sym_data = compute_symbol_quality(snapshot.symbols_json or [])
+        except Exception as exc:
+            warnings.append(f"Symbol quality computation failed: {exc}")
+            sym_data = []
+
+    meta_data: dict | None = None
+    try:
+        meta_data = compute_metadata_breakdown(snapshot)
+    except Exception as exc:
+        warnings.append(f"Metadata breakdown computation failed: {exc}")
+        meta_data = {
+            "has_symbol_metadata": False,
+            "metadata_coverage_rate": 0.0,
+            "missing_metadata_symbols": len(snapshot.symbols_json or []),
+            "by_sector": {},
+            "by_country": {},
+            "by_exchange": {},
+            "by_liquidity_bucket": {},
+            "warnings": [str(exc)],
+        }
+
+    if summary_data is None:
+        try:
+            summary_data = compute_universe_quality_summary(
+                snapshot.symbols_json or [], sym_data, delta_data, meta_data
+            )
+        except Exception as exc:
+            warnings.append(f"Quality summary computation failed: {exc}")
+            summary_data = {
+                "symbol_count": snapshot.symbol_count,
+                "unique_symbol_count": snapshot.symbol_count,
+                "duplicate_symbol_count": 0,
+                "invalid_symbol_count": 0,
+                "clean_symbol_count": snapshot.symbol_count,
+                "review_symbol_count": 0,
+                "weak_symbol_count": 0,
+                "coverage_status": "unknown",
+                "suggested_checks": [],
+            }
+
+    # Always merge fresh run linkage into coverage_analysis for freshness.
+    cov_data = {**(snapshot.coverage_analysis_json or {}), **summary_data, **run_link_data}
+
+    now = datetime.now(_tz.utc)
+
+    return UniverseCoverageAnalysisResponse(
+        snapshot_id=str(snapshot.id),
+        strategy_id=str(snapshot.strategy_id),
+        label=snapshot.label,
+        universe_hash=snapshot.universe_hash,
+        symbol_count=snapshot.symbol_count,
+        generated_at=now,
+        coverage_analysis=UniverseCoverageAnalysisRead.model_validate(cov_data),
+        symbol_quality=[
+            UniverseSymbolQualityRead.model_validate(s) for s in (sym_data or [])
+        ],
+        metadata_breakdown=UniverseMetadataBreakdownRead.model_validate(meta_data),
+        universe_delta=UniverseDeltaRead.model_validate(delta_data),
+        quality_summary=UniverseQualitySummaryRead.model_validate(summary_data),
+        warnings=warnings,
+    )
 
 
 # ---------------------------------------------------------------------------

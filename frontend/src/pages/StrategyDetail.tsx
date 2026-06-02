@@ -43,6 +43,7 @@ import type {
   SignalQualityDrilldownResponse,
   SymbolSignalQuality,
   SignalRowQualitySample,
+  UniverseCoverageAnalysisResponse,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -60,6 +61,7 @@ import {
   ingestEvidenceBundle,
   runBacktestAudit,
   getSignalSnapshotQualityDrilldown,
+  getUniverseSnapshotCoverageAnalysis,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -666,9 +668,11 @@ function UniverseEvidenceChip({ uni }: { uni: UniverseSnapshotSummary }) {
 function UniverseEvidencePanel({
   universeSnapshots,
   onLogUniverse,
+  onInspectCoverage,
 }: {
   universeSnapshots: UniverseSnapshotRead[];
   onLogUniverse: () => void;
+  onInspectCoverage?: (snapshotId: string) => void;
 }) {
   return (
     <div className="rounded-card border border-border bg-bg-700">
@@ -706,9 +710,19 @@ function UniverseEvidencePanel({
                     </span>
                   </div>
                 </div>
-                <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
-                  {fmtDateShort(us.created_at)}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {onInspectCoverage && (
+                    <button
+                      onClick={() => onInspectCoverage(us.id)}
+                      className="rounded-control border border-border px-2 py-0.5 font-mono text-2xs text-text-muted hover:border-accent-500/40 hover:text-accent-300"
+                    >
+                      Inspect Coverage
+                    </button>
+                  )}
+                  <span className="font-mono text-2xs text-text-muted whitespace-nowrap">
+                    {fmtDateShort(us.created_at)}
+                  </span>
+                </div>
               </div>
             ))}
             {universeSnapshots.length > 5 && (
@@ -3130,6 +3144,248 @@ function VersionLineagePanel({ lineage }: { lineage: StrategyVersionLineageRespo
 }
 
 // ---------------------------------------------------------------------------
+// M39: Universe Coverage Analysis Panel
+// ---------------------------------------------------------------------------
+
+function coverageStatusColor(status: string): string {
+  if (status === "complete") return "text-teal-400";
+  if (status === "review") return "text-yellow-400";
+  if (status === "weak") return "text-red-400";
+  return "text-text-muted";
+}
+
+function symbolStatusColor(status: string): string {
+  if (status === "clean") return "text-teal-400";
+  if (status === "review") return "text-yellow-400";
+  if (status === "weak") return "text-red-400";
+  return "text-text-muted";
+}
+
+function deltaStatusColor(status: string | null): string {
+  if (status === "stable") return "text-teal-400";
+  if (status === "review") return "text-yellow-400";
+  if (status === "high_churn") return "text-red-400";
+  if (status === "no_previous_snapshot") return "text-text-muted";
+  return "text-text-muted";
+}
+
+function fmtRatio(v: number | null): string {
+  return v !== null ? (v * 100).toFixed(1) + "%" : "—";
+}
+
+function UniverseCoveragePanel({ coverage }: { coverage: UniverseCoverageAnalysisResponse }) {
+  const [deltaExpanded, setDeltaExpanded] = useState(false);
+  const [metaExpanded, setMetaExpanded] = useState(false);
+  const [symExpanded, setSymExpanded] = useState(false);
+
+  const ca = coverage.coverage_analysis;
+  const delta = coverage.universe_delta;
+  const meta = coverage.metadata_breakdown;
+  const qs = coverage.quality_summary;
+
+  const nonCleanSymbols = coverage.symbol_quality.filter((s) => s.quality_status !== "clean");
+
+  function MetaDict({ label, data }: { label: string; data: Record<string, number> }) {
+    const entries = Object.entries(data);
+    if (entries.length === 0) return null;
+    return (
+      <div className="mt-1">
+        <p className="font-mono text-2xs text-text-muted mb-0.5">{label}:</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+          {entries.map(([k, v]) => (
+            <span key={k} className="font-mono text-2xs text-text-secondary">
+              {k}: <span className="text-accent-300">{v}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="border-b border-border px-4 py-2.5">
+        <p className="caption">Universe Coverage Analysis: {coverage.label}</p>
+      </div>
+      <div className="p-4 space-y-3">
+
+        {/* A. Summary strip */}
+        <div className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-2xs">
+          <span className="text-text-muted">symbols: <span className="text-text-secondary">{ca.symbol_count}</span></span>
+          <span className="text-text-muted">unique: <span className="text-text-secondary">{ca.unique_symbol_count}</span></span>
+          {ca.duplicate_symbol_count > 0 && (
+            <span className="text-text-muted">duplicates: <span className="text-orange-400">{ca.duplicate_symbol_count}</span></span>
+          )}
+          {ca.invalid_symbol_count > 0 && (
+            <span className="text-text-muted">invalid: <span className="text-red-400">{ca.invalid_symbol_count}</span></span>
+          )}
+          <span className="text-text-muted">
+            status: <span className={coverageStatusColor(ca.coverage_status)}>{ca.coverage_status}</span>
+          </span>
+          <span className="text-text-muted">linked runs: <span className="text-text-secondary">{ca.linked_run_count}</span></span>
+          {ca.version_label && (
+            <span className="text-text-muted">version: <span className="text-accent-300">{ca.version_label}</span></span>
+          )}
+        </div>
+
+        {/* B. Delta section (collapsible) */}
+        <div className="rounded-control border border-border bg-bg-800">
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+            onClick={() => setDeltaExpanded((v) => !v)}
+          >
+            <span>
+              Universe Delta{" "}
+              {delta.delta_status && (
+                <span className={deltaStatusColor(delta.delta_status)}>{delta.delta_status}</span>
+              )}
+            </span>
+            <span className="text-text-muted">{deltaExpanded ? "▲" : "▼"}</span>
+          </button>
+          {deltaExpanded && (
+            <div className="border-t border-border px-3 pb-3 pt-2 space-y-2">
+              {delta.has_previous ? (
+                <>
+                  <div className="flex flex-wrap gap-x-5 gap-y-0.5 font-mono text-2xs text-text-muted">
+                    <span>added: <span className="text-teal-400">{delta.added_count}</span></span>
+                    <span>removed: <span className="text-red-400">{delta.removed_count}</span></span>
+                    <span>common: <span className="text-text-secondary">{delta.common_symbols_count}</span></span>
+                    <span>overlap: <span className="text-text-secondary">{fmtRatio(delta.overlap_ratio)}</span></span>
+                    <span>jaccard: <span className="text-text-secondary">{fmtRatio(delta.jaccard_similarity)}</span></span>
+                    <span>churn: <span className="text-text-secondary">{fmtRatio(delta.churn_rate)}</span></span>
+                  </div>
+                  {delta.added_symbols.length > 0 && (
+                    <div>
+                      <p className="font-mono text-2xs text-text-muted mb-1">Added (up to 10):</p>
+                      <div className="flex flex-wrap gap-1">
+                        {delta.added_symbols.slice(0, 10).map((sym) => (
+                          <span key={sym} className="rounded px-1.5 py-0.5 bg-teal-400/10 font-mono text-2xs text-teal-400 border border-teal-400/20">{sym}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {delta.removed_symbols.length > 0 && (
+                    <div>
+                      <p className="font-mono text-2xs text-text-muted mb-1">Removed (up to 10):</p>
+                      <div className="flex flex-wrap gap-1">
+                        {delta.removed_symbols.slice(0, 10).map((sym) => (
+                          <span key={sym} className="rounded px-1.5 py-0.5 bg-red-400/10 font-mono text-2xs text-red-400 border border-red-400/20">{sym}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {delta.previous_label && (
+                    <p className="font-mono text-2xs text-text-muted/60">vs. {delta.previous_label}</p>
+                  )}
+                </>
+              ) : (
+                <p className="font-mono text-2xs text-text-muted">No previous snapshot to compare against.</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* C. Metadata breakdown (collapsible) */}
+        <div className="rounded-control border border-border bg-bg-800">
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+            onClick={() => setMetaExpanded((v) => !v)}
+          >
+            <span>Metadata Breakdown</span>
+            <span className="flex items-center gap-2">
+              <span className="text-text-muted">{meta.has_symbol_metadata ? "available" : "none"}</span>
+              <span className="text-text-muted">{metaExpanded ? "▲" : "▼"}</span>
+            </span>
+          </button>
+          {metaExpanded && (
+            <div className="border-t border-border px-3 pb-3 pt-2 space-y-1">
+              <div className="flex flex-wrap gap-x-5 gap-y-0.5 font-mono text-2xs text-text-muted">
+                <span>coverage: <span className="text-text-secondary">{fmtRatio(meta.metadata_coverage_rate)}</span></span>
+                <span>missing metadata: <span className="text-text-secondary">{meta.missing_metadata_symbols}</span></span>
+              </div>
+              {meta.has_symbol_metadata && (
+                <>
+                  <MetaDict label="by_sector" data={meta.by_sector} />
+                  <MetaDict label="by_country" data={meta.by_country} />
+                  <MetaDict label="by_exchange" data={meta.by_exchange} />
+                  <MetaDict label="by_liquidity_bucket" data={meta.by_liquidity_bucket} />
+                </>
+              )}
+              {meta.warnings.length > 0 && (
+                <ul className="pt-1 space-y-0.5">
+                  {meta.warnings.map((w, i) => (
+                    <li key={i} className="font-mono text-2xs text-yellow-400">• {w}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* D. Symbol quality table (collapsible, top 50 non-clean) */}
+        <div className="rounded-control border border-border bg-bg-800">
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+            onClick={() => setSymExpanded((v) => !v)}
+          >
+            <span>Symbol Quality ({nonCleanSymbols.length} issues)</span>
+            <span className="text-text-muted">{symExpanded ? "▲" : "▼"}</span>
+          </button>
+          {symExpanded && (
+            <div className="border-t border-border px-3 pb-3 pt-2">
+              {nonCleanSymbols.length === 0 ? (
+                <p className="font-mono text-2xs text-teal-400">All symbols clean.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full font-mono text-2xs border-collapse">
+                    <thead>
+                      <tr className="text-text-muted border-b border-border">
+                        <th className="text-left pb-1 pr-3">Symbol</th>
+                        <th className="text-left pb-1 pr-3">Normalized</th>
+                        <th className="text-left pb-1 pr-3">Dup</th>
+                        <th className="text-left pb-1 pr-3">Status</th>
+                        <th className="text-left pb-1">Issues</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40">
+                      {nonCleanSymbols.slice(0, 50).map((sq) => (
+                        <tr key={sq.symbol + sq.normalized_symbol} className="align-top">
+                          <td className="py-0.5 pr-3 text-text-secondary">{sq.symbol}</td>
+                          <td className="py-0.5 pr-3 text-text-muted/70">{sq.normalized_symbol}</td>
+                          <td className="py-0.5 pr-3">{sq.is_duplicate ? <span className="text-orange-400">yes</span> : <span className="text-text-muted/40">—</span>}</td>
+                          <td className={`py-0.5 pr-3 ${symbolStatusColor(sq.quality_status)}`}>{sq.quality_status}</td>
+                          <td className="py-0.5 text-text-muted/70">{sq.issues.join(", ") || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* E. Suggested checks */}
+        {qs.suggested_checks.length > 0 && (
+          <div className="rounded-control border border-amber-400/20 bg-amber-400/5 px-3 py-2 space-y-0.5">
+            <p className="font-mono text-2xs text-amber-400/80 font-semibold mb-1">Suggested Checks</p>
+            {qs.suggested_checks.map((c, i) => (
+              <p key={i} className="font-mono text-2xs text-text-secondary">• {c}</p>
+            ))}
+          </div>
+        )}
+
+        {/* F. Disclaimer */}
+        <p className="font-mono text-2xs text-text-muted/50">
+          Universe coverage analysis is deterministic. Not investment advice.
+        </p>
+
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -3199,6 +3455,11 @@ export default function StrategyDetail() {
   const [signalDrilldown, setSignalDrilldown] = useState<SignalQualityDrilldownResponse | null>(null);
   const [signalDrilldownId, setSignalDrilldownId] = useState<string | null>(null);
   const [signalDrilldownLoading, setSignalDrilldownLoading] = useState(false);
+
+  // M39: universe coverage analysis
+  const [universeCoverage, setUniverseCoverage] = useState<UniverseCoverageAnalysisResponse | null>(null);
+  const [universeCoverageId, setUniverseCoverageId] = useState<string | null>(null);
+  const [universeCoverageLoading, setUniverseCoverageLoading] = useState(false);
 
   async function handleGenerateReport() {
     if (!id) return;
@@ -3519,6 +3780,13 @@ export default function StrategyDetail() {
       <UniverseEvidencePanel
         universeSnapshots={strategy.universe_snapshots}
         onLogUniverse={() => setUniverseSnapshotDrawerOpen(true)}
+        onInspectCoverage={(snapId) => {
+          setUniverseCoverageId(snapId);
+          setUniverseCoverageLoading(true);
+          getUniverseSnapshotCoverageAnalysis(snapId)
+            .then((d) => { setUniverseCoverage(d); setUniverseCoverageLoading(false); })
+            .catch(() => setUniverseCoverageLoading(false));
+        }}
       />
 
       {/* M17: Signal Evidence panel */}
@@ -3686,6 +3954,14 @@ export default function StrategyDetail() {
       )}
       {signalDrilldownLoading && (
         <p className="font-mono text-2xs text-text-muted">Loading signal quality…</p>
+      )}
+
+      {/* M39: Universe Coverage Analysis */}
+      {universeCoverage && universeCoverageId && (
+        <UniverseCoveragePanel coverage={universeCoverage} />
+      )}
+      {universeCoverageLoading && (
+        <p className="font-mono text-2xs text-text-muted">Loading universe coverage…</p>
       )}
     </div>
   );

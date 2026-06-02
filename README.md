@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1140 tests, 1 skipped)
+│   └── tests/              Pytest tests (1160 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,67 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M38: Signal Quality Drill-Down v2
+## Current milestone — M39: Universe Snapshot Coverage Analysis v1
+
+**Status: complete.**
+
+### M39 deliverables
+
+- **Migration** `0017_m39_universe_coverage_analysis.py` — adds 4 nullable JSON columns to `universe_snapshots`:
+  `coverage_analysis_json`, `symbol_quality_json`, `universe_delta_json`, `universe_quality_summary_json`.
+  All existing columns preserved. Safe to run on existing databases.
+
+- **New service** `backend/app/services/universe_coverage.py` — deterministic universe coverage analysis
+  service. Does not modify `universe_snapshots.py`. No AI, no external APIs. Six exported functions:
+  - `compute_symbol_quality(symbols)` — per-symbol checks: duplicates, spaces, invalid characters,
+    suspicious length; `quality_status` (`clean` / `review` / `weak`).
+  - `compute_metadata_breakdown(snapshot)` — sector/country/exchange/liquidity_bucket distribution
+    if symbol-level metadata is available under `metadata_json["symbols"]`; emits warning if absent.
+  - `compute_universe_delta(snapshot, db)` — compares against previous snapshot: `added_count`,
+    `removed_count`, `common_count`, `overlap_ratio`, `jaccard_similarity`, `churn_rate`,
+    `delta_status` (`stable` / `review` / `high_churn` / `no_previous_snapshot`); added/removed
+    symbol lists capped at 50.
+  - `compute_run_linkage(snapshot, db)` — count of strategy runs using this universe snapshot;
+    version label if version-linked.
+  - `compute_universe_quality_summary(symbol_quality, metadata_breakdown, delta)` — aggregated summary
+    with status counts, totals, suggested checks.
+  - `compute_universe_coverage_analysis(snapshot, db)` — orchestrates all functions into a single response.
+
+- **Snapshot creation updated** — `POST /api/strategies/{id}/universe-snapshots` now computes and stores
+  all 4 coverage JSON fields on every new snapshot. Gracefully skips coverage computation if it fails
+  (does not block ingestion).
+
+- **New endpoint** `GET /api/universe-snapshots/{id}/coverage-analysis` — returns stored coverage fields
+  if present; delta is always recomputed for freshness. 404 for unknown snapshot.
+
+- **New schemas** `backend/app/schemas/universe_coverage.py` — Pydantic response models for all
+  coverage analysis fields.
+
+- **Frontend** — `UniverseCoveragePanel` in `StrategyDetail.tsx`:
+  - Summary strip (status counts).
+  - Delta section (collapsible): added/removed/common counts, overlap ratio, jaccard similarity,
+    churn rate, delta status.
+  - Metadata breakdown: sector/country/exchange/liquidity_bucket distribution.
+  - Symbol quality table: per-symbol quality status.
+  - Suggested checks panel.
+  - "Inspect Coverage" button per snapshot row in the StrategyDetail universe snapshots section.
+
+- **20 new backend M39 tests** (`tests/test_universe_coverage_m39.py`).
+- **Backend total: 1160 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in 786ms).
+- No external APIs. Deterministic. Not investment advice.
+
+### What M39 does NOT build (by design)
+
+- No external market data validation.
+- No sector/market-cap enrichment from vendors.
+- No corporate action engine.
+- No automatic repair.
+- No AI explanations.
+
+---
+
+## Previously completed — M38: Signal Quality Drill-Down v2
 
 **Status: complete.**
 

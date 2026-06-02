@@ -71,6 +71,7 @@ import type {
   StrategyVersionLineageResponse,
   DatasetQualityDrilldownResponse,
   SignalQualityDrilldownResponse,
+  UniverseCoverageAnalysisResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -836,5 +837,17 @@ export async function getSignalSnapshotQualityDrilldown(
 ): Promise<SignalQualityDrilldownResponse> {
   return request<SignalQualityDrilldownResponse>(
     `/api/signal-snapshots/${snapshotId}/quality-drilldown`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M39: Universe Coverage Analysis
+// ---------------------------------------------------------------------------
+
+export async function getUniverseSnapshotCoverageAnalysis(
+  snapshotId: string,
+): Promise<UniverseCoverageAnalysisResponse> {
+  return request<UniverseCoverageAnalysisResponse>(
+    `/api/universe-snapshots/${snapshotId}/coverage-analysis`,
   );
 }

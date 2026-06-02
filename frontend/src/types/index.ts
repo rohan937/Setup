@@ -1960,6 +1960,80 @@ export interface StrategyVersionLineageResponse {
 }
 
 // ---------------------------------------------------------------------------
+// M39: Universe Coverage Analysis
+// ---------------------------------------------------------------------------
+
+export interface UniverseSymbolQuality {
+  symbol: string;
+  normalized_symbol: string;
+  quality_status: string;
+  is_duplicate: boolean;
+  has_invalid_format: boolean;
+  format_issues: string[];
+  issues: string[];
+}
+
+export interface UniverseMetadataBreakdown {
+  has_symbol_metadata: boolean;
+  metadata_coverage_rate: number;
+  missing_metadata_symbols: number;
+  by_sector: Record<string, number>;
+  by_country: Record<string, number>;
+  by_exchange: Record<string, number>;
+  by_liquidity_bucket: Record<string, number>;
+  warnings: string[];
+}
+
+export interface UniverseDelta {
+  has_previous: boolean;
+  previous_snapshot_id: string | null;
+  previous_label: string | null;
+  delta_status: string | null;
+  added_symbols: string[];
+  removed_symbols: string[];
+  common_symbols_count: number;
+  added_count: number;
+  removed_count: number;
+  overlap_ratio: number | null;
+  jaccard_similarity: number | null;
+  churn_rate: number | null;
+}
+
+export interface UniverseQualitySummary {
+  symbol_count: number;
+  unique_symbol_count: number;
+  duplicate_symbol_count: number;
+  invalid_symbol_count: number;
+  clean_symbol_count: number;
+  review_symbol_count: number;
+  weak_symbol_count: number;
+  coverage_status: string;
+  suggested_checks: string[];
+}
+
+export interface UniverseCoverageAnalysis extends UniverseQualitySummary {
+  linked_run_count: number;
+  is_used_by_runs: boolean;
+  linkage_status: string | null;
+  version_label: string | null;
+}
+
+export interface UniverseCoverageAnalysisResponse {
+  snapshot_id: string;
+  strategy_id: string;
+  label: string;
+  universe_hash: string;
+  symbol_count: number;
+  generated_at: string;
+  coverage_analysis: UniverseCoverageAnalysis;
+  symbol_quality: UniverseSymbolQuality[];
+  metadata_breakdown: UniverseMetadataBreakdown;
+  universe_delta: UniverseDelta;
+  quality_summary: UniverseQualitySummary;
+  warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
 // M37: Dataset Quality Drilldown
 // ---------------------------------------------------------------------------
 

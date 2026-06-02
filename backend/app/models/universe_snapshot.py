@@ -50,6 +50,12 @@ class UniverseSnapshot(Base):
     # Deterministic SHA-256 hex of (sorted symbols + optional metadata). 64 chars.
     universe_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
 
+    # M39: Universe coverage analysis JSON columns.
+    coverage_analysis_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    symbol_quality_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    universe_delta_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    universe_quality_summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
