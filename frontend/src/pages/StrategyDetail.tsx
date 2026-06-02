@@ -18,6 +18,10 @@ import type {
   StrategyHealth,
   StrategyReliabilityScore,
   StrategyRun,
+  StrategyRunHistoryItem,
+  StrategyRunHistoryResponse,
+  StrategyTimelineDrilldownItem,
+  StrategyTimelineDrilldownResponse,
   StrategyVersion,
   TimelineEvent,
   UniverseSnapshotRead,
@@ -30,7 +34,9 @@ import {
   getStrategy,
   getStrategyHealth,
   getStrategyReliabilityScoreHistory,
+  getStrategyRunHistory,
   getStrategyTimeline,
+  getStrategyTimelineDrilldown,
   ingestEvidenceBundle,
   runBacktestAudit,
 } from "@/lib/api";
@@ -1775,6 +1781,253 @@ function StrategyHealthCard({ health }: { health: StrategyHealth }) {
 }
 
 // ---------------------------------------------------------------------------
+// M29: RunHistoryPanel
+// ---------------------------------------------------------------------------
+
+function runHealthColor(label: string): string {
+  switch (label) {
+    case "strong": return "text-teal-400";
+    case "usable": return "text-text-secondary";
+    case "review": return "text-yellow-400";
+    case "weak": return "text-red-400";
+    default: return "text-text-muted";
+  }
+}
+
+function scoreColor(score: number | null): string {
+  if (score === null) return "text-text-muted";
+  if (score >= 80) return "text-teal-400";
+  if (score >= 60) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function RunHistoryPanel({ history }: { history: StrategyRunHistoryResponse }) {
+  const s = history.summary;
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="border-b border-border px-4 py-2.5">
+        <p className="caption">Run History</p>
+      </div>
+      <div className="p-4 space-y-4">
+        {/* Summary chips */}
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded border border-border bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-muted">
+            Total <span className="mono-num ml-1 text-text-primary">{s.total_runs}</span>
+          </span>
+          {s.strong_count > 0 && (
+            <span className="rounded border border-teal-700/40 bg-teal-900/30 px-2 py-0.5 font-mono text-2xs text-teal-400">
+              Strong <span className="mono-num ml-1">{s.strong_count}</span>
+            </span>
+          )}
+          {s.review_count > 0 && (
+            <span className="rounded border border-yellow-700/40 bg-yellow-900/30 px-2 py-0.5 font-mono text-2xs text-yellow-400">
+              Review <span className="mono-num ml-1">{s.review_count}</span>
+            </span>
+          )}
+          {s.weak_count > 0 && (
+            <span className="rounded border border-red-700/40 bg-red-900/30 px-2 py-0.5 font-mono text-2xs text-red-400">
+              Weak <span className="mono-num ml-1">{s.weak_count}</span>
+            </span>
+          )}
+          {s.runs_missing_dataset > 0 && (
+            <span className="rounded border border-border bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-muted">
+              No Dataset <span className="mono-num ml-1">{s.runs_missing_dataset}</span>
+            </span>
+          )}
+          {s.runs_missing_signal > 0 && (
+            <span className="rounded border border-border bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-muted">
+              No Signal <span className="mono-num ml-1">{s.runs_missing_signal}</span>
+            </span>
+          )}
+          {s.runs_missing_audit > 0 && (
+            <span className="rounded border border-border bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-muted">
+              No Audit <span className="mono-num ml-1">{s.runs_missing_audit}</span>
+            </span>
+          )}
+        </div>
+
+        {/* Table */}
+        {history.items.length === 0 ? (
+          <p className="font-mono text-2xs text-text-muted">No runs recorded.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-border">
+                  {["Run Name", "Type", "Health", "Date", "Version", "Data", "Signal", "BT Trust", "Missing"].map((col) => (
+                    <th key={col} className="pb-2 pr-4 font-mono text-2xs text-text-muted uppercase tracking-wider whitespace-nowrap">
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {history.items.map((r: StrategyRunHistoryItem) => {
+                  const missing: string[] = [];
+                  if (!r.has_dataset_evidence) missing.push("data");
+                  if (!r.has_universe_evidence) missing.push("universe");
+                  if (!r.has_signal_evidence) missing.push("signal");
+                  if (!r.has_backtest_audit) missing.push("audit");
+                  if (!r.has_strategy_version) missing.push("version");
+
+                  return (
+                    <tr key={r.run_id} className="border-b border-border/50 last:border-0">
+                      <td className="py-2 pr-4 text-xs text-text-primary whitespace-nowrap max-w-[140px] truncate">
+                        {r.run_name}
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-2xs text-text-muted whitespace-nowrap">
+                        {r.run_type}
+                      </td>
+                      <td className={`py-2 pr-4 font-mono text-2xs whitespace-nowrap ${runHealthColor(r.run_health_label)}`}>
+                        {r.run_health_label.replace("_", " ")}
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-2xs text-text-muted whitespace-nowrap">
+                        {r.started_at ? new Date(r.started_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
+                        {r.strategy_version ? (
+                          <span className="text-text-secondary">{r.strategy_version.version_label}</span>
+                        ) : (
+                          <span className="text-text-muted/40">—</span>
+                        )}
+                      </td>
+                      <td className={`py-2 pr-4 font-mono text-2xs whitespace-nowrap ${scoreColor(r.dataset_evidence?.health_score ?? null)}`}>
+                        {r.dataset_evidence != null ? r.dataset_evidence.health_score : "—"}
+                      </td>
+                      <td className={`py-2 pr-4 font-mono text-2xs whitespace-nowrap ${scoreColor(r.signal_evidence?.quality_score ?? null)}`}>
+                        {r.signal_evidence != null ? r.signal_evidence.quality_score : "—"}
+                      </td>
+                      <td className={`py-2 pr-4 font-mono text-2xs whitespace-nowrap ${scoreColor(r.backtest_audit?.trust_score ?? null)}`}>
+                        {r.backtest_audit != null ? r.backtest_audit.trust_score : "—"}
+                      </td>
+                      <td className="py-2 font-mono text-2xs">
+                        {missing.length === 0 ? (
+                          <span className="text-teal-400">complete</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {missing.map((m) => (
+                              <span key={m} className="rounded border border-border bg-bg-800 px-1 py-0.5 text-2xs text-text-muted">
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M29: EvidenceTimelinePanel
+// ---------------------------------------------------------------------------
+
+function categoryDotClass(category: string): string {
+  const map: Record<string, string> = {
+    run: "bg-accent-500",
+    data: "bg-blue-400",
+    backtest: "bg-yellow-400",
+    config: "bg-text-muted",
+    universe: "bg-teal-400",
+    signal: "bg-cyan-400",
+    reliability: "bg-green-400",
+    report: "bg-purple-400",
+    alert: "bg-red-400",
+    ingestion: "bg-orange-400",
+    other: "bg-bg-500",
+  };
+  return map[category] ?? "bg-bg-500";
+}
+
+function categoryBadgeClass(category: string): string {
+  const map: Record<string, string> = {
+    run: "bg-accent-900/30 text-accent-400 border-accent-700/40",
+    data: "bg-blue-900/30 text-blue-400 border-blue-700/40",
+    backtest: "bg-yellow-900/30 text-yellow-400 border-yellow-700/40",
+    config: "bg-bg-700 text-text-muted border-border",
+    universe: "bg-teal-900/30 text-teal-400 border-teal-700/40",
+    signal: "bg-cyan-900/30 text-cyan-400 border-cyan-700/40",
+    reliability: "bg-green-900/30 text-green-400 border-green-700/40",
+    report: "bg-purple-900/30 text-purple-400 border-purple-700/40",
+    alert: "bg-red-900/30 text-red-400 border-red-700/40",
+    ingestion: "bg-orange-900/30 text-orange-400 border-orange-700/40",
+    other: "bg-bg-700 text-text-muted border-border",
+  };
+  return map[category] ?? "bg-bg-700 text-text-muted border-border";
+}
+
+function EvidenceTimelinePanel({
+  drilldown,
+}: {
+  drilldown: StrategyTimelineDrilldownResponse;
+  strategyId?: string | undefined;
+}) {
+  const remaining = drilldown.total - drilldown.items.length;
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <p className="caption">Evidence Timeline</p>
+        <Link
+          to="/timeline"
+          className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+        >
+          full timeline →
+        </Link>
+      </div>
+      <div className="divide-y divide-border px-4">
+        {drilldown.items.length === 0 ? (
+          <p className="py-4 font-mono text-2xs text-text-muted">No timeline events yet.</p>
+        ) : (
+          drilldown.items.map((ev: StrategyTimelineDrilldownItem) => (
+            <div key={ev.event_id} className="flex items-start gap-3 py-3">
+              {/* Category dot */}
+              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${categoryDotClass(ev.evidence_category)}`} />
+              {/* Content */}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <span className={`inline-block rounded border px-1.5 py-0.5 font-mono text-2xs leading-none ${categoryBadgeClass(ev.evidence_category)}`}>
+                      {ev.evidence_category}
+                    </span>
+                    <span className="text-xs text-text-primary truncate max-w-[240px]">
+                      {ev.title}
+                    </span>
+                  </div>
+                  <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
+                    {new Date(ev.event_time).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                </div>
+                {ev.source_label && (
+                  <p className="mt-0.5 font-mono text-2xs text-text-muted/60">{ev.source_label}</p>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      {remaining > 0 && (
+        <div className="border-t border-border px-4 py-2.5">
+          <p className="font-mono text-2xs text-text-muted/60">
+            +{remaining} more event{remaining !== 1 ? "s" : ""} — view full timeline
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -1829,6 +2082,10 @@ export default function StrategyDetail() {
 
   // M27: strategy health
   const [health, setHealth] = useState<StrategyHealth | null>(null);
+
+  // M29: run history and timeline drilldown
+  const [runHistory, setRunHistory] = useState<StrategyRunHistoryResponse | null>(null);
+  const [timelineDrilldown, setTimelineDrilldown] = useState<StrategyTimelineDrilldownResponse | null>(null);
 
   async function handleGenerateReport() {
     if (!id) return;
@@ -1906,6 +2163,9 @@ export default function StrategyDetail() {
       .finally(() => setLoading(false));
     // M27: load health in parallel
     getStrategyHealth(id).then(setHealth).catch(() => setHealth(null));
+    // M29: load run history and timeline drilldown in parallel
+    getStrategyRunHistory(id, { limit: 50 }).then(setRunHistory).catch(() => setRunHistory(null));
+    getStrategyTimelineDrilldown(id, { limit: 30 }).then(setTimelineDrilldown).catch(() => setTimelineDrilldown(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -2263,6 +2523,12 @@ export default function StrategyDetail() {
 
       {/* Run comparison (M5) */}
       <RunComparisonPanel strategyId={id!} runs={strategy.runs} />
+
+      {/* M29: Run History panel */}
+      {runHistory && <RunHistoryPanel history={runHistory} />}
+
+      {/* M29: Evidence Timeline drilldown */}
+      {timelineDrilldown && <EvidenceTimelinePanel drilldown={timelineDrilldown} strategyId={id} />}
 
       {/* M22: Evidence Bundle Ingestion (developer tool) */}
       <IngestionPanel

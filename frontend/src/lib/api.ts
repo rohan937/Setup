@@ -61,6 +61,8 @@ import type {
   StrategyHealthListResponse,
   ProjectHealth,
   ProjectHealthListResponse,
+  StrategyRunHistoryResponse,
+  StrategyTimelineDrilldownResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -683,4 +685,50 @@ export async function getProjectsHealth(params?: {
   if (params?.offset != null) qs.set("offset", String(params.offset));
   const q = qs.toString();
   return request<ProjectHealthListResponse>(`/api/projects/health${q ? `?${q}` : ""}`);
+}
+
+// ---------------------------------------------------------------------------
+// M29: Run History and Timeline Drilldown
+// ---------------------------------------------------------------------------
+
+export async function getStrategyRunHistory(
+  strategyId: string,
+  params?: {
+    run_type?: string;
+    status?: string;
+    evidence_status?: string;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<StrategyRunHistoryResponse> {
+  const qs = new URLSearchParams();
+  if (params?.run_type) qs.set("run_type", params.run_type);
+  if (params?.status) qs.set("status", params.status);
+  if (params?.evidence_status) qs.set("evidence_status", params.evidence_status);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return request<StrategyRunHistoryResponse>(
+    `/api/strategies/${strategyId}/run-history${q ? `?${q}` : ""}`,
+  );
+}
+
+export async function getStrategyTimelineDrilldown(
+  strategyId: string,
+  params?: {
+    limit?: number;
+    offset?: number;
+    event_type?: string;
+    source_type?: string;
+  },
+): Promise<StrategyTimelineDrilldownResponse> {
+  const qs = new URLSearchParams();
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  if (params?.event_type) qs.set("event_type", params.event_type);
+  if (params?.source_type) qs.set("source_type", params.source_type);
+  const q = qs.toString();
+  return request<StrategyTimelineDrilldownResponse>(
+    `/api/strategies/${strategyId}/timeline/drilldown${q ? `?${q}` : ""}`,
+  );
 }

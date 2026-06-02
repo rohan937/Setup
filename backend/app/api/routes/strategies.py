@@ -97,6 +97,21 @@ from app.services.strategy_reliability import (
     compute_reliability_score,
 )
 from app.schemas.timeline import TimelineEventOut, TimelineListResponse
+from app.schemas.run_history import (
+    BacktestAuditSummarySchema,
+    DatasetEvidence,
+    SignalEvidence,
+    StrategyRunHistoryItem as RunHistItem,
+    StrategyRunHistorySummary,
+    StrategyRunHistoryResponse,
+    StrategyTimelineDrilldownItem as TLDItem,
+    StrategyTimelineDrilldownSummary,
+    StrategyTimelineDrilldownResponse,
+    StrategyVersionSummary,
+    UniverseEvidence,
+)
+from app.services.strategy_run_history import get_strategy_run_history as _get_run_history
+from app.services.strategy_timeline import get_strategy_timeline_drilldown as _get_tl_drilldown
 from app.services.config_snapshots import (
     compare_config_snapshots,
     compute_config_hash,
@@ -1394,6 +1409,73 @@ def compare_strategy_runs(
 
 
 # ---------------------------------------------------------------------------
+# M29: GET /api/strategies/{strategy_id}/timeline/drilldown
+# NOTE: registered BEFORE the /timeline endpoint so the literal "/drilldown"
+# segment is matched before the generic timeline handler.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/timeline/drilldown",
+    response_model=StrategyTimelineDrilldownResponse,
+)
+def get_strategy_timeline_drilldown_route(
+    strategy_id: uuid.UUID,
+    limit: int = Query(default=100, ge=1, le=300),
+    offset: int = Query(default=0, ge=0),
+    event_type: str | None = Query(default=None, description="Filter by event_type"),
+    source_type: str | None = Query(default=None, description="Filter by source_type"),
+    db: Session = Depends(get_db),
+) -> StrategyTimelineDrilldownResponse:
+    """Return enriched, per-strategy timeline events with evidence_category,
+    source_label, and linked_url_hint fields.
+
+    Deterministic — no AI, no live market data, no external calls.
+    All filters are AND-combined.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    items_data, summary_data = _get_tl_drilldown(
+        strategy_id, db, limit=limit, offset=offset,
+        event_type=event_type, source_type=source_type,
+    )
+
+    items = [
+        TLDItem(
+            event_id=i.event_id,
+            event_type=i.event_type,
+            title=i.title,
+            description=i.description,
+            severity=i.severity,
+            event_time=i.event_time,
+            created_at=i.created_at,
+            source_type=i.source_type,
+            source_id=i.source_id,
+            evidence_category=i.evidence_category,
+            source_label=i.source_label,
+            linked_url_hint=i.linked_url_hint,
+        )
+        for i in items_data
+    ]
+
+    summary = StrategyTimelineDrilldownSummary(
+        total_events=summary_data.total_events,
+        event_type_counts=summary_data.event_type_counts,
+        source_type_counts=summary_data.source_type_counts,
+        latest_event_at=summary_data.latest_event_at,
+    )
+
+    return StrategyTimelineDrilldownResponse(
+        items=items,
+        total=summary_data.total_events,
+        limit=limit,
+        offset=offset,
+        summary=summary,
+    )
+
+
+# ---------------------------------------------------------------------------
 # GET /api/strategies/{strategy_id}/timeline  (M10)
 # NOTE: registered BEFORE the bare /runs route so the literal "/timeline"
 # segment is matched before the run-list handler.
@@ -1432,6 +1514,148 @@ def get_strategy_timeline(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M29: GET /api/strategies/{strategy_id}/run-history
+# NOTE: registered BEFORE the bare /runs route so the literal "/run-history"
+# segment is matched before the run-list handler.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/run-history",
+    response_model=StrategyRunHistoryResponse,
+)
+def get_strategy_run_history_route(
+    strategy_id: uuid.UUID,
+    run_type: str | None = Query(default=None, description="Filter by run_type"),
+    status: str | None = Query(default=None, description="Filter by run status"),
+    evidence_status: str | None = Query(
+        default=None,
+        description=(
+            "Filter by evidence completeness: complete, missing_dataset, missing_signal, "
+            "missing_universe, missing_audit, review, weak"
+        ),
+    ),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> StrategyRunHistoryResponse:
+    """Return enriched run history for a strategy with per-run evidence indicators.
+
+    Each run includes linked dataset, universe, signal, and backtest audit evidence,
+    plus a deterministic run_health_label (strong/usable/review/weak/insufficient_evidence).
+    Deterministic — no AI, no live market data, no external calls.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    items_data, summary_data = _get_run_history(
+        strategy_id, db,
+        run_type=run_type, status=status, evidence_status=evidence_status,
+        limit=limit, offset=offset,
+    )
+
+    items = [
+        RunHistItem(
+            run_id=i.run_id,
+            run_name=i.run_name,
+            run_type=i.run_type,
+            status=i.status,
+            started_at=i.started_at,
+            completed_at=i.completed_at,
+            created_at=i.created_at,
+            params_json=i.params_json,
+            assumptions_json=i.assumptions_json,
+            metrics_json=i.metrics_json,
+            notes=i.notes,
+            strategy_version=(
+                StrategyVersionSummary(
+                    version_id=i.strategy_version.version_id,
+                    version_label=i.strategy_version.version_label,
+                    git_commit=i.strategy_version.git_commit,
+                    branch_name=i.strategy_version.branch_name,
+                    signal_name=i.strategy_version.signal_name,
+                )
+                if i.strategy_version is not None else None
+            ),
+            dataset_evidence=(
+                DatasetEvidence(
+                    dataset_snapshot_id=i.dataset_evidence.dataset_snapshot_id,
+                    dataset_name=i.dataset_evidence.dataset_name,
+                    snapshot_label=i.dataset_evidence.snapshot_label,
+                    health_score=i.dataset_evidence.health_score,
+                    issue_count=i.dataset_evidence.issue_count,
+                    worst_severity=i.dataset_evidence.worst_severity,
+                )
+                if i.dataset_evidence is not None else None
+            ),
+            universe_evidence=(
+                UniverseEvidence(
+                    universe_snapshot_id=i.universe_evidence.universe_snapshot_id,
+                    label=i.universe_evidence.label,
+                    symbol_count=i.universe_evidence.symbol_count,
+                    universe_hash=i.universe_evidence.universe_hash,
+                )
+                if i.universe_evidence is not None else None
+            ),
+            signal_evidence=(
+                SignalEvidence(
+                    signal_snapshot_id=i.signal_evidence.signal_snapshot_id,
+                    label=i.signal_evidence.label,
+                    signal_name=i.signal_evidence.signal_name,
+                    quality_score=i.signal_evidence.quality_score,
+                    missing_signal_count=i.signal_evidence.missing_signal_count,
+                    symbol_count=i.signal_evidence.symbol_count,
+                    mean_value=i.signal_evidence.mean_value,
+                    stddev_value=i.signal_evidence.stddev_value,
+                )
+                if i.signal_evidence is not None else None
+            ),
+            backtest_audit=(
+                BacktestAuditSummarySchema(
+                    audit_id=i.backtest_audit.audit_id,
+                    trust_score=i.backtest_audit.trust_score,
+                    overall_status=i.backtest_audit.overall_status,
+                    issue_count=i.backtest_audit.issue_count,
+                    high_critical_issue_count=i.backtest_audit.high_critical_issue_count,
+                    cost_fragility_level=i.backtest_audit.cost_fragility_level,
+                    fill_realism_level=i.backtest_audit.fill_realism_level,
+                )
+                if i.backtest_audit is not None else None
+            ),
+            has_dataset_evidence=i.has_dataset_evidence,
+            has_universe_evidence=i.has_universe_evidence,
+            has_signal_evidence=i.has_signal_evidence,
+            has_backtest_audit=i.has_backtest_audit,
+            has_strategy_version=i.has_strategy_version,
+            run_health_label=i.run_health_label,
+        )
+        for i in items_data
+    ]
+
+    summary = StrategyRunHistorySummary(
+        total_runs=summary_data.total_runs,
+        strong_count=summary_data.strong_count,
+        usable_count=summary_data.usable_count,
+        review_count=summary_data.review_count,
+        weak_count=summary_data.weak_count,
+        insufficient_evidence_count=summary_data.insufficient_evidence_count,
+        runs_missing_dataset=summary_data.runs_missing_dataset,
+        runs_missing_signal=summary_data.runs_missing_signal,
+        runs_missing_universe=summary_data.runs_missing_universe,
+        runs_missing_audit=summary_data.runs_missing_audit,
+        latest_run_at=summary_data.latest_run_at,
+    )
+
+    return StrategyRunHistoryResponse(
+        items=items,
+        total=summary_data.total_runs,
+        limit=limit,
+        offset=offset,
+        summary=summary,
     )
 
 

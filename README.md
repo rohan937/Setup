@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (933 tests, 1 skipped)
+│   └── tests/              Pytest tests (953 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,111 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M28: Project Health + Scoped API Keys v1
+## Current milestone — M29: Strategy Run History + Timeline Drill-Down
+
+**Status: complete.**
+
+### M29 deliverables
+
+- **New `backend/app/services/strategy_run_history.py`** — enriched per-run evidence service.
+  No AI, no live market data, no external calls:
+  - Returns each strategy run enriched with: dataset health score, signal quality score,
+    universe symbol count, backtest trust score, version label, and `has_*` evidence flags
+    (`has_dataset_snapshot`, `has_signal_snapshot`, `has_universe_snapshot`, `has_backtest_audit`).
+  - **Run health label** (evaluated in order):
+    - `strong`: all evidence present AND all scores >= 80.
+    - `usable`: at least one evidence piece present AND no individual score is weak (< 75).
+    - `review`: any score < 75 OR missing expected evidence.
+    - `weak`: any individual score < 50.
+    - `insufficient_evidence`: no evidence linked to the run.
+  - **Evidence status filter**: `missing_dataset` / `missing_signal` / `missing_universe` /
+    `missing_audit` / `complete` / `review` / `weak`.
+  - **Run history summary fields**: `total_runs`, `strong_count`, `usable_count`,
+    `review_count`, `weak_count`, `insufficient_count`, runs missing each evidence type
+    (`runs_missing_dataset`, `runs_missing_signal`, `runs_missing_universe`,
+    `runs_missing_audit`), `latest_run_at`.
+
+- **New `backend/app/services/strategy_timeline.py`** — timeline enrichment service.
+  No AI, no external calls:
+  - Enriches each timeline event with `evidence_category` (one of: `run` / `data` /
+    `backtest` / `config` / `universe` / `signal` / `reliability` / `report` / `alert` /
+    `ingestion` / `other`), `source_label` (human-readable event source), and
+    `linked_url_hint` (relative path hint for deep-linking).
+  - **Timeline drilldown summary**: `total_events`, `event_type_counts` (dict),
+    `source_type_counts` (dict), `latest_event_at`.
+
+- **2 new API endpoints** registered in `app/api/routes/strategies.py`:
+  - `GET /api/strategies/{id}/run-history` — returns enriched run list with health labels
+    and summary. Supports `evidence_status` filter, `limit`, `offset` query params.
+    Returns `RunHistoryResponse`.
+  - `GET /api/strategies/{id}/timeline/drilldown` — returns enriched timeline events with
+    evidence categories and drilldown summary. Supports `event_type` filter, `limit`,
+    `offset` query params. Returns `TimelineDrilldownResponse`.
+
+- **New schema file** `app/schemas/run_history.py`:
+  `RunHistoryEntry`, `RunHistorySummary`, `RunHistoryResponse`,
+  `TimelineDrilldownEntry`, `TimelineDrilldownSummary`, `TimelineDrilldownResponse`.
+
+- **Frontend — `RunHistoryPanel`** in `StrategyDetail.tsx`:
+  - Summary chips showing counts by run health label (strong / usable / review / weak /
+    insufficient_evidence).
+  - Enriched run table with health label badge, version label, dataset health score,
+    signal quality score, universe symbol count, backtest trust score, and missing
+    evidence chips per run.
+
+- **Frontend — `EvidenceTimelinePanel`** in `StrategyDetail.tsx`:
+  - Compact event list with colored category dots per evidence category.
+  - Category legend and event type / source type summary chips.
+  - Drilldown summary: total events, latest event timestamp.
+
+- **20 new backend tests** (`tests/test_run_history_m29.py`).
+- **Backend total: 953 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (61 modules).
+- No external APIs required. Read-only — no new events created. Not investment advice.
+
+### What M29 does NOT build (by design)
+
+- No live execution drift detection or order-level run replay.
+- No AI-generated summaries of run history.
+- No cross-strategy run history comparison.
+- No historical snapshot persistence of run health labels (computed on demand).
+
+### Run history + timeline drilldown curl examples
+
+```bash
+# Get enriched run history for a strategy
+curl "http://localhost:8000/api/strategies/<strategy_id>/run-history" | python3 -m json.tool
+# Response: { strategy_id, summary: { total_runs, strong_count, usable_count,
+#   review_count, weak_count, insufficient_count, runs_missing_dataset,
+#   runs_missing_signal, runs_missing_universe, runs_missing_audit, latest_run_at },
+#   items: [{ run_id, run_name, run_type, status, health_label, version_label,
+#     dataset_health_score, signal_quality_score, universe_symbol_count,
+#     backtest_trust_score, has_dataset_snapshot, has_signal_snapshot,
+#     has_universe_snapshot, has_backtest_audit, created_at }], total, limit, offset }
+
+# Filter by evidence status
+curl "http://localhost:8000/api/strategies/<strategy_id>/run-history?evidence_status=missing_dataset" \
+  | python3 -m json.tool
+
+# Get enriched timeline drilldown for a strategy
+curl "http://localhost:8000/api/strategies/<strategy_id>/timeline/drilldown" | python3 -m json.tool
+# Response: { strategy_id, summary: { total_events, event_type_counts,
+#   source_type_counts, latest_event_at }, items: [{ event_id, event_type,
+#   evidence_category, source_label, linked_url_hint, created_at, metadata_json }],
+#   total, limit, offset }
+
+# Filter by event type
+curl "http://localhost:8000/api/strategies/<strategy_id>/timeline/drilldown?event_type=strategy_run_logged" \
+  | python3 -m json.tool
+```
+
+> **M29 note:** Run history enrichment and timeline drilldown are deterministic — computed
+> from logged evidence records. No AI, no live market data, no external calls.
+> Not investment advice.
+
+---
+
+## Previously completed — M28: Project Health + Scoped API Keys v1
 
 **Status: complete.**
 

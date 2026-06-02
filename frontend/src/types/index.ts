@@ -1421,3 +1421,131 @@ export interface ProjectHealthListResponse {
   offset: number;
   generated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// M29: Run History and Timeline Drilldown types
+// ---------------------------------------------------------------------------
+
+export interface StrategyRunVersionSummary {
+  version_id: string;
+  version_label: string;
+  git_commit: string | null;
+  branch_name: string | null;
+  signal_name: string | null;
+}
+
+export interface RunDatasetEvidence {
+  dataset_snapshot_id: string;
+  dataset_name: string;
+  snapshot_label: string;
+  health_score: number;
+  issue_count: number;
+  worst_severity: string | null;
+}
+
+export interface RunUniverseEvidence {
+  universe_snapshot_id: string;
+  label: string;
+  symbol_count: number;
+  universe_hash: string;
+}
+
+export interface RunSignalEvidence {
+  signal_snapshot_id: string;
+  label: string;
+  signal_name: string | null;
+  quality_score: number;
+  missing_signal_count: number;
+  symbol_count: number;
+  mean_value: number | null;
+  stddev_value: number | null;
+}
+
+export interface RunBacktestAuditSummary {
+  audit_id: string;
+  trust_score: number;
+  overall_status: string;
+  issue_count: number;
+  high_critical_issue_count: number;
+  cost_fragility_level: string | null;
+  fill_realism_level: string | null;
+}
+
+export type RunHealthLabel = "strong" | "usable" | "review" | "weak" | "insufficient_evidence";
+
+export interface StrategyRunHistoryItem {
+  run_id: string;
+  run_name: string;
+  run_type: string;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  params_json: Record<string, unknown> | null;
+  assumptions_json: Record<string, unknown> | null;
+  metrics_json: Record<string, unknown> | null;
+  notes: string | null;
+  strategy_version: StrategyRunVersionSummary | null;
+  dataset_evidence: RunDatasetEvidence | null;
+  universe_evidence: RunUniverseEvidence | null;
+  signal_evidence: RunSignalEvidence | null;
+  backtest_audit: RunBacktestAuditSummary | null;
+  has_dataset_evidence: boolean;
+  has_universe_evidence: boolean;
+  has_signal_evidence: boolean;
+  has_backtest_audit: boolean;
+  has_strategy_version: boolean;
+  run_health_label: RunHealthLabel;
+}
+
+export interface StrategyRunHistorySummary {
+  total_runs: number;
+  strong_count: number;
+  usable_count: number;
+  review_count: number;
+  weak_count: number;
+  insufficient_evidence_count: number;
+  runs_missing_dataset: number;
+  runs_missing_signal: number;
+  runs_missing_universe: number;
+  runs_missing_audit: number;
+  latest_run_at: string | null;
+}
+
+export interface StrategyRunHistoryResponse {
+  items: StrategyRunHistoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  summary: StrategyRunHistorySummary;
+}
+
+export interface StrategyTimelineDrilldownItem {
+  event_id: string;
+  event_type: string;
+  title: string;
+  severity: string;
+  description: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  linked_url_hint: string | null;
+  event_time: string;
+  created_at: string;
+  evidence_category: string;
+  source_label: string;
+}
+
+export interface StrategyTimelineDrilldownSummary {
+  total_events: number;
+  event_type_counts: Record<string, number>;
+  source_type_counts: Record<string, number>;
+  latest_event_at: string | null;
+}
+
+export interface StrategyTimelineDrilldownResponse {
+  items: StrategyTimelineDrilldownItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  summary: StrategyTimelineDrilldownSummary;
+}
