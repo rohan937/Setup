@@ -17,4 +17,6 @@ export const navItems: NavItem[] = [
   // Config
   { label: "Signals",          path: "/alerts",      section: "Config" },
   { label: "Settings",         path: "/settings",    section: "Config" },
+  // Admin
+  { label: "System Health",    path: "/admin/system-health", section: "Admin" },
 ];

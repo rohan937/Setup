@@ -2422,3 +2422,90 @@ export interface StrategyComparisonReportResponse {
   content: string | null;
   raw_evidence: Record<string, unknown> | null;
 }
+
+// ---------------------------------------------------------------------------
+// M45: System Health
+// ---------------------------------------------------------------------------
+
+export interface SystemEntityCounts {
+  total_strategies: number;
+  active_strategies: number;
+  total_runs: number;
+  total_datasets: number;
+  total_dataset_snapshots: number;
+  total_signal_snapshots: number;
+  total_universe_snapshots: number;
+  total_config_snapshots: number;
+  total_backtest_audits: number;
+  total_timeline_events: number;
+  open_alerts: number;
+  total_alerts: number;
+  total_reports: number;
+  total_api_keys: number;
+  active_api_keys: number;
+  total_ingestion_batches: number;
+}
+
+export interface SystemIngestionHealth {
+  total_batches: number;
+  completed_batches: number;
+  failed_batches: number;
+  recent_failed_batches_count: number;
+  failure_rate: number;
+  latest_batch_at: string | null;
+  latest_failed_batch_at: string | null;
+  ingestion_status: string;
+}
+
+export interface SystemApiKeyHealth {
+  active_api_keys: number;
+  revoked_api_keys: number;
+  keys_used_last_7d: number;
+  keys_never_used: number;
+  stale_keys_count: number;
+  api_key_status: string;
+}
+
+export interface SystemEvidenceActivity {
+  events_last_24h: number;
+  events_last_7d: number;
+  events_last_30d: number;
+  latest_event_at: string | null;
+  activity_status: string;
+}
+
+export interface SystemProjectHealthRollup {
+  project_count_by_health_status: Record<string, number>;
+  projects_requiring_review: Array<Record<string, unknown>>;
+  healthiest_projects: Array<Record<string, unknown>>;
+}
+
+export interface SystemStrategyHealthRollup {
+  strategy_count_by_health_status: Record<string, number>;
+  strategies_requiring_review: Array<Record<string, unknown>>;
+  most_active_strategies: Array<Record<string, unknown>>;
+}
+
+export interface SystemOperationalActivityItem {
+  item_type: string;
+  title: string;
+  timestamp: string | null;
+  detail: string | null;
+}
+
+export interface SystemHealthResponse {
+  generated_at: string;
+  environment: string;
+  db_type: string;
+  note: string;
+  system_status: string;
+  system_score: number | null;
+  entity_counts: SystemEntityCounts;
+  ingestion_health: SystemIngestionHealth;
+  api_key_health: SystemApiKeyHealth;
+  evidence_activity: SystemEvidenceActivity;
+  project_health_rollup: SystemProjectHealthRollup;
+  strategy_health_rollup: SystemStrategyHealthRollup;
+  recent_activity: SystemOperationalActivityItem[];
+  suggested_operational_checks: string[];
+}

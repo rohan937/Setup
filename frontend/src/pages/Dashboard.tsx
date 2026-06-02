@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, PortfolioOverview, ProjectHealth, RecentEvidenceItem, Strategy, StrategyHealthListResponse } from "@/types";
-import { getDashboardSummary, getEvidenceCoverage, getPortfolioOverview, getProjectsHealth, getStrategies, getStrategiesHealth } from "@/lib/api";
+import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, PortfolioOverview, ProjectHealth, RecentEvidenceItem, Strategy, StrategyHealthListResponse, SystemHealthResponse } from "@/types";
+import { getDashboardSummary, getEvidenceCoverage, getPortfolioOverview, getProjectsHealth, getStrategies, getStrategiesHealth, getSystemHealth } from "@/lib/api";
 import Badge from "@/components/Badge";
 
 // ---------------------------------------------------------------------------
@@ -185,6 +185,7 @@ export default function Dashboard() {
   const [healthSummary, setHealthSummary] = useState<HealthStatusCounts | null>(null);
   const [projectsHealth, setProjectsHealth] = useState<ProjectHealth[]>([]);
   const [portfolioOverview, setPortfolioOverview] = useState<PortfolioOverview | null>(null);
+  const [systemHealth, setSystemHealth] = useState<SystemHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -225,6 +226,8 @@ export default function Dashboard() {
     getPortfolioOverview({ limit_per_section: 3 })
       .then(setPortfolioOverview)
       .catch(() => {});
+    // M45: load system health in parallel (best-effort)
+    getSystemHealth().then(setSystemHealth).catch(() => {});
   }, []);
 
   const scores = summary?.scores ?? null;
@@ -579,6 +582,66 @@ export default function Dashboard() {
               View full portfolio overview →
             </Link>
           </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* System Health card (M45)                                           */}
+      {/* ------------------------------------------------------------------ */}
+      {!loading && systemHealth && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+            <p className="caption">System Health</p>
+            <Link
+              to="/admin/system-health"
+              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            >
+              ops →
+            </Link>
+          </div>
+          <div className="grid grid-cols-4 divide-x divide-border">
+            <div className="px-4 py-3 text-center">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Score</p>
+              <p className={`mono-num mt-1 text-xl font-bold ${scoreColor(systemHealth.system_score)}`}>
+                {systemHealth.system_score !== null ? systemHealth.system_score.toFixed(1) : "—"}
+              </p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Strategies</p>
+              <p className="mono-num mt-1 text-xl font-bold text-text-primary">
+                {systemHealth.entity_counts.active_strategies}
+              </p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Ingestion</p>
+              <p className={`mono-num mt-1 text-sm font-semibold ${
+                systemHealth.ingestion_health.ingestion_status === "healthy" ? "text-teal-400" :
+                systemHealth.ingestion_health.ingestion_status === "watch" ? "text-yellow-400" :
+                systemHealth.ingestion_health.ingestion_status === "degraded" ? "text-red-400" :
+                "text-text-muted"
+              }`}>
+                {systemHealth.ingestion_health.ingestion_status.replace(/_/g, " ")}
+              </p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Activity</p>
+              <p className={`mono-num mt-1 text-sm font-semibold ${
+                systemHealth.evidence_activity.activity_status === "healthy" ? "text-teal-400" :
+                systemHealth.evidence_activity.activity_status === "watch" ? "text-yellow-400" :
+                systemHealth.evidence_activity.activity_status === "degraded" ? "text-red-400" :
+                "text-text-muted"
+              }`}>
+                {systemHealth.evidence_activity.activity_status.replace(/_/g, " ")}
+              </p>
+            </div>
+          </div>
+          {(systemHealth.system_status === "degraded" || systemHealth.system_status === "review") && (
+            <div className="border-t border-border px-4 py-2">
+              <span className="font-mono text-2xs text-orange-400">
+                System status: {systemHealth.system_status.replace(/_/g, " ")} — review ops dashboard
+              </span>
+            </div>
+          )}
         </div>
       )}
 

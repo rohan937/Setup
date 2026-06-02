@@ -77,6 +77,7 @@ import type {
   StrategyTimelineAnalyticsResponse,
   StrategyComparisonReportRequest,
   StrategyComparisonReportResponse,
+  SystemHealthResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -911,4 +912,12 @@ export async function generateStrategyComparisonReport(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+// ---------------------------------------------------------------------------
+// M45: System Health
+// ---------------------------------------------------------------------------
+
+export async function getSystemHealth(): Promise<SystemHealthResponse> {
+  return request<SystemHealthResponse>("/api/admin/system-health");
 }

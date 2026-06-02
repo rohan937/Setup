@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1246 tests, 1 skipped)
+│   └── tests/              Pytest tests (1262 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,85 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M44: Strategy Comparison Report v1
+## Current milestone — M45: System Health + Operations Dashboard v1
+
+**Status: complete.**
+
+### M45 deliverables
+
+- **New service `backend/app/services/system_health.py`** — `get_system_health(db)` queries all major models for entity counts, ingestion health, API key health, and evidence activity. No AI, no external APIs, deterministic.
+
+- **New endpoint** `GET /api/admin/system-health`:
+  - Read-only. No `AuditTimelineEvent` created. No auth requirement beyond existing local behavior.
+  - Returns `SystemHealthResponse`.
+
+- **New router** `backend/app/api/routes/admin.py` registered in `app/api/router.py` under `/api` prefix.
+
+- **Entity counts**:
+  - Organizations, projects.
+  - Strategies: active and archived counts.
+  - Runs, datasets, snapshots (all types: dataset, signal, universe, config).
+  - Backtest audits.
+  - Alerts: open and high/critical counts.
+  - Reports, timeline events.
+  - API keys: active and revoked counts.
+  - Ingestion batches: completed and failed counts.
+
+- **Ingestion health status** (deterministic, rule-based):
+  - `no_batches` — no ingestion batches exist.
+  - `healthy` — failure_rate = 0.
+  - `watch` — some failures exist.
+  - `degraded` — failure_rate > 10% or 3+ recent failures.
+
+- **API key health status** (deterministic, rule-based):
+  - `healthy` — keys are in regular use.
+  - `watch` — many never-used keys.
+  - `review` — stale keys present.
+
+- **Evidence activity status** (deterministic, rule-based):
+  - `active` — last activity within 7 days.
+  - `quiet` — last activity within 30 days.
+  - `stale` — last activity more than 30 days ago.
+  - `no_activity` — no timeline events exist.
+
+- **System score (0–100)**: starts at 100, deducts for degraded ingestion, high/critical alerts, stale API keys, quiet/stale evidence activity, and under-instrumented strategies.
+
+- **System status thresholds** (derived from system score):
+  - `healthy` — score >= 80.
+  - `watch` — score >= 60.
+  - `review` — score >= 40.
+  - `degraded` — score < 40.
+
+- **Frontend — `AdminSystemHealth.tsx`** at route `/admin/system-health`:
+  - Status banner showing system score and system status.
+  - Entity count grid.
+  - Three health panels: ingestion health, API key health, evidence activity.
+  - Strategy and project rollup summaries.
+  - Recent activity section.
+  - Suggested checks panel.
+
+- **Navigation**: "System Health" link added under a new Admin section in the sidebar.
+
+- **Dashboard**: compact System Health card on `Dashboard.tsx` showing system score, system status, and a link to the full page.
+
+- **New schemas `backend/app/schemas/system_health.py`** — Pydantic request and response models.
+
+- **16 new backend M45 tests** (`tests/test_system_health_m45.py`). All 16 passed on first run.
+- **Backend total: 1262 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (64 modules, built in ~800ms). One non-fatal chunk size warning — not an error.
+- No external APIs. Deterministic. Not for external reporting. Not investment advice.
+
+### What M45 does NOT build (by design)
+
+- No full RBAC admin auth, user management, or billing.
+- No production monitoring integrations (Datadog, PagerDuty, etc.).
+- No background workers or scheduled health checks.
+- No AI-generated health summaries.
+- No multi-tenant admin console.
+
+---
+
+## Previously completed — M44: Strategy Comparison Report v1
 
 **Status: complete.**
 

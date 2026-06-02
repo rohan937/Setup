@@ -14,6 +14,7 @@ import Reports from "@/pages/Reports";
 import LiveDrift from "@/pages/LiveDrift";
 import Alerts from "@/pages/Alerts";
 import Settings from "@/pages/Settings";
+import AdminSystemHealth from "@/pages/AdminSystemHealth";
 import NotFound from "@/pages/NotFound";
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="live-drift" element={<LiveDrift />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="admin/system-health" element={<AdminSystemHealth />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
