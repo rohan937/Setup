@@ -64,6 +64,7 @@ import type {
   StrategyRunHistoryResponse,
   StrategyTimelineDrilldownResponse,
   StrategyEvidenceTrendsResponse,
+  StrategyExportResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -746,5 +747,28 @@ export async function getStrategyEvidenceTrends(
   const q = qs.toString();
   return request<StrategyEvidenceTrendsResponse>(
     `/api/strategies/${strategyId}/evidence-trends${q ? `?${q}` : ""}`,
+  );
+}
+
+export async function exportStrategyEvidence(
+  strategyId: string,
+  params?: {
+    format?: string;
+    include_raw_json?: boolean;
+    limit_recent_runs?: number;
+    limit_timeline_events?: number;
+  },
+): Promise<StrategyExportResponse> {
+  const qs = new URLSearchParams();
+  if (params?.format) qs.set("format", params.format);
+  if (params?.include_raw_json != null)
+    qs.set("include_raw_json", String(params.include_raw_json));
+  if (params?.limit_recent_runs != null)
+    qs.set("limit_recent_runs", String(params.limit_recent_runs));
+  if (params?.limit_timeline_events != null)
+    qs.set("limit_timeline_events", String(params.limit_timeline_events));
+  const q = qs.toString();
+  return request<StrategyExportResponse>(
+    `/api/strategies/${strategyId}/export${q ? `?${q}` : ""}`,
   );
 }

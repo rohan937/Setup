@@ -123,6 +123,17 @@ from app.services.evidence_trends import (
     TrendPointData,
     TrendSummaryData,
 )
+from app.schemas.strategy_export import (
+    StrategyExportSection,
+    StrategyExportMetadata,
+    StrategyExportResponse,
+)
+from app.services.strategy_export import (
+    generate_strategy_export,
+    StrategyExportData,
+    StrategyExportSectionData,
+    StrategyExportMetadataData,
+)
 from app.services.config_snapshots import (
     compare_config_snapshots,
     compute_config_hash,
@@ -2730,4 +2741,72 @@ def get_strategy_evidence_trends_endpoint(
         coverage_current=cov,
         overall_summary=result.overall_summary,
         suggested_checks=result.suggested_checks,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M31: GET /api/strategies/{strategy_id}/export
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/export",
+    response_model=StrategyExportResponse,
+)
+def export_strategy_evidence(
+    strategy_id: uuid.UUID,
+    format: str = Query(default="json", description="Export format: json or markdown"),
+    include_raw_json: bool = Query(default=False),
+    limit_recent_runs: int = Query(default=10, ge=1, le=50),
+    limit_timeline_events: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> StrategyExportResponse:
+    """Return a full deterministic evidence export for a strategy.
+
+    Supports ``format=json`` (default) and ``format=markdown``.
+    Set ``include_raw_json=true`` to include the full raw evidence dict.
+    No side effects: this endpoint does not write to the database.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    if format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+    try:
+        result: StrategyExportData = generate_strategy_export(
+            strategy_id,
+            db,
+            format=format,
+            include_raw_json=include_raw_json,
+            limit_recent_runs=limit_recent_runs,
+            limit_timeline_events=limit_timeline_events,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return StrategyExportResponse(
+        format=result.format,
+        filename=result.metadata.filename,
+        metadata=StrategyExportMetadata(
+            export_id=result.metadata.export_id,
+            strategy_id=result.metadata.strategy_id,
+            strategy_name=result.metadata.strategy_name,
+            strategy_slug=result.metadata.strategy_slug,
+            generated_at=result.metadata.generated_at,
+            format=result.metadata.format,
+            filename=result.metadata.filename,
+            milestone=result.metadata.milestone,
+            note=result.metadata.note,
+        ),
+        sections=[
+            StrategyExportSection(
+                section_key=s.section_key,
+                title=s.title,
+                summary=s.summary,
+                severity=s.severity,
+                evidence_json=s.evidence_json,
+            )
+            for s in result.sections
+        ],
+        content=result.content,
+        raw_evidence=result.raw_evidence,
     )

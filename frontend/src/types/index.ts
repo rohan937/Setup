@@ -1603,3 +1603,36 @@ export interface StrategyEvidenceTrendsResponse {
   overall_summary: string;
   suggested_checks: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M31: Strategy Evidence Export
+// ---------------------------------------------------------------------------
+
+export interface StrategyExportSection {
+  section_key: string;
+  title: string;
+  summary: string;
+  severity: string | null;
+  evidence_json?: object | null;
+}
+
+export interface StrategyExportMetadata {
+  export_id: string;
+  strategy_id: string;
+  strategy_name: string;
+  strategy_slug: string;
+  generated_at: string;
+  format: string;
+  filename: string;
+  milestone: string;
+  note: string;
+}
+
+export interface StrategyExportResponse {
+  format: string;
+  filename: string;
+  metadata: StrategyExportMetadata;
+  sections: StrategyExportSection[];
+  content?: string | null;
+  raw_evidence?: object | null;
+}

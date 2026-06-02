@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (970 tests, 1 skipped)
+│   └── tests/              Pytest tests (994 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,75 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M30: Evidence Trend Panels v1
+## Current milestone — M31: Strategy Evidence Export v1
+
+**Status: complete.**
+
+### M31 deliverables
+
+- **New `backend/app/services/strategy_export.py`** — `generate_strategy_export()` collects from all
+  existing M27–M30 services (health, reliability, coverage, trends, run history, alerts, timeline,
+  reports) and assembles a structured export. No AI, no external APIs, read-only.
+
+- **New endpoint** `GET /api/strategies/{id}/export`:
+  - Query params: `format` (`json` or `markdown`), `include_raw_json` (bool, default false),
+    `limit_recent_runs` (int), `limit_timeline_events` (int).
+  - 404 for unknown strategy. 400 for invalid format. Read-only — no `AuditTimelineEvent` created.
+
+- **Export content — 9 sections**:
+  identity, health, reliability, coverage, trends, run history, alerts, timeline, reports, and
+  suggested checks.
+
+- **JSON format** — `StrategyExportResponse` with `metadata` + `sections` array. Each section has:
+  `section_key`, `title`, `summary`, `severity`, `evidence_json`.
+
+- **Markdown format** — same response envelope but adds a `content` string with a complete formatted
+  Markdown document.
+
+- **Filename** — `quantfidelity_{slug}_evidence_export_{timestamp}.json` or `.md` (included in
+  response metadata for client-side download).
+
+- **Deterministic** — no AI, no causal claims, not investment advice. `metadata.note` confirms this.
+
+- **New schema file** `app/schemas/strategy_export.py` —
+  `StrategyExportSection`, `StrategyExportMetadata`, `StrategyExportResponse`.
+
+- **Frontend — `ExportPanel`** in `StrategyDetail.tsx`:
+  - "Export JSON" and "Export Markdown" buttons — download via `Blob`.
+  - "Copy Markdown" button for markdown format.
+  - Section severity summary displayed in panel.
+
+- **24 new backend tests** (`tests/test_evidence_export_m31.py`).
+- **Backend total: 994 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (61 modules, built in 793 ms).
+- No external APIs required. Read-only. Not investment advice.
+
+### What M31 does NOT build (by design)
+
+- No PDF export.
+- No scheduled exports or email delivery.
+- No cloud storage integration.
+- No AI-written summaries.
+
+### Evidence export curl example
+
+```bash
+# JSON export (default)
+curl "http://localhost:8000/api/strategies/<strategy_id>/export" | python3 -m json.tool
+# Response: { metadata: { export_id, strategy_slug, filename, note, generated_at, ... },
+#   sections: [ { section_key, title, summary, severity, evidence_json }, ... ] }
+
+# Markdown export with raw evidence
+curl "http://localhost:8000/api/strategies/<strategy_id>/export?format=markdown&include_raw_json=true" \
+  | python3 -m json.tool
+```
+
+> **M31 note:** Export is deterministic — assembled from existing logged evidence with no AI inference.
+> Not investment advice.
+
+---
+
+## Previously completed — M30: Evidence Trend Panels v1
 
 **Status: complete.**
 

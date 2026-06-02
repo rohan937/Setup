@@ -15,6 +15,7 @@ import type {
   SignalSnapshotSummary,
   StrategyConfigSnapshotRead,
   StrategyDetail as StrategyDetailType,
+  StrategyExportResponse,
   StrategyHealth,
   StrategyReliabilityScore,
   StrategyRun,
@@ -32,6 +33,7 @@ import type {
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
+  exportStrategyEvidence,
   generateStrategyReport,
   getEvidenceBundleExample,
   getStrategy,
@@ -2205,6 +2207,158 @@ function EvidenceTrendsPanel({ trends }: { trends: StrategyEvidenceTrendsRespons
 }
 
 // ---------------------------------------------------------------------------
+// M31: Strategy Evidence Export panel
+// ---------------------------------------------------------------------------
+
+function ExportPanel({ strategyId }: { strategyId: string }) {
+  const [result, setResult] = useState<StrategyExportResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleExport(format: string) {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await exportStrategyEvidence(strategyId, { format });
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleDownload() {
+    if (!result) return;
+    const isJson = result.format === "json";
+    const content = isJson ? JSON.stringify(result, null, 2) : result.content ?? "";
+    const type = isJson ? "application/json" : "text/markdown";
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = result.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleCopyMarkdown() {
+    if (!result?.content) return;
+    navigator.clipboard.writeText(result.content);
+  }
+
+  // Severity counts
+  const severityCounts: Record<string, number> = {};
+  if (result) {
+    for (const section of result.sections) {
+      if (section.severity) {
+        severityCounts[section.severity] = (severityCounts[section.severity] ?? 0) + 1;
+      }
+    }
+  }
+
+  const severityColorClass: Record<string, string> = {
+    critical: "text-red-400 bg-red-900/20 border border-red-700/30",
+    review: "text-orange-400 bg-orange-900/20 border border-orange-700/30",
+    warning: "text-yellow-400 bg-yellow-900/20 border border-yellow-700/30",
+  };
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      {/* Header */}
+      <div className="border-b border-border px-4 py-2.5 flex items-center justify-between gap-2">
+        <p className="caption">Strategy Evidence Export</p>
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        {/* Description */}
+        <p className="font-mono text-2xs text-text-muted">
+          Generate a point-in-time deterministic evidence review.
+        </p>
+
+        {/* Export buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleExport("json")}
+            disabled={loading}
+            className="rounded px-3 py-1.5 font-mono text-xs bg-bg-600 border border-border text-text-secondary hover:bg-bg-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "..." : "Export JSON"}
+          </button>
+          <button
+            onClick={() => handleExport("markdown")}
+            disabled={loading}
+            className="rounded px-3 py-1.5 font-mono text-xs bg-bg-600 border border-border text-text-secondary hover:bg-bg-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "..." : "Export Markdown"}
+          </button>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <p className="font-mono text-2xs text-red-400">{error}</p>
+        )}
+
+        {/* Result panel */}
+        {result && (
+          <div className="rounded border border-border bg-bg-600 p-3 space-y-2">
+            <p className="font-mono text-xs text-text-secondary">{result.filename}</p>
+            <p className="font-mono text-2xs text-text-muted">
+              {result.sections.length} section{result.sections.length !== 1 ? "s" : ""} &middot; {result.format.toUpperCase()}
+            </p>
+            <p className="font-mono text-2xs text-text-muted">
+              Generated {new Date(result.metadata.generated_at).toLocaleString("en-US", {
+                month: "short", day: "numeric", year: "numeric",
+                hour: "2-digit", minute: "2-digit",
+              })}
+            </p>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={handleDownload}
+                className="rounded px-3 py-1.5 font-mono text-xs bg-accent-500 text-white hover:bg-accent-600"
+              >
+                Download
+              </button>
+              {result.format === "markdown" && (
+                <button
+                  onClick={handleCopyMarkdown}
+                  className="rounded px-3 py-1.5 font-mono text-xs bg-bg-500 border border-border text-text-secondary hover:bg-bg-400"
+                >
+                  Copy Markdown
+                </button>
+              )}
+            </div>
+
+            {/* Note */}
+            {result.metadata.note && (
+              <p className="font-mono text-2xs text-text-muted italic">{result.metadata.note}</p>
+            )}
+
+            {/* Severity summary chips */}
+            {Object.keys(severityCounts).length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {(["critical", "review", "warning"] as const).map((sev) =>
+                  severityCounts[sev] ? (
+                    <span
+                      key={sev}
+                      className={`rounded px-1.5 py-0.5 font-mono text-2xs ${severityColorClass[sev]}`}
+                    >
+                      {sev}: {severityCounts[sev]}
+                    </span>
+                  ) : null
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -2730,6 +2884,9 @@ export default function StrategyDetail() {
         setIdempotencyKey={setIdempotencyKey}
         onSuccess={() => setRefreshKey((k) => k + 1)}
       />
+
+      {/* M31: Strategy Evidence Export */}
+      <ExportPanel strategyId={id!} />
     </div>
   );
 }
