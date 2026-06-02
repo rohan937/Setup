@@ -1958,3 +1958,81 @@ export interface StrategyVersionLineageResponse {
   versions: StrategyVersionLineageItem[];
   transitions: StrategyVersionTransition[];
 }
+
+// ---------------------------------------------------------------------------
+// M37: Dataset Quality Drilldown
+// ---------------------------------------------------------------------------
+
+export interface ColumnQuality {
+  column_name: string;
+  inferred_type: string;
+  quality_status: string;
+  non_null_count: number;
+  null_count: number;
+  unique_count: number;
+  duplicate_value_count: number;
+  numeric_count: number;
+  string_count: number;
+  boolean_count: number;
+  timestamp_parseable_count: number;
+  invalid_timestamp_count: number;
+  zero_count: number;
+  negative_count: number;
+  outlier_count: number;
+  null_rate: number;
+  min_value: number | null;
+  max_value: number | null;
+  mean_value: number | null;
+  stddev_value: number | null;
+  sample_values: string[];
+  issues: string[];
+}
+
+export interface RowQualitySample {
+  row_index: number;
+  issue_type: string;
+  severity: string;
+  summary: string;
+  evidence_json: Record<string, unknown>;
+}
+
+export interface RowQualitySamples {
+  duplicate_rows: RowQualitySample[];
+  duplicate_symbol_timestamp: RowQualitySample[];
+  invalid_timestamp_rows: RowQualitySample[];
+  invalid_ohlc_rows: RowQualitySample[];
+  suspicious_return_rows: RowQualitySample[];
+  missing_value_rows: RowQualitySample[];
+  outlier_rows: RowQualitySample[];
+}
+
+export interface DatasetQualitySummary {
+  total_rows: number;
+  total_columns: number;
+  clean_column_count: number;
+  review_column_count: number;
+  weak_column_count: number;
+  unusable_column_count: number;
+  total_missing_values: number;
+  total_outliers: number;
+  total_invalid_timestamps: number;
+  total_duplicate_rows: number;
+  total_duplicate_symbol_timestamps: number;
+  worst_columns: string[];
+  suggested_checks: string[];
+}
+
+export interface DatasetQualityDrilldownResponse {
+  snapshot_id: string;
+  dataset_id: string;
+  dataset_name: string;
+  snapshot_label: string;
+  health_score: number;
+  row_count: number;
+  column_count: number;
+  generated_at: string;
+  column_quality: ColumnQuality[];
+  row_quality: RowQualitySamples;
+  quality_summary: DatasetQualitySummary;
+  warnings: string[];
+}

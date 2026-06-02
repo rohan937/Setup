@@ -69,6 +69,7 @@ import type {
   MultiRunComparisonRequest,
   MultiRunComparisonResponse,
   StrategyVersionLineageResponse,
+  DatasetQualityDrilldownResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -810,5 +811,17 @@ export async function getStrategyVersionLineage(
 ): Promise<StrategyVersionLineageResponse> {
   return request<StrategyVersionLineageResponse>(
     `/api/strategies/${strategyId}/version-lineage`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M37: Dataset Quality Drilldown
+// ---------------------------------------------------------------------------
+
+export async function getDatasetSnapshotQualityDrilldown(
+  snapshotId: string,
+): Promise<DatasetQualityDrilldownResponse> {
+  return request<DatasetQualityDrilldownResponse>(
+    `/api/dataset-snapshots/${snapshotId}/quality-drilldown`,
   );
 }

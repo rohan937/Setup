@@ -38,8 +38,10 @@ from app.schemas.dataset import (
     DatasetSnapshotRead,
 )
 from app.schemas.dataset_comparison import DatasetSnapshotComparisonResponse
+from app.schemas.dataset_quality import DatasetQualityDrilldownResponse
 from app.services.data_quality import analyze_snapshot
 from app.services.dataset_comparison import compare_snapshots
+from app.services.dataset_quality_drilldown import compute_dataset_quality_drilldown
 
 router = APIRouter(tags=["datasets"])
 
@@ -271,6 +273,18 @@ def create_snapshot(
     db.commit()
     db.refresh(snapshot)
 
+    # M37: compute and persist quality drill-down fields.
+    try:
+        drilldown = compute_dataset_quality_drilldown(snapshot, db)
+        snapshot.column_quality_json = drilldown["column_quality"]
+        snapshot.row_quality_json = drilldown["row_quality"]
+        snapshot.quality_summary_json = drilldown["quality_summary"]
+        db.flush()
+        db.commit()
+        db.refresh(snapshot)
+    except Exception:
+        pass  # don't fail snapshot creation if drilldown fails
+
     return DatasetSnapshotDetail(
         id=snapshot.id,
         dataset_id=snapshot.dataset_id,
@@ -455,3 +469,133 @@ def compare_dataset_snapshots(
         )
 
     return compare_snapshots(snap_a, snap_b, snap_a.issues, snap_b.issues)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/dataset-snapshots/{snapshot_id}/quality-drilldown  (M37)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/dataset-snapshots/{snapshot_id}/quality-drilldown",
+    response_model=DatasetQualityDrilldownResponse,
+)
+def get_snapshot_quality_drilldown(
+    snapshot_id: str, db: Session = Depends(get_db)
+) -> DatasetQualityDrilldownResponse:
+    """Return per-column and per-row quality drill-down for a snapshot.
+
+    If the drill-down was not pre-computed at ingestion time (e.g. the
+    snapshot was created before M37) the service computes it on the fly
+    from rows_json.  When rows_json is unavailable a minimal response is
+    returned with a warning.
+    """
+    try:
+        snap_uuid = uuid.UUID(snapshot_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    snapshot = (
+        db.query(DatasetSnapshot)
+        .options(selectinload(DatasetSnapshot.issues))
+        .filter(DatasetSnapshot.id == snap_uuid)
+        .first()
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    # Resolve dataset name.
+    from app.models.dataset import Dataset as _Dataset
+    dataset = db.query(_Dataset).filter(_Dataset.id == snapshot.dataset_id).first()
+    dataset_name = dataset.name if dataset else "Unknown"
+
+    warnings: list[str] = []
+
+    # Use pre-computed fields when available; otherwise compute on the fly.
+    if (
+        snapshot.column_quality_json is not None
+        and snapshot.row_quality_json is not None
+        and snapshot.quality_summary_json is not None
+    ):
+        col_quality_raw = snapshot.column_quality_json
+        row_quality_raw = snapshot.row_quality_json
+        summary_raw = snapshot.quality_summary_json
+    elif snapshot.rows_json is not None:
+        warnings.append(
+            "Drill-down was not pre-computed; generated on the fly from rows_json."
+        )
+        drilldown = compute_dataset_quality_drilldown(snapshot, db)
+        col_quality_raw = drilldown["column_quality"]
+        row_quality_raw = drilldown["row_quality"]
+        summary_raw = drilldown["quality_summary"]
+    else:
+        warnings.append(
+            "rows_json is not available for this snapshot; "
+            "quality drill-down cannot be computed."
+        )
+        col_quality_raw = []
+        row_quality_raw = {
+            k: []
+            for k in [
+                "duplicate_rows",
+                "duplicate_symbol_timestamp",
+                "invalid_timestamp_rows",
+                "invalid_ohlc_rows",
+                "suspicious_return_rows",
+                "missing_value_rows",
+                "outlier_rows",
+            ]
+        }
+        summary_raw = {
+            "total_rows": snapshot.row_count,
+            "total_columns": 0,
+            "clean_column_count": 0,
+            "review_column_count": 0,
+            "weak_column_count": 0,
+            "unusable_column_count": 0,
+            "total_missing_values": 0,
+            "total_outliers": 0,
+            "total_invalid_timestamps": 0,
+            "total_duplicate_rows": 0,
+            "total_duplicate_symbol_timestamps": 0,
+            "worst_columns": [],
+            "suggested_checks": [],
+        }
+
+    from app.schemas.dataset_quality import (
+        ColumnQualityRead,
+        DatasetQualitySummaryRead,
+        RowQualitySampleRead,
+        RowQualitySamplesRead,
+    )
+
+    col_quality = [ColumnQualityRead(**c) for c in col_quality_raw]
+
+    def _parse_samples(key: str) -> list[RowQualitySampleRead]:
+        return [RowQualitySampleRead(**s) for s in row_quality_raw.get(key, [])]
+
+    row_quality = RowQualitySamplesRead(
+        duplicate_rows=_parse_samples("duplicate_rows"),
+        duplicate_symbol_timestamp=_parse_samples("duplicate_symbol_timestamp"),
+        invalid_timestamp_rows=_parse_samples("invalid_timestamp_rows"),
+        invalid_ohlc_rows=_parse_samples("invalid_ohlc_rows"),
+        suspicious_return_rows=_parse_samples("suspicious_return_rows"),
+        missing_value_rows=_parse_samples("missing_value_rows"),
+        outlier_rows=_parse_samples("outlier_rows"),
+    )
+
+    quality_summary = DatasetQualitySummaryRead(**summary_raw)
+
+    return DatasetQualityDrilldownResponse(
+        snapshot_id=snapshot.id,
+        dataset_id=snapshot.dataset_id,
+        dataset_name=dataset_name,
+        snapshot_label=snapshot.version_label,
+        health_score=snapshot.health_score,
+        row_count=snapshot.row_count,
+        column_count=len(col_quality),
+        column_quality=col_quality,
+        row_quality=row_quality,
+        quality_summary=quality_summary,
+        generated_at=_utcnow(),
+        warnings=warnings,
+    )

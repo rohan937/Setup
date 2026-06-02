@@ -16,6 +16,9 @@ import type {
   DatasetSnapshotDetail,
   DataQualityIssue,
   DatasetSnapshotComparisonResponse,
+  DatasetQualityDrilldownResponse,
+  ColumnQuality,
+  RowQualitySample,
 } from "@/types";
 import {
   compareDatasetSnapshots,
@@ -23,6 +26,7 @@ import {
   createDatasetSnapshot,
   getDataset,
   getDatasets,
+  getDatasetSnapshotQualityDrilldown,
   getProjects,
 } from "@/lib/api";
 
@@ -927,7 +931,19 @@ function ComparePanel({ datasetId, snapshots }: ComparePanelProps) {
 // Combined dataset sections: snapshot history + compare panel
 // ---------------------------------------------------------------------------
 
-function DatasetSections({ datasetId }: { datasetId: string }) {
+interface DatasetSectionsProps {
+  datasetId: string;
+  onInspect: (snapshotId: string) => void;
+  selectedSnapshotId: string | null;
+  drilldownLoading: boolean;
+}
+
+function DatasetSections({
+  datasetId,
+  onInspect,
+  selectedSnapshotId,
+  drilldownLoading,
+}: DatasetSectionsProps) {
   const [detail, setDetail] = useState<DatasetDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -969,11 +985,26 @@ function DatasetSections({ datasetId }: { datasetId: string }) {
                     {s.row_count} rows · {fmtDate(s.created_at)}
                   </p>
                 </div>
-                <span
-                  className={`mono-num text-sm font-semibold ${healthColor(s.health_score)}`}
-                >
-                  {s.health_score}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`mono-num text-sm font-semibold ${healthColor(s.health_score)}`}
+                  >
+                    {s.health_score}
+                  </span>
+                  <button
+                    onClick={() => onInspect(s.id)}
+                    disabled={drilldownLoading && selectedSnapshotId === s.id}
+                    className={`rounded-control border px-2 py-1 font-mono text-2xs transition-colors hover:border-accent-500 hover:text-accent-300 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      selectedSnapshotId === s.id
+                        ? "border-accent-500 text-accent-300"
+                        : "border-border text-text-muted"
+                    }`}
+                  >
+                    {drilldownLoading && selectedSnapshotId === s.id
+                      ? "Loading…"
+                      : "Inspect Quality"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -995,6 +1026,256 @@ function DatasetSections({ datasetId }: { datasetId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// M37: Quality Drill-Down Panel
+// ---------------------------------------------------------------------------
+
+function drilldownScoreColor(score: number): string {
+  if (score >= 80) return "text-teal-400";
+  if (score >= 60) return "text-yellow-400";
+  if (score >= 40) return "text-orange-400";
+  return "text-red-400";
+}
+
+function columnStatusColor(status: string): string {
+  switch (status) {
+    case "clean":    return "text-teal-400";
+    case "review":   return "text-yellow-400";
+    case "weak":     return "text-orange-400";
+    case "unusable": return "text-red-400";
+    default:         return "text-text-muted";
+  }
+}
+
+function rowSeverityDot(severity: string): string {
+  switch (severity) {
+    case "high":   return "bg-red-400";
+    case "medium": return "bg-yellow-400";
+    default:       return "bg-text-muted";
+  }
+}
+
+const ROW_QUALITY_LABELS: Record<string, string> = {
+  duplicate_rows: "Duplicate Rows",
+  duplicate_symbol_timestamp: "Duplicate Symbol/Timestamp",
+  invalid_timestamp_rows: "Invalid Timestamp Rows",
+  invalid_ohlc_rows: "Invalid OHLC Rows",
+  suspicious_return_rows: "Suspicious Return Rows",
+  missing_value_rows: "Missing Value Rows",
+  outlier_rows: "Outlier Rows",
+};
+
+function QualityDrilldownPanel({
+  drilldown,
+}: {
+  drilldown: DatasetQualityDrilldownResponse;
+}) {
+  const s = drilldown.quality_summary;
+
+  const rowQualityEntries = (
+    Object.entries(drilldown.row_quality) as [string, RowQualitySample[]][]
+  ).filter(([, samples]) => samples.length > 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Card header */}
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="font-mono text-xs font-semibold text-text-primary">
+              Quality Drill-Down:{" "}
+              <span className="text-accent-300">{drilldown.snapshot_label}</span>
+            </p>
+            <p className="mt-0.5 font-mono text-2xs text-text-muted">
+              generated {fmtDate(drilldown.generated_at)}
+            </p>
+          </div>
+          <span
+            className={`mono-num text-xl font-bold ${drilldownScoreColor(drilldown.health_score)}`}
+          >
+            {drilldown.health_score}
+            <span className="text-sm font-normal text-text-muted">/100</span>
+          </span>
+        </div>
+
+        {/* Summary strip */}
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-2xs">
+          <span className="text-text-muted">
+            <span className="text-text-secondary">{s.total_rows.toLocaleString()}</span> rows
+          </span>
+          <span className="text-text-muted">
+            <span className="text-text-secondary">{s.total_columns}</span> columns
+          </span>
+          <span>
+            <span className="text-teal-400">{s.clean_column_count} clean</span>
+            {" · "}
+            <span className="text-yellow-400">{s.review_column_count} review</span>
+            {" · "}
+            <span className="text-orange-400">{s.weak_column_count} weak</span>
+            {" · "}
+            <span className="text-red-400">{s.unusable_column_count} unusable</span>
+          </span>
+          {s.total_missing_values > 0 && (
+            <span className="text-text-muted">
+              <span className="text-fidelity-medium">{s.total_missing_values}</span> missing
+            </span>
+          )}
+          {s.total_outliers > 0 && (
+            <span className="text-text-muted">
+              <span className="text-fidelity-medium">{s.total_outliers}</span> outliers
+            </span>
+          )}
+          {s.total_duplicate_rows > 0 && (
+            <span className="text-text-muted">
+              <span className="text-fidelity-low">{s.total_duplicate_rows}</span> dup rows
+            </span>
+          )}
+        </div>
+
+        {/* Suggested checks */}
+        {s.suggested_checks.length > 0 && (
+          <div className="mt-3 rounded-control border border-border bg-bg-600 px-3 py-2">
+            <p className="mb-1 font-mono text-2xs text-text-muted">Suggested checks</p>
+            <ul className="space-y-0.5">
+              {s.suggested_checks.map((c, i) => (
+                <li key={i} className="flex gap-2 font-mono text-2xs text-text-secondary">
+                  <span className="shrink-0 text-accent-300">•</span>
+                  {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Warnings */}
+        {drilldown.warnings.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {drilldown.warnings.map((w, i) => (
+              <div
+                key={i}
+                className="flex gap-2 rounded-control border border-fidelity-medium/30 bg-fidelity-medium/5 px-3 py-2"
+              >
+                <span className="shrink-0 font-mono text-2xs text-fidelity-medium">!</span>
+                <p className="font-mono text-2xs text-fidelity-medium">{w}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Column Quality table */}
+      {drilldown.column_quality.length > 0 && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="border-b border-border px-4 py-2.5">
+            <p className="caption">
+              Column Quality{" "}
+              <span className="text-text-muted">({drilldown.column_quality.length})</span>
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left font-mono text-2xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="px-4 pb-1.5 pt-2.5 text-text-muted font-normal">Column</th>
+                  <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Type</th>
+                  <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">Null%</th>
+                  <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">Unique</th>
+                  <th className="px-3 pb-1.5 pt-2.5 text-right text-text-muted font-normal">Outliers</th>
+                  <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Status</th>
+                  <th className="px-4 pb-1.5 pt-2.5 text-text-muted font-normal">Issues</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drilldown.column_quality.map((col: ColumnQuality) => (
+                  <tr
+                    key={col.column_name}
+                    className="border-b border-border/40 last:border-0 hover:bg-bg-600/30"
+                  >
+                    <td className="px-4 py-1.5 text-text-primary">{col.column_name}</td>
+                    <td className="px-3 py-1.5 text-text-muted">{col.inferred_type}</td>
+                    <td className="px-3 py-1.5 text-right text-text-secondary">
+                      {(col.null_rate * 100).toFixed(1)}%
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-text-secondary">
+                      {col.unique_count.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-1.5 text-right">
+                      <span className={col.outlier_count > 0 ? "text-fidelity-medium" : "text-text-muted"}>
+                        {col.outlier_count}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <span className={`font-medium ${columnStatusColor(col.quality_status)}`}>
+                        {col.quality_status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-1.5">
+                      {col.issues.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {col.issues.map((iss, i) => (
+                            <span
+                              key={i}
+                              className="rounded-chip border border-border bg-bg-600 px-1.5 py-0.5 text-text-muted"
+                            >
+                              {iss}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Row Evidence */}
+      {rowQualityEntries.length > 0 && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="border-b border-border px-4 py-2.5">
+            <p className="caption">Row Evidence</p>
+          </div>
+          <div className="divide-y divide-border">
+            {rowQualityEntries.map(([key, samples]) => (
+              <div key={key} className="px-4 py-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <p className="font-mono text-xs font-medium text-text-primary">
+                    {ROW_QUALITY_LABELS[key] ?? key}
+                  </p>
+                  <span className="rounded-chip border border-border bg-bg-600 px-1.5 py-0.5 font-mono text-2xs text-text-muted">
+                    {samples.length}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {samples.slice(0, 5).map((sample: RowQualitySample, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span
+                        className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${rowSeverityDot(sample.severity)}`}
+                      />
+                      <p className="font-mono text-2xs text-text-secondary">
+                        Row {sample.row_index}: {sample.summary}
+                      </p>
+                    </div>
+                  ))}
+                  {samples.length > 5 && (
+                    <p className="font-mono text-2xs text-text-muted">
+                      +{samples.length - 5} more
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -1008,6 +1289,10 @@ export default function DataHealth() {
   const [listError, setListError] = useState<string | null>(null);
   // sectionsKey forces DatasetSections to remount after a snapshot upload
   const [sectionsKey, setSectionsKey] = useState(0);
+  // M37: quality drilldown
+  const [drilldown, setDrilldown] = useState<DatasetQualityDrilldownResponse | null>(null);
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
 
   // Load project ID + datasets on mount.
   useEffect(() => {
@@ -1032,10 +1317,27 @@ export default function DataHealth() {
     setDatasets(ds);
   }
 
+  async function loadDrilldown(snapshotId: string) {
+    setDrilldownLoading(true);
+    setSelectedSnapshotId(snapshotId);
+    setDrilldown(null);
+    try {
+      const result = await getDatasetSnapshotQualityDrilldown(snapshotId);
+      setDrilldown(result);
+    } catch {
+      // silently clear on error — user can retry
+      setDrilldown(null);
+    } finally {
+      setDrilldownLoading(false);
+    }
+  }
+
   function handleDatasetCreated(d: Dataset) {
     setDatasets((prev) => [d, ...prev]);
     setSelectedId(d.id);
     setLatestSnap(null);
+    setDrilldown(null);
+    setSelectedSnapshotId(null);
     setShowCreate(false);
     setSectionsKey((k) => k + 1);
   }
@@ -1099,6 +1401,8 @@ export default function DataHealth() {
                         onClick={() => {
                           setSelectedId(d.id);
                           setLatestSnap(null);
+                          setDrilldown(null);
+                          setSelectedSnapshotId(null);
                           setSectionsKey((k) => k + 1);
                         }}
                         className={`w-full px-4 py-3 text-left transition-colors hover:bg-bg-600 ${
@@ -1180,7 +1484,13 @@ export default function DataHealth() {
                 <DatasetSections
                   key={`${selectedDataset.id}-${sectionsKey}`}
                   datasetId={selectedDataset.id}
+                  onInspect={(snapshotId) => void loadDrilldown(snapshotId)}
+                  selectedSnapshotId={selectedSnapshotId}
+                  drilldownLoading={drilldownLoading}
                 />
+
+                {/* M37: Quality drill-down panel */}
+                {drilldown && <QualityDrilldownPanel drilldown={drilldown} />}
               </>
             ) : (
               <div className="flex h-40 items-center justify-center rounded-card border border-border bg-bg-700">

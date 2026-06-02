@@ -25,6 +25,10 @@ class DatasetSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     health_score: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     # Raw ingested rows (list of row dicts).  Stored for auditability.
     rows_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # M37: drill-down quality fields (computed at snapshot creation time).
+    column_quality_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    row_quality_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    quality_summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
     dataset: Mapped["Dataset"] = relationship(  # noqa: F821

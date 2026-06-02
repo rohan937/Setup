@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1094 tests, 1 skipped)
+│   └── tests/              Pytest tests (1117 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,58 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M36: Backtest Reality Check v3 — Sensitivity + Attribution
+## Current milestone — M37: Dataset Snapshot Quality Drill-Down v2
+
+**Status: complete.**
+
+### M37 deliverables
+
+- **Migration** `0015_m37_dataset_quality_drilldown.py` — adds 3 nullable JSON columns to `dataset_snapshots`:
+  `column_quality_json`, `row_quality_json`, `quality_summary_json`.
+  All existing columns preserved. Safe to run on existing databases.
+
+- **New service** `backend/app/services/dataset_quality_drilldown.py` — deterministic quality analysis service.
+  No AI, no external APIs. Four exported functions:
+  - `compute_column_quality(rows)` — per-column analysis: `inferred_type`, `null_rate`, `unique_count`,
+    numeric stats (`min`, `max`, `mean`, `stddev`), `outlier_count` (IQR-based, requires >= 4 values),
+    timestamp validity, `quality_status` (`clean` / `review` / `weak` / `unusable`), `issues` list.
+  - `compute_row_quality_samples(rows)` — row evidence samples capped at 10 per type:
+    duplicate rows, duplicate symbol+timestamp, invalid OHLC, suspicious returns (>50% move), missing values.
+  - `compute_quality_summary(column_quality, row_samples)` — status counts, totals (missing, outliers,
+    invalid timestamps), worst columns list, suggested checks.
+  - `compute_dataset_quality_drilldown(rows)` — orchestrates all three functions into a single response.
+
+- **Snapshot creation updated** — `POST /api/datasets/{id}/snapshots` now computes and stores all 3 quality
+  JSON fields on every new snapshot. Gracefully skips quality computation if it fails (does not block ingestion).
+
+- **New endpoint** `GET /api/dataset-snapshots/{id}/quality-drilldown` — returns stored quality fields
+  if present; computes on-the-fly from `rows_json` if stored fields are null. 404 for unknown snapshot.
+
+- **New schemas** `backend/app/schemas/dataset_quality.py`:
+  `ColumnQualityRead`, `RowQualitySamplesRead`, `DatasetQualitySummaryRead`, `DatasetQualityDrilldownResponse`.
+
+- **Frontend** — `QualityDrilldownPanel` in `DataHealth.tsx`:
+  - Summary strip (status counts by column quality status).
+  - Column quality table (per-column inferred type, null rate, unique count, numeric stats, outlier count, quality status, issues).
+  - Row evidence samples (grouped by sample type with row data).
+  - Suggested checks panel.
+  - "Inspect Quality" button per snapshot row in the data health table opens the drill-down panel.
+
+- **23 new backend M37 tests** (`tests/test_dataset_quality_drilldown_m37.py`).
+- **Backend total: 1117 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in 733ms).
+- No external APIs. Deterministic. Not investment advice.
+
+### What M37 does NOT build (by design)
+
+- No external data vendor integrations.
+- No automatic data repair or correction.
+- No AI data explanations.
+- No streaming file upload.
+
+---
+
+## Previously completed — M36: Backtest Reality Check v3 — Sensitivity + Attribution
 
 **Status: complete.**
 
