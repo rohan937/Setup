@@ -63,6 +63,7 @@ import type {
   ProjectHealthListResponse,
   StrategyRunHistoryResponse,
   StrategyTimelineDrilldownResponse,
+  StrategyEvidenceTrendsResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -730,5 +731,20 @@ export async function getStrategyTimelineDrilldown(
   const q = qs.toString();
   return request<StrategyTimelineDrilldownResponse>(
     `/api/strategies/${strategyId}/timeline/drilldown${q ? `?${q}` : ""}`,
+  );
+}
+
+export async function getStrategyEvidenceTrends(
+  strategyId: string,
+  params?: {
+    limit_per_series?: number;
+  },
+): Promise<StrategyEvidenceTrendsResponse> {
+  const qs = new URLSearchParams();
+  if (params?.limit_per_series != null)
+    qs.set("limit_per_series", String(params.limit_per_series));
+  const q = qs.toString();
+  return request<StrategyEvidenceTrendsResponse>(
+    `/api/strategies/${strategyId}/evidence-trends${q ? `?${q}` : ""}`,
   );
 }

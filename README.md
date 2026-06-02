@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (953 tests, 1 skipped)
+│   └── tests/              Pytest tests (970 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,80 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M29: Strategy Run History + Timeline Drill-Down
+## Current milestone — M30: Evidence Trend Panels v1
+
+**Status: complete.**
+
+### M30 deliverables
+
+- **New `backend/app/services/evidence_trends.py`** — deterministic evidence trend computation service.
+  No AI, no live market data, no external calls:
+  - `TrendPointData` dataclass — individual data point: `value`, `label`, `recorded_at`.
+  - `TrendSummaryData` dataclass — per-series summary: `latest_value`, `previous_value`, `delta`,
+    `direction` (`improving` / `deteriorating` / `flat` / `insufficient_history`), `point_count`,
+    `min`, `max`, `average`, `latest_label`, `latest_at`, `deterministic_summary`.
+  - `StrategyEvidenceTrendsData` dataclass — top-level response: four trend series, `coverage_current`
+    snapshot, `overall_summary`, `suggested_checks`.
+  - **Trend direction rules**: delta > 2 → `improving`; delta < -2 → `deteriorating`; else `flat`;
+    fewer than 2 data points → `insufficient_history`.
+  - **Deterministic summaries** — example: `"Reliability score improved from 65 to 82 (+17) across
+    4 data points."` No causal claims. Not investment advice.
+
+- **Four trend series** computed from existing logged evidence:
+  - **Reliability score** — from reliability score records.
+  - **Data health** — from linked dataset snapshots (health scores over time).
+  - **Backtest trust** — from backtest audit records.
+  - **Signal quality** — from signal snapshot records.
+
+- **New endpoint** `GET /api/strategies/{id}/evidence-trends`:
+  - Query param: `limit_per_series` (default 20, max 100).
+  - Returns `StrategyEvidenceTrendsData` — all four trend series, coverage snapshot,
+    overall summary, and suggested checks for missing evidence.
+  - 404 for unknown strategy. Read-only — no timeline event created.
+
+- **New schema file** `app/schemas/evidence_trends.py`:
+  `TrendPoint`, `TrendSummary`, `EvidenceTrendsResponse`.
+
+- **Frontend — `EvidenceTrendsPanel`** in `StrategyDetail.tsx`:
+  - Four `TrendPanel` sub-components, one per trend series.
+  - **`MiniSparkline`** — div-based bar visualization (no chart library required).
+  - Direction badge (improving / deteriorating / flat / insufficient_history).
+  - Delta chip showing numeric change with sign.
+  - Suggested checks panel for missing evidence series.
+
+- **17 new backend tests** (`tests/test_evidence_trends_m30.py`).
+- **Backend total: 970 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (61 modules).
+- No external APIs required. Read-only. Not investment advice.
+
+### What M30 does NOT build (by design)
+
+- No chart library — sparklines use plain CSS/div bars.
+- No historical coverage trend series (evidence coverage score over time).
+- No AI forecasts or predictive trend analysis.
+- No multi-strategy trend comparison view.
+
+### Evidence trends curl example
+
+```bash
+# Get evidence trend series for a strategy
+curl "http://localhost:8000/api/strategies/<strategy_id>/evidence-trends" | python3 -m json.tool
+# Response: { strategy_id, reliability_score: { points, summary }, data_health: { ... },
+#   backtest_trust: { ... }, signal_quality: { ... }, coverage_current, overall_summary,
+#   suggested_checks: [...], generated_at }
+
+# Limit to 10 points per series
+curl "http://localhost:8000/api/strategies/<strategy_id>/evidence-trends?limit_per_series=10" \
+  | python3 -m json.tool
+```
+
+> **M30 note:** Trend computation is deterministic — built from existing logged evidence records.
+> Delta and direction rules are rule-based. No AI, no live market data, no external calls.
+> Not investment advice.
+
+---
+
+## Previously completed — M29: Strategy Run History + Timeline Drill-Down
 
 **Status: complete.**
 

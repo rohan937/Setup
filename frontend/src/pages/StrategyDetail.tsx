@@ -20,9 +20,12 @@ import type {
   StrategyRun,
   StrategyRunHistoryItem,
   StrategyRunHistoryResponse,
+  StrategyEvidenceTrendsResponse,
   StrategyTimelineDrilldownItem,
   StrategyTimelineDrilldownResponse,
   StrategyVersion,
+  TrendPoint,
+  TrendSummary,
   TimelineEvent,
   UniverseSnapshotRead,
   UniverseSnapshotSummary,
@@ -36,6 +39,7 @@ import {
   getStrategyReliabilityScoreHistory,
   getStrategyRunHistory,
   getStrategyTimeline,
+  getStrategyEvidenceTrends,
   getStrategyTimelineDrilldown,
   ingestEvidenceBundle,
   runBacktestAudit,
@@ -2028,6 +2032,179 @@ function EvidenceTimelinePanel({
 }
 
 // ---------------------------------------------------------------------------
+// M30: Evidence Trends sub-components
+// ---------------------------------------------------------------------------
+
+function trendScoreColor(value: number | null): string {
+  if (value === null) return "text-text-muted";
+  if (value >= 80) return "text-teal-400";
+  if (value >= 60) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function MiniSparkline({ points, height = 24 }: { points: TrendPoint[]; height?: number }) {
+  const valid = points.filter((p) => p.value !== null);
+  if (valid.length === 0) {
+    return <div style={{ height }} className="flex items-end gap-0.5 opacity-20">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} style={{ width: 6, height: 4 }} className="rounded-sm bg-bg-500" />
+      ))}
+    </div>;
+  }
+  return (
+    <div style={{ height }} className="flex items-end gap-0.5">
+      {valid.map((p) => {
+        const v = p.value as number;
+        const barHeight = Math.max(2, Math.round((v / 100) * height));
+        const colorClass =
+          v >= 80 ? "bg-teal-500/80" : v >= 60 ? "bg-yellow-500/80" : "bg-red-500/70";
+        return (
+          <div
+            key={p.id}
+            title={`${p.label}: ${v}`}
+            style={{ width: 6, height: barHeight }}
+            className={`rounded-sm ${colorClass}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function TrendPanel({ title, trend }: { title: string; trend: TrendSummary }) {
+  const directionConfig: Record<
+    string,
+    { label: string; cls: string }
+  > = {
+    improving: {
+      label: "Improving",
+      cls: "text-teal-400 bg-teal-900/20 border border-teal-700/30",
+    },
+    deteriorating: {
+      label: "Deteriorating",
+      cls: "text-red-400 bg-red-900/20 border border-red-700/30",
+    },
+    flat: {
+      label: "Flat",
+      cls: "text-yellow-400 bg-yellow-900/20 border border-yellow-700/30",
+    },
+    insufficient_history: {
+      label: "Insufficient History",
+      cls: "text-text-muted bg-bg-700 border border-border",
+    },
+  };
+  const dir = directionConfig[trend.direction] ?? directionConfig.insufficient_history;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-600 p-3 space-y-2">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-2xs uppercase tracking-wide text-text-muted">{title}</span>
+        <span className={`rounded px-1.5 py-0.5 font-mono text-2xs ${dir.cls}`}>{dir.label}</span>
+      </div>
+
+      {/* Score row */}
+      <div className="flex items-baseline gap-2">
+        <span className={`mono-num text-lg font-bold ${trendScoreColor(trend.latest_value)}`}>
+          {trend.latest_value !== null ? trend.latest_value.toFixed(1) : "—"}
+          {trend.latest_value !== null && (
+            <span className="text-xs font-normal text-text-muted">/100</span>
+          )}
+        </span>
+        {trend.delta !== null && (
+          <span
+            className={`font-mono text-xs ${trend.delta >= 0 ? "text-teal-400" : "text-red-400"}`}
+          >
+            {trend.delta >= 0 ? "+" : ""}
+            {trend.delta.toFixed(1)}
+          </span>
+        )}
+        <span className="font-mono text-2xs text-text-muted ml-auto">
+          {trend.point_count} pts
+        </span>
+      </div>
+
+      {/* Sparkline */}
+      <MiniSparkline points={trend.points} />
+
+      {/* Deterministic summary */}
+      <p className="font-mono text-2xs text-text-muted leading-relaxed">
+        {trend.deterministic_summary}
+      </p>
+    </div>
+  );
+}
+
+function EvidenceTrendsPanel({ trends }: { trends: StrategyEvidenceTrendsResponse }) {
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      {/* Header */}
+      <div className="border-b border-border px-4 py-2.5 flex items-center justify-between gap-2">
+        <p className="caption">Evidence Trends</p>
+        <span className="font-mono text-2xs text-text-muted">
+          {new Date(trends.generated_at).toLocaleString("en-US", {
+            month: "short", day: "numeric", year: "numeric",
+            hour: "2-digit", minute: "2-digit",
+          })}
+        </span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Overall summary */}
+        {trends.overall_summary && (
+          <p className="font-mono text-2xs text-text-secondary leading-relaxed">
+            {trends.overall_summary}
+          </p>
+        )}
+
+        {/* Coverage current summary */}
+        {trends.coverage_current && (
+          <div className="flex flex-wrap gap-4 rounded border border-border/50 bg-bg-600 px-3 py-2 font-mono text-2xs text-text-muted">
+            <span>
+              Coverage Score:{" "}
+              <span className={`mono-num font-bold ${trendScoreColor(trends.coverage_current.evidence_coverage_score)}`}>
+                {trends.coverage_current.evidence_coverage_score}
+              </span>
+            </span>
+            <span>
+              Complete: <span className="text-teal-400">{trends.coverage_current.complete_count}</span>
+            </span>
+            <span>
+              Review: <span className="text-yellow-400">{trends.coverage_current.review_count}</span>
+            </span>
+            <span>
+              Missing: <span className="text-red-400">{trends.coverage_current.missing_count}</span>
+            </span>
+          </div>
+        )}
+
+        {/* 2x2 grid of TrendPanel */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <TrendPanel title="Reliability Score" trend={trends.reliability_trend} />
+          <TrendPanel title="Data Health" trend={trends.data_health_trend} />
+          <TrendPanel title="Backtest Trust" trend={trends.backtest_trust_trend} />
+          <TrendPanel title="Signal Quality" trend={trends.signal_quality_trend} />
+        </div>
+
+        {/* Suggested checks */}
+        {trends.suggested_checks.length > 0 && (
+          <div>
+            <p className="caption mb-1.5">Suggested Checks</p>
+            <ul className="space-y-0.5">
+              {trends.suggested_checks.map((item, i) => (
+                <li key={i} className="font-mono text-2xs text-text-secondary">
+                  ☐ {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -2086,6 +2263,9 @@ export default function StrategyDetail() {
   // M29: run history and timeline drilldown
   const [runHistory, setRunHistory] = useState<StrategyRunHistoryResponse | null>(null);
   const [timelineDrilldown, setTimelineDrilldown] = useState<StrategyTimelineDrilldownResponse | null>(null);
+
+  // M30: evidence trends
+  const [evidenceTrends, setEvidenceTrends] = useState<StrategyEvidenceTrendsResponse | null>(null);
 
   async function handleGenerateReport() {
     if (!id) return;
@@ -2166,6 +2346,8 @@ export default function StrategyDetail() {
     // M29: load run history and timeline drilldown in parallel
     getStrategyRunHistory(id, { limit: 50 }).then(setRunHistory).catch(() => setRunHistory(null));
     getStrategyTimelineDrilldown(id, { limit: 30 }).then(setTimelineDrilldown).catch(() => setTimelineDrilldown(null));
+    // M30: load evidence trends in parallel
+    getStrategyEvidenceTrends(id).then(setEvidenceTrends).catch(() => setEvidenceTrends(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -2529,6 +2711,9 @@ export default function StrategyDetail() {
 
       {/* M29: Evidence Timeline drilldown */}
       {timelineDrilldown && <EvidenceTimelinePanel drilldown={timelineDrilldown} strategyId={id} />}
+
+      {/* M30: Evidence Trends */}
+      {evidenceTrends && <EvidenceTrendsPanel trends={evidenceTrends} />}
 
       {/* M22: Evidence Bundle Ingestion (developer tool) */}
       <IngestionPanel

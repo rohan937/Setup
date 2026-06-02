@@ -1549,3 +1549,57 @@ export interface StrategyTimelineDrilldownResponse {
   offset: number;
   summary: StrategyTimelineDrilldownSummary;
 }
+
+// ---------------------------------------------------------------------------
+// M30: Evidence Trends
+// ---------------------------------------------------------------------------
+
+export interface TrendPoint {
+  id: string;
+  label: string;
+  value: number | null;
+  status: string | null;
+  timestamp: string;
+  metadata_json?: Record<string, unknown> | null;
+}
+
+export type EvidenceTrendDirection =
+  | "improving"
+  | "deteriorating"
+  | "flat"
+  | "insufficient_history";
+
+export interface TrendSummary {
+  points: TrendPoint[];
+  latest_value: number | null;
+  previous_value: number | null;
+  delta: number | null;
+  direction: EvidenceTrendDirection;
+  point_count: number;
+  min_value: number | null;
+  max_value: number | null;
+  average_value: number | null;
+  latest_label: string | null;
+  latest_at: string | null;
+  deterministic_summary: string;
+}
+
+export interface EvidenceCoverageCurrent {
+  evidence_coverage_score: number;
+  missing_count: number;
+  review_count: number;
+  complete_count: number;
+}
+
+export interface StrategyEvidenceTrendsResponse {
+  strategy_id: string;
+  strategy_name: string;
+  generated_at: string;
+  reliability_trend: TrendSummary;
+  data_health_trend: TrendSummary;
+  backtest_trust_trend: TrendSummary;
+  signal_quality_trend: TrendSummary;
+  coverage_current: EvidenceCoverageCurrent | null;
+  overall_summary: string;
+  suggested_checks: string[];
+}

@@ -112,6 +112,17 @@ from app.schemas.run_history import (
 )
 from app.services.strategy_run_history import get_strategy_run_history as _get_run_history
 from app.services.strategy_timeline import get_strategy_timeline_drilldown as _get_tl_drilldown
+from app.schemas.evidence_trends import (
+    TrendPoint,
+    TrendSummary,
+    EvidenceCoverageCurrentSummary,
+    StrategyEvidenceTrendsResponse,
+)
+from app.services.evidence_trends import (
+    get_strategy_evidence_trends as _get_evidence_trends,
+    TrendPointData,
+    TrendSummaryData,
+)
 from app.services.config_snapshots import (
     compare_config_snapshots,
     compute_config_hash,
@@ -2644,3 +2655,79 @@ def get_signal_snapshot(
         raise HTTPException(status_code=404, detail="Signal snapshot not found")
 
     return SignalSnapshotDetail.model_validate(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# M30: GET /api/strategies/{strategy_id}/evidence-trends
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/evidence-trends",
+    response_model=StrategyEvidenceTrendsResponse,
+)
+def get_strategy_evidence_trends_endpoint(
+    strategy_id: uuid.UUID,
+    limit_per_series: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> StrategyEvidenceTrendsResponse:
+    """Return longitudinal evidence trend data for a strategy.
+
+    Covers four series: reliability score, data health, backtest trust,
+    and signal quality.  No timeline event is created — read-only.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        result = _get_evidence_trends(strategy_id, db, limit_per_series=limit_per_series)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    def _point(p: TrendPointData) -> TrendPoint:
+        return TrendPoint(
+            id=p.id,
+            label=p.label,
+            value=p.value,
+            status=p.status,
+            timestamp=p.timestamp,
+        )
+
+    def _trend(t: TrendSummaryData) -> TrendSummary:
+        return TrendSummary(
+            points=[_point(p) for p in t.points],
+            latest_value=t.latest_value,
+            previous_value=t.previous_value,
+            delta=t.delta,
+            direction=t.direction,
+            point_count=t.point_count,
+            min_value=t.min_value,
+            max_value=t.max_value,
+            average_value=t.average_value,
+            latest_label=t.latest_label,
+            latest_at=t.latest_at,
+            deterministic_summary=t.deterministic_summary,
+        )
+
+    cov = None
+    if result.coverage_current:
+        cov = EvidenceCoverageCurrentSummary(
+            evidence_coverage_score=result.coverage_current.evidence_coverage_score,
+            missing_count=result.coverage_current.missing_count,
+            review_count=result.coverage_current.review_count,
+            complete_count=result.coverage_current.complete_count,
+        )
+
+    return StrategyEvidenceTrendsResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        reliability_trend=_trend(result.reliability_trend),
+        data_health_trend=_trend(result.data_health_trend),
+        backtest_trust_trend=_trend(result.backtest_trust_trend),
+        signal_quality_trend=_trend(result.signal_quality_trend),
+        coverage_current=cov,
+        overall_summary=result.overall_summary,
+        suggested_checks=result.suggested_checks,
+    )
