@@ -244,6 +244,12 @@ from app.schemas.strategy_readiness import (
     StrategyReadinessResponse,
 )
 from app.services.strategy_readiness import compute_strategy_readiness, StrategyReadinessData
+from app.schemas.promotion_gates import PromotionGateCheck, StrategyPromotionGateResponse
+from app.services.promotion_gates import (
+    evaluate_promotion_gates,
+    StrategyPromotionGateData,
+    PromotionGateCheckData,
+)
 
 router = APIRouter(tags=["strategies"])
 
@@ -4185,4 +4191,76 @@ def get_shadow_monitor(
         blockers=result.blockers,
         suggested_actions=result.suggested_actions,
         deterministic_summary=result.deterministic_summary,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M51 — Promotion Gates
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/promotion-gates",
+    response_model=StrategyPromotionGateResponse,
+)
+def get_promotion_gates(
+    strategy_id: uuid.UUID,
+    target_stage: str = Query(
+        ...,
+        description=(
+            "backtest_review | paper_candidate | "
+            "shadow_production | production_candidate"
+        ),
+    ),
+    db: Session = Depends(get_db),
+):
+    """Evaluate deterministic promotion gate checks for a strategy.
+
+    Not trading approval — deterministic evidence gate result only.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        result = evaluate_promotion_gates(strategy_id, target_stage, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return StrategyPromotionGateResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        current_stage=result.current_stage,
+        target_stage=result.target_stage,
+        stage_path=result.stage_path,
+        promotion_verdict=result.promotion_verdict,
+        gate_score=result.gate_score,
+        gate_checks=[
+            PromotionGateCheck(
+                gate_key=c.gate_key,
+                title=c.title,
+                category=c.category,
+                required=c.required,
+                passed=c.passed,
+                status=c.status,
+                severity=c.severity,
+                observed_value=c.observed_value,
+                required_value=c.required_value,
+                evidence_summary=c.evidence_summary,
+                suggested_action=c.suggested_action,
+            )
+            for c in result.gate_checks
+        ],
+        required_pass_count=result.required_pass_count,
+        required_fail_count=result.required_fail_count,
+        recommended_pass_count=result.recommended_pass_count,
+        recommended_fail_count=result.recommended_fail_count,
+        blocker_count=result.blocker_count,
+        review_count=result.review_count,
+        blockers=result.blockers,
+        warnings=result.warnings,
+        suggested_actions=result.suggested_actions,
+        deterministic_summary=result.deterministic_summary,
+        note=result.note,
     )

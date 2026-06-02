@@ -63,6 +63,8 @@ import type {
   StrategyShadowMonitorResponse,
   ShadowProductionCheck,
   ShadowMetricComparison,
+  StrategyPromotionGateResponse,
+  PromotionGateCheck,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -88,6 +90,7 @@ import {
   getStrategyEvidenceFreshness,
   getStrategyReadiness,
   getStrategyShadowMonitor,
+  getStrategyPromotionGates,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -5034,6 +5037,231 @@ function ShadowMonitorPanel({ monitor }: { monitor: StrategyShadowMonitorRespons
   );
 }
 
+// ---------------------------------------------------------------------------
+// M51: Promotion Gates Panel
+// ---------------------------------------------------------------------------
+
+const PROMOTION_TARGETS: { label: string; value: string }[] = [
+  { label: "Backtest Review", value: "backtest_review" },
+  { label: "Paper Candidate", value: "paper_candidate" },
+  { label: "Shadow Production", value: "shadow_production" },
+  { label: "Production Candidate", value: "production_candidate" },
+];
+
+function verdictStyles(verdict: string): { text: string; bg: string; border: string } {
+  switch (verdict) {
+    case "pass":
+      return { text: "text-teal-400", bg: "bg-teal-900/20", border: "border-teal-700/30" };
+    case "conditional_pass":
+      return { text: "text-cyan-400", bg: "bg-cyan-900/20", border: "border-cyan-700/30" };
+    case "requires_review":
+      return { text: "text-yellow-400", bg: "bg-yellow-900/20", border: "border-yellow-700/30" };
+    case "blocked":
+      return { text: "text-red-400", bg: "bg-red-900/20", border: "border-red-700/30" };
+    default: // insufficient_evidence
+      return { text: "text-text-muted", bg: "bg-bg-700", border: "border-border" };
+  }
+}
+
+function gateStatusColor(status: string): string {
+  switch (status) {
+    case "pass": return "text-teal-400";
+    case "watch": return "text-yellow-400";
+    case "review": return "text-orange-400";
+    case "fail": return "text-red-400";
+    default: return "text-text-muted";
+  }
+}
+
+function GateCheckIcon({ check }: { check: PromotionGateCheck }) {
+  if (check.status === "missing" || check.status === "unknown") {
+    return <span className="text-text-muted font-mono text-xs">○</span>;
+  }
+  if (check.passed) {
+    return <span className="text-teal-400 font-mono text-xs font-bold">✓</span>;
+  }
+  return <span className="text-red-400 font-mono text-xs font-bold">✗</span>;
+}
+
+function PromotionGatesPanel({
+  gates,
+  onTargetChange,
+}: {
+  gates: StrategyPromotionGateResponse;
+  onTargetChange: (t: string) => void;
+}) {
+  const vStyles = verdictStyles(gates.promotion_verdict);
+  const requiredChecks = gates.gate_checks.filter((c) => c.required);
+  const recommendedChecks = gates.gate_checks.filter((c) => !c.required);
+
+  return (
+    <div className="rounded-card border border-border bg-bg-card p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wide">
+          Promotion Gates
+        </h3>
+        <span className="font-mono text-2xs text-text-muted">{fmtDate(gates.generated_at)}</span>
+      </div>
+
+      {/* A: Target stage selector */}
+      <div className="flex flex-wrap gap-2">
+        {PROMOTION_TARGETS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => onTargetChange(t.value)}
+            className={`font-mono text-2xs px-2.5 py-1 rounded border transition-colors ${
+              gates.target_stage === t.value
+                ? "border-text-secondary text-text-primary bg-bg-700"
+                : "border-border text-text-muted hover:text-text-secondary hover:border-text-muted"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* B: Verdict + score strip */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className={`font-mono text-xs font-semibold px-2 py-0.5 rounded border ${vStyles.text} ${vStyles.bg} ${vStyles.border}`}
+        >
+          {gates.promotion_verdict.replace(/_/g, " ")}
+        </span>
+        {gates.gate_score !== null && (
+          <span className="mono-num text-sm font-bold text-text-primary">
+            {gates.gate_score.toFixed(0)}
+            <span className="font-mono text-2xs text-text-muted font-normal"> / 100</span>
+          </span>
+        )}
+        <span className="font-mono text-2xs text-text-secondary">
+          {gates.current_stage.replace(/_/g, " ")}
+          <span className="mx-1.5 text-text-muted">→</span>
+          {gates.target_stage.replace(/_/g, " ")}
+        </span>
+        <div className="ml-auto flex gap-3 text-2xs font-mono">
+          <span className="text-teal-400">{gates.required_pass_count}P</span>
+          <span className="text-red-400">{gates.required_fail_count}F</span>
+          {gates.blocker_count > 0 && (
+            <span className="text-red-400 font-semibold">{gates.blocker_count} blocker{gates.blocker_count !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+      </div>
+
+      {/* C: Deterministic summary */}
+      {gates.deterministic_summary && (
+        <p className="font-mono text-2xs text-text-muted italic">{gates.deterministic_summary}</p>
+      )}
+
+      {/* D: Gate checks table */}
+      {requiredChecks.length > 0 && (
+        <div className="space-y-1">
+          <p className="font-mono text-2xs font-semibold text-text-secondary uppercase tracking-wide">Required Checks</p>
+          <div className="rounded border border-border overflow-x-auto">
+            <table className="w-full text-2xs font-mono">
+              <thead>
+                <tr className="border-b border-border bg-bg-700">
+                  <th className="px-2 py-1 text-left text-text-muted font-normal w-6"></th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Check</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Category</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Status</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Observed</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Required</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requiredChecks.map((c) => (
+                  <tr key={c.gate_key} className="border-b border-border last:border-0 hover:bg-bg-700/50">
+                    <td className="px-2 py-1 text-center"><GateCheckIcon check={c} /></td>
+                    <td className="px-2 py-1 text-text-primary">{c.title}</td>
+                    <td className="px-2 py-1 text-text-muted">{c.category}</td>
+                    <td className={`px-2 py-1 font-semibold ${gateStatusColor(c.status)}`}>
+                      {c.status}
+                    </td>
+                    <td className="px-2 py-1 text-text-secondary">{c.observed_value ?? "—"}</td>
+                    <td className="px-2 py-1 text-text-muted">{c.required_value ?? "—"}</td>
+                    <td className="px-2 py-1 text-text-muted max-w-xs truncate" title={c.suggested_action ?? ""}>
+                      {c.suggested_action ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {recommendedChecks.length > 0 && (
+        <div className="space-y-1">
+          <p className="font-mono text-2xs font-semibold text-text-secondary uppercase tracking-wide opacity-70">Recommended Checks</p>
+          <div className="rounded border border-border overflow-x-auto opacity-80">
+            <table className="w-full text-2xs font-mono">
+              <thead>
+                <tr className="border-b border-border bg-bg-700">
+                  <th className="px-2 py-1 text-left text-text-muted font-normal w-6"></th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Check</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Category</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Status</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Observed</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Required</th>
+                  <th className="px-2 py-1 text-left text-text-muted font-normal">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recommendedChecks.map((c) => (
+                  <tr key={c.gate_key} className="border-b border-border last:border-0 hover:bg-bg-700/50">
+                    <td className="px-2 py-1 text-center"><GateCheckIcon check={c} /></td>
+                    <td className="px-2 py-1 text-text-primary">{c.title}</td>
+                    <td className="px-2 py-1 text-text-muted">{c.category}</td>
+                    <td className={`px-2 py-1 font-semibold ${gateStatusColor(c.status)}`}>
+                      {c.status}
+                    </td>
+                    <td className="px-2 py-1 text-text-secondary">{c.observed_value ?? "—"}</td>
+                    <td className="px-2 py-1 text-text-muted">{c.required_value ?? "—"}</td>
+                    <td className="px-2 py-1 text-text-muted max-w-xs truncate" title={c.suggested_action ?? ""}>
+                      {c.suggested_action ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* E: Blockers */}
+      {gates.blockers.length > 0 && (
+        <div className="rounded border border-red-700/30 bg-red-900/10 px-3 py-2 space-y-1">
+          <p className="font-mono text-2xs font-semibold text-red-400 uppercase tracking-wide">Blockers</p>
+          <ul className="space-y-0.5">
+            {gates.blockers.map((b, i) => (
+              <li key={i} className="font-mono text-2xs text-red-400">• {b}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* F: Suggested actions */}
+      {gates.suggested_actions.length > 0 && (
+        <div className="space-y-1">
+          <p className="font-mono text-2xs font-semibold text-text-secondary uppercase tracking-wide">Suggested Actions</p>
+          <ul className="space-y-0.5">
+            {gates.suggested_actions.slice(0, 5).map((a, i) => (
+              <li key={i} className="font-mono text-2xs text-text-muted">• {a}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* G: Note */}
+      {gates.note && (
+        <p className="font-mono text-2xs text-text-muted italic">{gates.note}</p>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -5120,6 +5348,11 @@ export default function StrategyDetail() {
 
   // M50: shadow monitor
   const [shadowMonitor, setShadowMonitor] = useState<StrategyShadowMonitorResponse | null>(null);
+
+  // M51: promotion gates
+  const [promotionGates, setPromotionGates] = useState<StrategyPromotionGateResponse | null>(null);
+  // promotionTarget tracks the currently-selected target stage for the promotion gates panel
+  const [_promotionTarget, setPromotionTarget] = useState<string>("paper_candidate");
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -5230,6 +5463,8 @@ export default function StrategyDetail() {
     getStrategyReadiness(id).then(setReadiness).catch(() => setReadiness(null));
     // M50: load shadow monitor in parallel
     getStrategyShadowMonitor(id).then(setShadowMonitor).catch(() => setShadowMonitor(null));
+    // M51: load promotion gates in parallel
+    getStrategyPromotionGates(id, "paper_candidate").then(setPromotionGates).catch(() => setPromotionGates(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -5685,6 +5920,17 @@ export default function StrategyDetail() {
 
       {/* M50: Shadow Production Monitor */}
       {shadowMonitor && <ShadowMonitorPanel monitor={shadowMonitor} />}
+
+      {/* M51: Promotion Gates */}
+      {promotionGates && (
+        <PromotionGatesPanel
+          gates={promotionGates}
+          onTargetChange={(t) => {
+            setPromotionTarget(t);
+            getStrategyPromotionGates(id!, t).then(setPromotionGates).catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

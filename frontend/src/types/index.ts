@@ -2804,3 +2804,60 @@ export interface StrategyShadowMonitorResponse {
   blockers: string[];
   suggested_actions: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M51: Promotion Gates
+// ---------------------------------------------------------------------------
+
+export type StrategyStage =
+  | "idea"
+  | "research"
+  | "backtest_review"
+  | "paper_candidate"
+  | "shadow_production"
+  | "production_candidate"
+  | "archived";
+
+export type PromotionVerdict =
+  | "pass"
+  | "conditional_pass"
+  | "requires_review"
+  | "blocked"
+  | "insufficient_evidence";
+
+export interface PromotionGateCheck {
+  gate_key: string;
+  title: string;
+  category: string;
+  status: string;
+  severity: string;
+  evidence_summary: string;
+  required: boolean;
+  passed: boolean;
+  observed_value: string | null;
+  required_value: string | null;
+  suggested_action: string | null;
+}
+
+export interface StrategyPromotionGateResponse {
+  strategy_id: string;
+  strategy_name: string;
+  current_stage: string;
+  target_stage: string;
+  promotion_verdict: PromotionVerdict;
+  deterministic_summary: string;
+  note: string;
+  generated_at: string;
+  gate_score: number | null;
+  required_pass_count: number;
+  required_fail_count: number;
+  recommended_pass_count: number;
+  recommended_fail_count: number;
+  blocker_count: number;
+  review_count: number;
+  gate_checks: PromotionGateCheck[];
+  blockers: string[];
+  warnings: string[];
+  suggested_actions: string[];
+  stage_path: string[];
+}

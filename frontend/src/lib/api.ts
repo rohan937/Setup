@@ -85,6 +85,7 @@ import type {
   StrategyEvidenceFreshnessResponse,
   StrategyReadinessResponse,
   StrategyShadowMonitorResponse,
+  StrategyPromotionGateResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -1001,5 +1002,20 @@ export async function getStrategyShadowMonitor(
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return request<StrategyShadowMonitorResponse>(
     `/api/strategies/${strategyId}/shadow-monitor${query}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M51: Promotion Gates
+// ---------------------------------------------------------------------------
+
+export async function getStrategyPromotionGates(
+  strategyId: string,
+  targetStage: string,
+): Promise<StrategyPromotionGateResponse> {
+  const qs = new URLSearchParams();
+  qs.set("target_stage", targetStage);
+  return request<StrategyPromotionGateResponse>(
+    `/api/strategies/${strategyId}/promotion-gates?${qs.toString()}`,
   );
 }

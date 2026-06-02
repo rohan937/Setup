@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1352 tests, 1 skipped)
+│   └── tests/              Pytest tests (1373 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,65 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M50: Shadow Production Monitor v1
+## Current milestone — M51: Strategy Promotion Gates v1
+
+**Status: complete.**
+
+### M51 deliverables
+
+- **New service `backend/app/services/promotion_gates.py`** — `evaluate_promotion_gates(strategy_id, target_stage, db)` and 9 `_gate_*()` helper functions. No AI, no external APIs. Fully deterministic. Not trading approval.
+
+- **4 target stages**:
+  - `backtest_review` — strategy has moved from idea/research into backtest review.
+  - `paper_candidate` — strategy is a candidate for paper trading.
+  - `shadow_production` — strategy is a candidate for shadow production monitoring.
+  - `production_candidate` — strategy is a candidate for production consideration.
+
+- **Current stage inference**: derived from the run types present on the strategy (`idea`, `research`, `backtest_review`, `paper_candidate`, `shadow_production`).
+
+- **Stage-specific gate rules**: each target stage has a set of required gates and recommended gates, drawing on results from M21, M27, M41, M47, M48, M49, and M50 services.
+
+- **5 verdicts**:
+  - `pass` — all required gates pass and gate score >= 90.
+  - `conditional_pass` — all required gates pass and gate score >= 70.
+  - `requires_review` — required gates pass but score < 70.
+  - `blocked` — one or more required gates with critical or high failure.
+  - `insufficient_evidence` — not enough evidence to evaluate gates.
+
+- **Gate score (0–100)**: weighted average using CREDIT map (`pass`=1.0, `watch`=0.7, `review`=0.4, `fail`/`missing`=0.0). Required gates carry weight 1.0; recommended gates carry weight 0.3.
+
+- **Note field**: "This is a deterministic evidence gate result, not trading approval."
+
+- **New endpoint** `GET /api/strategies/{id}/promotion-gates?target_stage=...`:
+  - Read-only. No `AuditTimelineEvent` created.
+  - Query param: `target_stage` (one of the 4 target stages above).
+  - 404 for unknown strategy.
+  - Returns `PromotionGatesResponse`.
+
+- **New schemas `backend/app/schemas/promotion_gates.py`** — Pydantic response models for gate check items and the top-level response.
+
+- **Frontend — `PromotionGatesPanel`** in `StrategyDetail.tsx`:
+  - 4-stage target selector to choose which promotion gate to evaluate.
+  - Verdict and score strip showing verdict badge and gate score.
+  - Gate checks table with required vs. recommended columns, gate name, and pass/fail/watch/review indicators.
+  - Blockers panel listing gates that are blocking promotion.
+  - Suggested actions panel with deterministic next steps.
+
+- **21 new backend M51 tests** (`tests/test_promotion_gates_m51.py`). All 21 passed on first run.
+- **Backend total: 1373 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (64 modules, built in ~878ms). One non-fatal JS chunk size warning (> 500 kB) — not an error.
+- No external APIs. Deterministic. Not trading approval.
+
+### What M51 does NOT build (by design)
+
+- No trading approval workflow or broker integration.
+- No user signoff flows or multi-party approval.
+- No RBAC or role-based gate overrides.
+- No notification system (email, Slack, PagerDuty).
+
+---
+
+## Previously completed — M50: Shadow Production Monitor v1
 
 **Status: complete.**
 
