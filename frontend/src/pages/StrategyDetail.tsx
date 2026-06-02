@@ -65,6 +65,9 @@ import type {
   ShadowMetricComparison,
   StrategyPromotionGateResponse,
   PromotionGateCheck,
+  StrategyEvidenceGraphResponse,
+  EvidenceGraphNode,
+  EvidenceBlastRadius,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -91,6 +94,7 @@ import {
   getStrategyReadiness,
   getStrategyShadowMonitor,
   getStrategyPromotionGates,
+  getStrategyEvidenceGraph,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -5262,6 +5266,291 @@ function PromotionGatesPanel({
   );
 }
 
+// ---------------------------------------------------------------------------
+// M52: Evidence Dependency Graph Panel
+// ---------------------------------------------------------------------------
+
+const NODE_STATUS_COLOR: Record<string, string> = {
+  healthy: "text-teal-400",
+  watch: "text-yellow-400",
+  review: "text-orange-400",
+  weak: "text-red-400",
+  missing: "text-text-muted",
+  computed: "text-cyan-400",
+  unknown: "text-text-muted",
+};
+
+const SEVERITY_COLOR: Record<string, string> = {
+  critical: "text-red-500",
+  high: "text-red-400",
+  medium: "text-yellow-400",
+  low: "text-text-secondary",
+  info: "text-text-muted",
+};
+
+const GRAPH_STATUS_COLOR: Record<string, string> = {
+  complete: "bg-teal-900/40 text-teal-400 border-teal-700/50",
+  partial: "bg-yellow-900/40 text-yellow-400 border-yellow-700/50",
+  review: "bg-orange-900/40 text-orange-400 border-orange-700/50",
+  sparse: "bg-surface-2 text-text-muted border-border",
+};
+
+const NODE_TYPE_COLUMN: Record<string, string> = {
+  strategy: "Strategy",
+  strategy_version: "Strategy",
+  config_snapshot: "Snapshots",
+  universe_snapshot: "Snapshots",
+  signal_snapshot: "Snapshots",
+  dataset: "Snapshots",
+  dataset_snap: "Snapshots",
+  strategy_run: "Runs & Audits",
+  backtest_audit: "Runs & Audits",
+  reliability: "Analysis",
+  readiness: "Analysis",
+  shadow_monitor: "Analysis",
+  promotion: "Analysis",
+  report: "Signals",
+  alert: "Signals",
+  timeline: "Signals",
+};
+
+const COLUMN_ORDER = ["Strategy", "Snapshots", "Runs & Audits", "Analysis", "Signals"];
+
+function nodeColumn(nodeType: string): string {
+  return NODE_TYPE_COLUMN[nodeType] ?? "Signals";
+}
+
+function EvidenceGraphPanel({
+  graph,
+  strategyId: _strategyId,
+  onFocusChange,
+}: {
+  graph: StrategyEvidenceGraphResponse;
+  strategyId: string | undefined;
+  onFocusChange: (nid: string, ntype: string) => void;
+}) {
+  const [tableOpen, setTableOpen] = useState(false);
+  const { summary, nodes, edges, blast_radius } = graph;
+
+  const graphStatusClass =
+    GRAPH_STATUS_COLOR[summary.graph_status] ?? GRAPH_STATUS_COLOR.sparse;
+
+  // Group nodes by column
+  const columns: Record<string, EvidenceGraphNode[]> = {};
+  for (const col of COLUMN_ORDER) columns[col] = [];
+  for (const node of nodes) {
+    const col = nodeColumn(node.node_type);
+    if (!columns[col]) columns[col] = [];
+    columns[col].push(node);
+  }
+
+  function NodeChip({ node }: { node: EvidenceGraphNode }) {
+    const statusClass = NODE_STATUS_COLOR[node.status] ?? "text-text-muted";
+    const severityClass = SEVERITY_COLOR[node.severity] ?? "text-text-muted";
+    return (
+      <button
+        onClick={() => onFocusChange(node.node_id, node.node_type)}
+        className="flex flex-col gap-0.5 rounded border border-border bg-surface-2 px-2 py-1.5 text-left hover:border-border-active hover:bg-surface-3 transition-colors w-full"
+      >
+        <span className={`font-mono text-2xs font-medium ${statusClass} truncate`}>
+          {node.label}
+        </span>
+        <span className="font-mono text-2xs text-text-muted truncate">{node.node_type}</span>
+        {node.score !== null && (
+          <span className={`font-mono text-2xs ${severityClass}`}>
+            score: {typeof node.score === "number" ? node.score.toFixed(2) : node.score}
+          </span>
+        )}
+        <span className={`font-mono text-3xs ${statusClass}`}>{node.status}</span>
+      </button>
+    );
+  }
+
+  function BlastRadiusPanel({ br }: { br: EvidenceBlastRadius }) {
+    const focusShort = br.focus_node_id.split(":").slice(-1)[0];
+    const sevClass = SEVERITY_COLOR[br.blast_radius_severity] ?? "text-text-muted";
+    return (
+      <div className="rounded-card border border-orange-700/40 bg-orange-900/10 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs font-semibold text-orange-400">
+            Blast Radius: {focusShort}
+          </span>
+          <span className={`font-mono text-2xs font-semibold ${sevClass}`}>
+            [{br.blast_radius_severity}]
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-3 font-mono text-2xs text-text-secondary">
+          <span>upstream: <span className="text-text-primary">{br.upstream_count}</span></span>
+          <span>downstream: <span className="text-text-primary">{br.downstream_count}</span></span>
+          <span>runs: <span className="text-text-primary">{br.affected_run_count}</span></span>
+          <span>audits: <span className="text-text-primary">{br.affected_audit_count}</span></span>
+          <span>reports: <span className="text-text-primary">{br.affected_report_count}</span></span>
+          <span>alerts: <span className="text-text-primary">{br.affected_alert_count}</span></span>
+        </div>
+        <div className="flex flex-wrap gap-3 font-mono text-2xs">
+          {br.affected_readiness && (
+            <span className="text-orange-400">readiness affected</span>
+          )}
+          {br.affected_shadow_monitor && (
+            <span className="text-orange-400">shadow monitor affected</span>
+          )}
+          {br.affected_promotion_gates && (
+            <span className="text-orange-400">promotion gates affected</span>
+          )}
+        </div>
+        {br.affected_nodes.length > 0 && (
+          <div className="space-y-1">
+            <p className="font-mono text-2xs text-text-muted">Affected nodes (max 10):</p>
+            <div className="flex flex-col gap-0.5">
+              {br.affected_nodes.slice(0, 10).map((n) => (
+                <span key={n.node_id} className="font-mono text-2xs text-text-secondary">
+                  <span className={NODE_STATUS_COLOR[n.status] ?? "text-text-muted"}>
+                    [{n.node_type}]
+                  </span>{" "}
+                  {n.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-card border border-border bg-surface-1 p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-mono text-xs font-semibold text-text-primary">
+          Evidence Dependency Graph
+        </h3>
+        <span
+          className={`rounded border px-1.5 py-0.5 font-mono text-2xs font-semibold ${graphStatusClass}`}
+        >
+          {summary.graph_status}
+        </span>
+      </div>
+
+      {/* A. Summary strip */}
+      <div className="flex flex-wrap gap-3 font-mono text-2xs text-text-secondary">
+        <span>
+          nodes: <span className="text-text-primary">{summary.node_count}</span>
+        </span>
+        <span>
+          edges: <span className="text-text-primary">{summary.edge_count}</span>
+        </span>
+        <span>
+          weak:{" "}
+          <span className={summary.weak_node_count > 0 ? "text-red-400" : "text-text-primary"}>
+            {summary.weak_node_count}
+          </span>
+        </span>
+        <span>
+          connected runs: <span className="text-text-primary">{summary.connected_run_count}</span>
+        </span>
+        <span className="text-text-muted">
+          {new Date(summary.generated_at).toLocaleString()}
+        </span>
+      </div>
+
+      {/* B. Deterministic summary */}
+      <p className="font-mono text-2xs text-text-muted italic">{summary.deterministic_summary}</p>
+
+      {/* C. Grouped node columns */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {COLUMN_ORDER.map((col) => {
+          const colNodes = columns[col] ?? [];
+          return (
+            <div key={col} className="space-y-1">
+              <p className="font-mono text-2xs font-semibold text-text-muted uppercase tracking-wide">
+                {col}
+              </p>
+              {colNodes.length === 0 ? (
+                <p className="font-mono text-2xs text-text-muted italic">—</p>
+              ) : (
+                colNodes.map((node) => <NodeChip key={node.node_id} node={node} />)
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* D. Blast radius panel */}
+      {blast_radius && <BlastRadiusPanel br={blast_radius} />}
+
+      {/* E. Node table (collapsible) */}
+      <div>
+        <button
+          onClick={() => setTableOpen((v) => !v)}
+          className="font-mono text-2xs text-text-muted hover:text-text-secondary"
+        >
+          {tableOpen ? "▾ Hide node table" : "▸ Show all nodes"} ({nodes.length})
+        </button>
+        {tableOpen && (
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full font-mono text-2xs">
+              <thead>
+                <tr className="border-b border-border text-text-muted">
+                  <th className="pb-1 pr-3 text-left font-semibold">type</th>
+                  <th className="pb-1 pr-3 text-left font-semibold">label</th>
+                  <th className="pb-1 pr-3 text-left font-semibold">status</th>
+                  <th className="pb-1 pr-3 text-left font-semibold">score</th>
+                  <th className="pb-1 text-left font-semibold">created_at</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nodes.map((node) => (
+                  <tr key={node.node_id} className="border-b border-border/50">
+                    <td className="py-0.5 pr-3 text-text-muted">{node.node_type}</td>
+                    <td className="py-0.5 pr-3">
+                      <button
+                        onClick={() => onFocusChange(node.node_id, node.node_type)}
+                        className={`hover:underline ${NODE_STATUS_COLOR[node.status] ?? "text-text-secondary"}`}
+                      >
+                        {node.label}
+                      </button>
+                    </td>
+                    <td className={`py-0.5 pr-3 ${NODE_STATUS_COLOR[node.status] ?? "text-text-muted"}`}>
+                      {node.status}
+                    </td>
+                    <td className="py-0.5 pr-3 text-text-secondary">
+                      {node.score !== null ? node.score.toFixed(2) : "—"}
+                    </td>
+                    <td className="py-0.5 text-text-muted">
+                      {node.created_at ? new Date(node.created_at).toLocaleDateString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* F. Suggested checks */}
+      {summary.suggested_checks.length > 0 && (
+        <div className="space-y-1">
+          <p className="font-mono text-2xs font-semibold text-text-muted">Suggested checks:</p>
+          <ul className="space-y-0.5">
+            {summary.suggested_checks.map((check, i) => (
+              <li key={i} className="font-mono text-2xs text-text-secondary">
+                • {check}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Edge count note */}
+      {edges.length > 0 && (
+        <p className="font-mono text-2xs text-text-muted">
+          {edges.length} edge{edges.length !== 1 ? "s" : ""} in dependency graph
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -5353,6 +5642,10 @@ export default function StrategyDetail() {
   const [promotionGates, setPromotionGates] = useState<StrategyPromotionGateResponse | null>(null);
   // promotionTarget tracks the currently-selected target stage for the promotion gates panel
   const [_promotionTarget, setPromotionTarget] = useState<string>("paper_candidate");
+
+  // M52: evidence graph
+  const [evidenceGraph, setEvidenceGraph] = useState<StrategyEvidenceGraphResponse | null>(null);
+  const [_graphFocusNode, setGraphFocusNode] = useState<string>("");
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -5465,6 +5758,8 @@ export default function StrategyDetail() {
     getStrategyShadowMonitor(id).then(setShadowMonitor).catch(() => setShadowMonitor(null));
     // M51: load promotion gates in parallel
     getStrategyPromotionGates(id, "paper_candidate").then(setPromotionGates).catch(() => setPromotionGates(null));
+    // M52: load evidence graph in parallel
+    getStrategyEvidenceGraph(id).then(setEvidenceGraph).catch(() => setEvidenceGraph(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -5928,6 +6223,20 @@ export default function StrategyDetail() {
           onTargetChange={(t) => {
             setPromotionTarget(t);
             getStrategyPromotionGates(id!, t).then(setPromotionGates).catch(() => {});
+          }}
+        />
+      )}
+
+      {/* M52: Evidence Dependency Graph */}
+      {evidenceGraph && (
+        <EvidenceGraphPanel
+          graph={evidenceGraph}
+          strategyId={id}
+          onFocusChange={(nid, ntype) => {
+            setGraphFocusNode(nid);
+            getStrategyEvidenceGraph(id!, { focus_node_id: nid, focus_node_type: ntype })
+              .then(setEvidenceGraph)
+              .catch(() => {});
           }}
         />
       )}

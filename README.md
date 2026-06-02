@@ -161,7 +161,65 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M51: Strategy Promotion Gates v1
+## Current milestone — M52: Evidence Dependency Graph v1
+
+**Status: complete.**
+
+### M52 deliverables
+
+- **New service `backend/app/services/evidence_graph.py`** — `build_strategy_evidence_graph(strategy_id, db, focus_node_id, focus_node_type, include_timeline, include_computed)` builds a full dependency graph of nodes and edges from all evidence artifact types. No AI, no external APIs. Fully deterministic. Not investment advice.
+
+- **16 node types**:
+  `strategy`, `strategy_version`, `config_snapshot`, `universe_snapshot`, `signal_snapshot`,
+  `dataset`, `dataset_snapshot`, `strategy_run`, `backtest_audit`, `reliability_score`,
+  `readiness_scorecard`, `shadow_monitor`, `promotion_gates`, `report`, `alert`, `timeline_event`.
+
+- **Computed nodes** (`readiness_scorecard`, `shadow_monitor`, `promotion_gates`): synthetic node IDs using M49/M50/M51 services; included when `include_computed=true`.
+
+- **Node status** mapped from artifact quality: `healthy` / `watch` / `review` / `weak` / `missing` / `computed` / `unknown`.
+
+- **Edge relationships**: `versioned_by`, `configured_by`, `uses_universe`, `uses_signal`, `uses_dataset`, `produced_run`, `audited_by`, `scored_by`, `reported_by`, `alerted_by`, `computed_from`, `timeline_event_for`.
+
+- **Blast-radius analysis**: BFS from focus node to find upstream/downstream affected nodes; severity: `high` (3+ runs affected), `medium` (1+ run/audit/report), `low` (any downstream), `none`.
+
+- **Graph status**:
+  - `sparse`: fewer than 5 nodes or no runs.
+  - `review`: weak nodes or HC alerts.
+  - `partial`: missing key evidence.
+  - `complete`: healthy connected graph.
+
+- **Caps**: `MAX_RUNS=100`, `MAX_SNAPS=100` per type, `MAX_TL=50`, `MAX_ALERTS=50`, `MAX_REPORTS=20`, `MAX_SCORES=20`.
+
+- **New endpoint** `GET /api/strategies/{id}/evidence-graph`:
+  - Query params: `focus_node_id` (UUID, optional), `focus_node_type` (optional), `include_timeline` (bool, default false), `include_computed` (bool, default true).
+  - Read-only. No `AuditTimelineEvent` created.
+  - 404 for unknown strategy.
+  - Returns `EvidenceGraphResponse`.
+
+- **New schemas `backend/app/schemas/evidence_graph.py`** — Pydantic response models for graph nodes, edges, blast-radius analysis, and the top-level response.
+
+- **Frontend — `EvidenceGraphPanel`** in `StrategyDetail.tsx`:
+  - Grouped column visualization (no canvas/SVG) — nodes rendered as chips organized by type group.
+  - Blast-radius panel showing upstream/downstream affected nodes and severity.
+  - Node table with node type, status, and label.
+  - Suggested checks panel with deterministic next steps.
+  - Click on node chip loads blast-radius analysis for that node.
+
+- **24 new backend M52 tests** (`tests/test_evidence_graph_m52.py`). All 24 passed on first run.
+- **Backend total: 1397 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (64 modules, built in 812ms).
+- No external APIs. Deterministic. Not investment advice.
+
+### What M52 does NOT build (by design)
+
+- No interactive drag-drop graph canvas or force-directed layout.
+- No external lineage systems or data catalog integrations.
+- No GitHub integration or code-level dependency tracing.
+- No AI graph analysis or automated impact assessment.
+
+---
+
+## Previously completed — M51: Strategy Promotion Gates v1
 
 **Status: complete.**
 
@@ -206,7 +264,7 @@ the backend alongside the frontend to see it connected.
   - Suggested actions panel with deterministic next steps.
 
 - **21 new backend M51 tests** (`tests/test_promotion_gates_m51.py`). All 21 passed on first run.
-- **Backend total: 1373 passed, 1 skipped.**
+- **Backend total: 1397 passed, 1 skipped.**
 - **Zero TypeScript errors**, clean production build (64 modules, built in ~878ms). One non-fatal JS chunk size warning (> 500 kB) — not an error.
 - No external APIs. Deterministic. Not trading approval.
 

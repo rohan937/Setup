@@ -4264,3 +4264,119 @@ def get_promotion_gates(
         deterministic_summary=result.deterministic_summary,
         note=result.note,
     )
+
+
+# ---------------------------------------------------------------------------
+# M52 — Evidence Graph
+# ---------------------------------------------------------------------------
+
+from app.schemas.evidence_graph import (  # noqa: E402
+    EvidenceGraphNode,
+    EvidenceGraphEdge,
+    EvidenceBlastRadius,
+    EvidenceGraphSummary,
+    StrategyEvidenceGraphResponse,
+)
+from app.services.evidence_graph import (  # noqa: E402
+    build_strategy_evidence_graph,
+    StrategyEvidenceGraphData,
+)
+
+
+@router.get(
+    "/strategies/{strategy_id}/evidence-graph",
+    response_model=StrategyEvidenceGraphResponse,
+)
+def get_evidence_graph(
+    strategy_id: uuid.UUID,
+    focus_node_id: str | None = Query(default=None),
+    focus_node_type: str | None = Query(default=None),
+    include_timeline: bool = Query(default=True),
+    include_computed: bool = Query(default=True),
+    db: Session = Depends(get_db),
+):
+    """Build deterministic evidence graph for a strategy.
+
+    Not investment advice — deterministic evidence graph only.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        result = build_strategy_evidence_graph(
+            strategy_id,
+            db,
+            focus_node_id=focus_node_id,
+            focus_node_type=focus_node_type,
+            include_timeline=include_timeline,
+            include_computed=include_computed,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    def _ns(n) -> EvidenceGraphNode:
+        return EvidenceGraphNode(
+            node_id=n.node_id,
+            node_type=n.node_type,
+            label=n.label,
+            subtitle=n.subtitle,
+            status=n.status,
+            severity=n.severity,
+            created_at=n.created_at,
+            updated_at=n.updated_at,
+            score=n.score,
+            metadata_json=n.metadata_json,
+            route_hint=n.route_hint,
+        )
+
+    def _es(e) -> EvidenceGraphEdge:
+        return EvidenceGraphEdge(
+            edge_id=e.edge_id,
+            source_node_id=e.source_node_id,
+            target_node_id=e.target_node_id,
+            relationship=e.relationship,
+            label=e.label,
+            metadata_json=e.metadata_json,
+        )
+
+    br = None
+    if result.blast_radius:
+        b = result.blast_radius
+        br = EvidenceBlastRadius(
+            focus_node_id=b.focus_node_id,
+            focus_node_type=b.focus_node_type,
+            upstream_count=b.upstream_count,
+            downstream_count=b.downstream_count,
+            affected_run_count=b.affected_run_count,
+            affected_report_count=b.affected_report_count,
+            affected_alert_count=b.affected_alert_count,
+            affected_audit_count=b.affected_audit_count,
+            affected_readiness=b.affected_readiness,
+            affected_shadow_monitor=b.affected_shadow_monitor,
+            affected_promotion_gates=b.affected_promotion_gates,
+            affected_nodes=[_ns(n) for n in b.affected_nodes],
+            blast_radius_severity=b.blast_radius_severity,
+        )
+
+    s = result.summary
+    return StrategyEvidenceGraphResponse(
+        summary=EvidenceGraphSummary(
+            strategy_id=s.strategy_id,
+            strategy_name=s.strategy_name,
+            generated_at=s.generated_at,
+            node_count=s.node_count,
+            edge_count=s.edge_count,
+            weak_node_count=s.weak_node_count,
+            missing_node_count=s.missing_node_count,
+            high_critical_alert_node_count=s.high_critical_alert_node_count,
+            connected_run_count=s.connected_run_count,
+            orphan_evidence_count=s.orphan_evidence_count,
+            graph_status=s.graph_status,
+            deterministic_summary=s.deterministic_summary,
+            suggested_checks=s.suggested_checks,
+        ),
+        nodes=[_ns(n) for n in result.nodes],
+        edges=[_es(e) for e in result.edges],
+        blast_radius=br,
+    )

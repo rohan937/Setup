@@ -86,6 +86,7 @@ import type {
   StrategyReadinessResponse,
   StrategyShadowMonitorResponse,
   StrategyPromotionGateResponse,
+  StrategyEvidenceGraphResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -1017,5 +1018,29 @@ export async function getStrategyPromotionGates(
   qs.set("target_stage", targetStage);
   return request<StrategyPromotionGateResponse>(
     `/api/strategies/${strategyId}/promotion-gates?${qs.toString()}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M52: Evidence Dependency Graph
+// ---------------------------------------------------------------------------
+
+export async function getStrategyEvidenceGraph(
+  strategyId: string,
+  params?: {
+    focus_node_id?: string;
+    focus_node_type?: string;
+    include_timeline?: boolean;
+    include_computed?: boolean;
+  },
+): Promise<StrategyEvidenceGraphResponse> {
+  const qs = new URLSearchParams();
+  if (params?.focus_node_id) qs.set("focus_node_id", params.focus_node_id);
+  if (params?.focus_node_type) qs.set("focus_node_type", params.focus_node_type);
+  if (params?.include_timeline !== undefined) qs.set("include_timeline", String(params.include_timeline));
+  if (params?.include_computed !== undefined) qs.set("include_computed", String(params.include_computed));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return request<StrategyEvidenceGraphResponse>(
+    `/api/strategies/${strategyId}/evidence-graph${query}`,
   );
 }

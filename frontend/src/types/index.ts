@@ -2861,3 +2861,69 @@ export interface StrategyPromotionGateResponse {
   suggested_actions: string[];
   stage_path: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M52: Evidence Dependency Graph
+// ---------------------------------------------------------------------------
+
+export interface EvidenceGraphNode {
+  node_id: string;
+  node_type: string;
+  label: string;
+  status: string;
+  severity: string;
+  subtitle: string | null;
+  route_hint: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  score: number | null;
+  metadata_json: Record<string, unknown>;
+}
+
+export interface EvidenceGraphEdge {
+  edge_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  relationship: string;
+  label: string;
+  metadata_json: Record<string, unknown>;
+}
+
+export interface EvidenceBlastRadius {
+  focus_node_id: string;
+  focus_node_type: string;
+  blast_radius_severity: string;
+  upstream_count: number;
+  downstream_count: number;
+  affected_run_count: number;
+  affected_report_count: number;
+  affected_alert_count: number;
+  affected_audit_count: number;
+  affected_readiness: boolean;
+  affected_shadow_monitor: boolean;
+  affected_promotion_gates: boolean;
+  affected_nodes: EvidenceGraphNode[];
+}
+
+export interface EvidenceGraphSummary {
+  strategy_id: string;
+  strategy_name: string;
+  graph_status: string;
+  deterministic_summary: string;
+  generated_at: string;
+  node_count: number;
+  edge_count: number;
+  weak_node_count: number;
+  missing_node_count: number;
+  high_critical_alert_node_count: number;
+  connected_run_count: number;
+  orphan_evidence_count: number;
+  suggested_checks: string[];
+}
+
+export interface StrategyEvidenceGraphResponse {
+  summary: EvidenceGraphSummary;
+  nodes: EvidenceGraphNode[];
+  edges: EvidenceGraphEdge[];
+  blast_radius: EvidenceBlastRadius | null;
+}
