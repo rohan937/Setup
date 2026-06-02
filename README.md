@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1373 tests, 1 skipped)
+│   └── tests/              Pytest tests (1417 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,60 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M52: Evidence Dependency Graph v1
+## Current milestone — M53: Strategy Regression Test Suite v1
+
+**Status: complete.**
+
+### M53 deliverables
+
+- **New migration `backend/migrations/versions/0018_m53_regression_tests.py`** — adds three new tables: `strategy_regression_tests`, `strategy_regression_test_runs`, `strategy_regression_test_results`. Safe to run on existing databases.
+
+- **New ORM models**: `StrategyRegressionTest`, `StrategyRegressionTestRun`, `StrategyRegressionTestResult` in `backend/app/models/`.
+
+- **New service `backend/app/services/regression_tests.py`** — `create_default_regression_tests()`, `run_regression_tests()`, `get_regression_tests()`, `get_regression_test_runs()`, `get_regression_test_run()`. No AI, no external APIs. Fully deterministic. Not trading approval.
+
+- **15 default regression tests** — created automatically on first setup call:
+  - 5 metric delta tests: Sharpe drop (relative), Sharpe drop (absolute), max drawdown increase, turnover spike, volatility spike.
+  - 4 evidence threshold tests: dataset health below threshold, signal quality below threshold, backtest trust below threshold, evidence coverage below threshold.
+  - 6 state check tests: no high/critical alerts, evidence freshness not stale, readiness not blocked, drift not severe, shadow monitor not severe, assumption health not weak.
+
+- **3 test run modes**: `latest_vs_previous` (compares latest two runs), `selected_runs` (caller-specified run IDs), `latest_backtest_vs_latest_shadow` (cross-stage comparison).
+
+- **Result statuses**: `passed` / `warning` / `failed` / `skipped`. Overall run status: `passed` / `warning` / `failed` / `insufficient_evidence`.
+
+- **Timeline event**: `regression_tests_run` event created in `AuditTimelineEvent` on every regression test run.
+
+- **5 new API endpoints** in new `backend/app/api/routes/regression.py` router:
+  - `POST /api/strategies/{id}/regression-tests/defaults` — creates default regression test set (idempotent).
+  - `GET /api/strategies/{id}/regression-tests` — list all regression tests for a strategy.
+  - `POST /api/strategies/{id}/regression-tests/run` — execute regression tests and persist results.
+  - `GET /api/strategies/{id}/regression-tests/runs` — list all regression test run records.
+  - `GET /api/strategies/{id}/regression-tests/runs/{run_id}` — get full run detail with per-test results.
+
+- **New schemas `backend/app/schemas/regression.py`** — Pydantic response models for regression test definitions, run records, and result items.
+
+- **Frontend — `RegressionTestPanel`** in `StrategyDetail.tsx`:
+  - Setup button to create default regression tests when none exist.
+  - Mode selector (latest_vs_previous / selected_runs / latest_backtest_vs_latest_shadow).
+  - Run button to execute tests and display results.
+  - Results table with status icons, observed values vs. expected thresholds, and suggested actions per failed/warning test.
+  - Historical runs list showing overall status and run timestamp.
+
+- **20 new backend M53 tests** (`tests/test_regression_tests_m53.py`). All 20 passed on first run. No fixes needed.
+- **Backend total: 1417 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (64 modules, built in 835ms). One non-fatal JS chunk size warning (601.71 kB) — not an error.
+- No external APIs. Deterministic. Not trading approval. Language: "regression detected", "requires review", "evidence check failed". Never "strategy failed" or "do not trade".
+
+### What M53 does NOT build (by design)
+
+- No real trading approval, broker integration, or user signoff flows.
+- No notification system (email, Slack, PagerDuty).
+- No AI test suggestions or automated test generation.
+- No cross-strategy regression benchmarking.
+
+---
+
+## Previously completed — M52: Evidence Dependency Graph v1
 
 **Status: complete.**
 

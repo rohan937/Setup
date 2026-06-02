@@ -27,6 +27,11 @@ from app.models.report_section import ReportSection
 from app.models.strategy_reliability_score import StrategyReliabilityScore
 from app.models.api_key import ApiKey
 from app.models.sdk_ingestion_batch import SdkIngestionBatch
+from app.models.regression import (
+    StrategyRegressionTest,
+    StrategyRegressionTestRun,
+    StrategyRegressionTestResult,
+)
 
 __all__ = [
     "Organization",
@@ -51,4 +56,7 @@ __all__ = [
     "StrategyReliabilityScore",
     "ApiKey",
     "SdkIngestionBatch",
+    "StrategyRegressionTest",
+    "StrategyRegressionTestRun",
+    "StrategyRegressionTestResult",
 ]

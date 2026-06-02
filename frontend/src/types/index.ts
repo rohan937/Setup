@@ -2927,3 +2927,81 @@ export interface StrategyEvidenceGraphResponse {
   edges: EvidenceGraphEdge[];
   blast_radius: EvidenceBlastRadius | null;
 }
+
+// ---------------------------------------------------------------------------
+// M53: Regression Test Suite
+// ---------------------------------------------------------------------------
+
+export type RegressionTestStatus = "passed" | "warning" | "failed" | "skipped";
+
+export type RegressionTestOverallStatus =
+  | "passed"
+  | "warning"
+  | "failed"
+  | "insufficient_evidence";
+
+export interface StrategyRegressionTest {
+  id: string;
+  strategy_id: string;
+  name: string;
+  test_key: string;
+  test_type: string;
+  operator: string;
+  severity: string;
+  metric_key: string | null;
+  threshold_value: number | null;
+  threshold_json: unknown | null;
+  is_required: boolean;
+  is_enabled: boolean;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrategyRegressionTestRunRequest {
+  mode?: string;
+  baseline_run_id?: string | null;
+  comparison_run_id?: string | null;
+  suite_label?: string | null;
+}
+
+export interface StrategyRegressionTestResult {
+  id: string;
+  test_key: string;
+  title: string;
+  status: string;
+  severity: string;
+  is_required: boolean;
+  observed_value: string | null;
+  expected_value: string | null;
+  baseline_value: string | null;
+  comparison_value: string | null;
+  suggested_action: string | null;
+  evidence_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface StrategyRegressionTestRun {
+  id: string;
+  strategy_id: string;
+  mode: string;
+  overall_status: string;
+  suite_label: string | null;
+  baseline_run_id: string | null;
+  comparison_run_id: string | null;
+  passed_count: number;
+  failed_count: number;
+  warning_count: number;
+  skipped_count: number;
+  required_failed_count: number;
+  deterministic_summary: string | null;
+  results: StrategyRegressionTestResult[];
+  created_at: string;
+}
+
+export interface StrategyRegressionTestRunListResponse {
+  items: StrategyRegressionTestRun[];
+  total: number;
+  limit: number;
+  offset: number;
+}

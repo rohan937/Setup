@@ -68,6 +68,10 @@ import type {
   StrategyEvidenceGraphResponse,
   EvidenceGraphNode,
   EvidenceBlastRadius,
+  StrategyRegressionTest,
+  StrategyRegressionTestRun,
+  RegressionTestStatus,
+  RegressionTestOverallStatus,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -95,6 +99,9 @@ import {
   getStrategyShadowMonitor,
   getStrategyPromotionGates,
   getStrategyEvidenceGraph,
+  createDefaultRegressionTests,
+  getStrategyRegressionTests,
+  runStrategyRegressionTests,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -5551,6 +5558,261 @@ function EvidenceGraphPanel({
   );
 }
 
+// ---------------------------------------------------------------------------
+// M53: Regression Test Panel
+// ---------------------------------------------------------------------------
+
+function statusColor(status: string): string {
+  switch (status as RegressionTestStatus) {
+    case "passed": return "text-teal-400";
+    case "warning": return "text-yellow-400";
+    case "failed": return "text-red-400";
+    case "skipped": return "text-text-muted";
+    default: return "text-text-muted";
+  }
+}
+
+function statusIcon(status: string): string {
+  switch (status as RegressionTestStatus | RegressionTestOverallStatus) {
+    case "passed": return "✓";
+    case "failed": return "✗";
+    case "warning": return "⚠";
+    case "skipped": return "○";
+    case "insufficient_evidence": return "—";
+    default: return "—";
+  }
+}
+
+function overallBgClass(status: string): string {
+  switch (status as RegressionTestOverallStatus) {
+    case "passed": return "bg-teal-900/20 border-teal-700/30";
+    case "warning": return "bg-yellow-900/20 border-yellow-700/30";
+    case "failed": return "bg-red-900/20 border-red-700/30";
+    default: return "bg-bg-700 border-border";
+  }
+}
+
+interface RegressionTestPanelProps {
+  tests: StrategyRegressionTest[];
+  latestRun: StrategyRegressionTestRun | null;
+  loading: boolean;
+  strategyId: string;
+  onSetupDefaults: () => void;
+  onRunTests: (mode: string) => void;
+}
+
+function RegressionTestPanel({
+  tests,
+  latestRun,
+  loading,
+  onSetupDefaults,
+  onRunTests,
+}: RegressionTestPanelProps) {
+  const [mode, setMode] = useState<string>("latest_vs_previous");
+  const [defsOpen, setDefsOpen] = useState(false);
+
+  const modes = [
+    { key: "latest_vs_previous", label: "Latest vs Previous" },
+    { key: "backtest_vs_shadow", label: "Backtest vs Shadow" },
+    { key: "selected", label: "Selected" },
+  ];
+
+  const nonPassResults =
+    latestRun?.results.filter((r) => r.status !== "passed") ?? [];
+  const passedResults =
+    latestRun?.results.filter((r) => r.status === "passed") ?? [];
+
+  return (
+    <div className="rounded border border-border bg-bg-800 p-4">
+      <h3 className="mb-3 font-mono text-xs font-semibold text-text-primary">
+        Regression Test Suite
+      </h3>
+
+      {tests.length === 0 ? (
+        <div className="flex items-center gap-3">
+          <p className="font-mono text-2xs text-text-muted">No regression tests defined.</p>
+          <button
+            onClick={onSetupDefaults}
+            disabled={loading}
+            className="rounded bg-accent px-2 py-1 font-mono text-2xs text-white hover:bg-accent/80 disabled:opacity-50"
+          >
+            {loading ? "Creating…" : "Create Default Tests"}
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Summary row */}
+          <p className="mb-3 font-mono text-2xs text-text-muted">
+            {tests.length} test{tests.length !== 1 ? "s" : ""} (
+            {tests.filter((t) => t.is_required).length} required,{" "}
+            {tests.filter((t) => t.is_enabled).length} enabled)
+          </p>
+
+          {/* Mode selector + run button */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {modes.map((m) => (
+              <button
+                key={m.key}
+                onClick={() => setMode(m.key)}
+                className={`rounded border px-2 py-0.5 font-mono text-2xs transition-colors ${
+                  mode === m.key
+                    ? "border-accent bg-accent/20 text-accent"
+                    : "border-border text-text-muted hover:border-accent/50 hover:text-text-secondary"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+            <button
+              onClick={() => onRunTests(mode)}
+              disabled={loading}
+              className="rounded bg-accent px-3 py-0.5 font-mono text-2xs text-white hover:bg-accent/80 disabled:opacity-50"
+            >
+              {loading ? "Running tests…" : "Run Tests"}
+            </button>
+          </div>
+
+          {/* Latest run results */}
+          {loading && (
+            <p className="font-mono text-2xs text-text-muted">Running tests…</p>
+          )}
+
+          {latestRun && !loading && (
+            <div className={`mb-3 rounded border p-3 ${overallBgClass(latestRun.overall_status)}`}>
+              {/* Overall status header */}
+              <div className="mb-2 flex flex-wrap items-center gap-3">
+                <span className={`font-mono text-xs font-semibold ${statusColor(latestRun.overall_status)}`}>
+                  {statusIcon(latestRun.overall_status)}{" "}
+                  {latestRun.overall_status.replace(/_/g, " ").toUpperCase()}
+                </span>
+                <span className="font-mono text-2xs text-teal-400">
+                  {latestRun.passed_count} passed
+                </span>
+                <span className="font-mono text-2xs text-red-400">
+                  {latestRun.failed_count} failed
+                </span>
+                <span className="font-mono text-2xs text-yellow-400">
+                  {latestRun.warning_count} warning
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  {latestRun.skipped_count} skipped
+                </span>
+                {latestRun.required_failed_count > 0 && (
+                  <span className="font-mono text-2xs font-semibold text-red-400">
+                    {latestRun.required_failed_count} required failed
+                  </span>
+                )}
+              </div>
+
+              {latestRun.overall_status === "insufficient_evidence" && (
+                <p className="mb-2 font-mono text-2xs text-text-muted">
+                  Need at least 2 runs to compare.
+                </p>
+              )}
+
+              {latestRun.deterministic_summary && (
+                <p className="mb-3 font-mono text-2xs italic text-text-muted">
+                  {latestRun.deterministic_summary}
+                </p>
+              )}
+
+              {/* Results table — non-pass first, then passed */}
+              {latestRun.results.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full font-mono text-2xs">
+                    <thead>
+                      <tr className="border-b border-border/30 text-left text-text-muted">
+                        <th className="pb-1 pr-3">Test</th>
+                        <th className="pb-1 pr-3">Req</th>
+                        <th className="pb-1 pr-3">Status</th>
+                        <th className="pb-1 pr-3">Observed</th>
+                        <th className="pb-1 pr-3">Expected</th>
+                        <th className="pb-1">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...nonPassResults, ...passedResults].map((r) => (
+                        <tr
+                          key={r.id}
+                          className="border-b border-border/20 last:border-0"
+                        >
+                          <td className="py-1 pr-3 text-text-secondary">
+                            {r.title}
+                          </td>
+                          <td className="py-1 pr-3">
+                            {r.is_required && (
+                              <span className="rounded bg-red-900/30 px-1 text-red-400">
+                                req
+                              </span>
+                            )}
+                          </td>
+                          <td className={`py-1 pr-3 ${statusColor(r.status)}`}>
+                            {statusIcon(r.status)} {r.status}
+                          </td>
+                          <td className="py-1 pr-3 text-text-muted">
+                            {r.observed_value ?? "—"}
+                          </td>
+                          <td className="py-1 pr-3 text-text-muted">
+                            {r.expected_value ?? "—"}
+                          </td>
+                          <td className="py-1 text-text-muted">
+                            {r.suggested_action ?? "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Collapsible test definitions */}
+          <button
+            onClick={() => setDefsOpen((o) => !o)}
+            className="font-mono text-2xs text-text-muted hover:text-text-secondary"
+          >
+            {defsOpen ? "▾" : "▸"} {tests.length} test definition{tests.length !== 1 ? "s" : ""}
+          </button>
+          {defsOpen && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full font-mono text-2xs">
+                <thead>
+                  <tr className="border-b border-border/30 text-left text-text-muted">
+                    <th className="pb-1 pr-3">Name</th>
+                    <th className="pb-1 pr-3">Type</th>
+                    <th className="pb-1 pr-3">Severity</th>
+                    <th className="pb-1 pr-3">Required</th>
+                    <th className="pb-1">Enabled</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tests.map((t) => (
+                    <tr
+                      key={t.id}
+                      className="border-b border-border/20 last:border-0"
+                    >
+                      <td className="py-1 pr-3 text-text-secondary">{t.name}</td>
+                      <td className="py-1 pr-3 text-text-muted">{t.test_type}</td>
+                      <td className="py-1 pr-3 text-text-muted">{t.severity}</td>
+                      <td className="py-1 pr-3 text-text-muted">
+                        {t.is_required ? "yes" : "no"}
+                      </td>
+                      <td className="py-1 text-text-muted">
+                        {t.is_enabled ? "yes" : "no"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -5646,6 +5908,11 @@ export default function StrategyDetail() {
   // M52: evidence graph
   const [evidenceGraph, setEvidenceGraph] = useState<StrategyEvidenceGraphResponse | null>(null);
   const [_graphFocusNode, setGraphFocusNode] = useState<string>("");
+
+  // M53: regression tests
+  const [regressionTests, setRegressionTests] = useState<StrategyRegressionTest[]>([]);
+  const [regressionRun, setRegressionRun] = useState<StrategyRegressionTestRun | null>(null);
+  const [regressionLoading, setRegressionLoading] = useState(false);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -5760,6 +6027,8 @@ export default function StrategyDetail() {
     getStrategyPromotionGates(id, "paper_candidate").then(setPromotionGates).catch(() => setPromotionGates(null));
     // M52: load evidence graph in parallel
     getStrategyEvidenceGraph(id).then(setEvidenceGraph).catch(() => setEvidenceGraph(null));
+    // M53: load regression tests in parallel
+    getStrategyRegressionTests(id).then(setRegressionTests).catch(() => {});
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -6237,6 +6506,32 @@ export default function StrategyDetail() {
             getStrategyEvidenceGraph(id!, { focus_node_id: nid, focus_node_type: ntype })
               .then(setEvidenceGraph)
               .catch(() => {});
+          }}
+        />
+      )}
+
+      {/* M53: Regression Test Suite */}
+      {(regressionTests.length > 0 || true) && (
+        <RegressionTestPanel
+          tests={regressionTests}
+          latestRun={regressionRun}
+          loading={regressionLoading}
+          strategyId={id!}
+          onSetupDefaults={() => {
+            setRegressionLoading(true);
+            createDefaultRegressionTests(id!)
+              .then(setRegressionTests)
+              .catch(() => {})
+              .finally(() => setRegressionLoading(false));
+          }}
+          onRunTests={(mode) => {
+            setRegressionLoading(true);
+            runStrategyRegressionTests(id!, { mode })
+              .then((run) => {
+                setRegressionRun(run);
+              })
+              .catch(() => {})
+              .finally(() => setRegressionLoading(false));
           }}
         />
       )}

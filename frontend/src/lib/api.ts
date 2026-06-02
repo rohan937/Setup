@@ -87,6 +87,10 @@ import type {
   StrategyShadowMonitorResponse,
   StrategyPromotionGateResponse,
   StrategyEvidenceGraphResponse,
+  StrategyRegressionTest,
+  StrategyRegressionTestRun,
+  StrategyRegressionTestRunListResponse,
+  StrategyRegressionTestRunRequest,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -1042,5 +1046,57 @@ export async function getStrategyEvidenceGraph(
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return request<StrategyEvidenceGraphResponse>(
     `/api/strategies/${strategyId}/evidence-graph${query}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M53: Regression Test Suite
+// ---------------------------------------------------------------------------
+
+export async function createDefaultRegressionTests(
+  strategyId: string,
+): Promise<StrategyRegressionTest[]> {
+  return request<StrategyRegressionTest[]>(
+    `/api/strategies/${strategyId}/regression-tests/defaults`,
+    { method: "POST" },
+  );
+}
+
+export async function getStrategyRegressionTests(
+  strategyId: string,
+): Promise<StrategyRegressionTest[]> {
+  return request<StrategyRegressionTest[]>(
+    `/api/strategies/${strategyId}/regression-tests`,
+  );
+}
+
+export async function runStrategyRegressionTests(
+  strategyId: string,
+  payload: StrategyRegressionTestRunRequest,
+): Promise<StrategyRegressionTestRun> {
+  return request<StrategyRegressionTestRun>(
+    `/api/strategies/${strategyId}/regression-tests/run`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function getStrategyRegressionTestRuns(
+  strategyId: string,
+  params?: { limit?: number; offset?: number },
+): Promise<StrategyRegressionTestRunListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return request<StrategyRegressionTestRunListResponse>(
+    `/api/strategies/${strategyId}/regression-tests/runs${query}`,
+  );
+}
+
+export async function getRegressionTestRun(
+  testRunId: string,
+): Promise<StrategyRegressionTestRun> {
+  return request<StrategyRegressionTestRun>(
+    `/api/regression-test-runs/${testRunId}`,
   );
 }

@@ -75,6 +75,7 @@ class EventType(StrEnum):
     api_key_created = "api_key_created"
     api_key_revoked = "api_key_revoked"
     demo_seeded = "demo_seeded"
+    regression_tests_run = "regression_tests_run"
 
 
 class ReliabilityScoreStatus(StrEnum):
