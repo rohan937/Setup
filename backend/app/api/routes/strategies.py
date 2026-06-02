@@ -4036,3 +4036,153 @@ def get_strategy_readiness(
             required_before_next_stage=result.progression_path.required_before_next_stage,
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# M50: GET /api/strategies/{strategy_id}/shadow-monitor
+# ---------------------------------------------------------------------------
+
+from app.schemas.shadow_production import (  # noqa: E402
+    ShadowRunSummary,
+    ShadowMetricComparison,
+    ShadowEvidenceComparison,
+    ShadowAssumptionChange,
+    ShadowTrustComparison,
+    ShadowProductionCheck,
+    StrategyShadowMonitorResponse,
+)
+from app.services.shadow_production import (  # noqa: E402
+    compute_shadow_production_monitor,
+    StrategyShadowMonitorData,
+)
+
+
+@router.get(
+    "/strategies/{strategy_id}/shadow-monitor",
+    response_model=StrategyShadowMonitorResponse,
+    tags=["strategies"],
+)
+def get_shadow_monitor(
+    strategy_id: uuid.UUID,
+    mode: str = Query(default="latest"),
+    baseline_run_id: uuid.UUID | None = Query(default=None),
+    shadow_run_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> StrategyShadowMonitorResponse:
+    """Return a shadow production monitor for a strategy.
+
+    Compares a baseline (research/backtest) run against a shadow (paper/live)
+    run to assess shadow stability.
+
+    Deterministic — no AI, no live market data.
+    Read-only — no AuditTimelineEvent created.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    if mode not in ("latest", "selected"):
+        raise HTTPException(status_code=400, detail="mode must be 'latest' or 'selected'")
+
+    try:
+        result = compute_shadow_production_monitor(
+            strategy_id,
+            db,
+            mode=mode,
+            baseline_run_id=baseline_run_id,
+            shadow_run_id=shadow_run_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    def _run_schema(r: StrategyShadowMonitorData | None) -> ShadowRunSummary | None:
+        if r is None:
+            return None
+        return ShadowRunSummary(
+            run_id=r.run_id,
+            run_name=r.run_name,
+            run_type=r.run_type,
+            status=r.status,
+            created_at=r.created_at,
+            completed_at=r.completed_at,
+            strategy_version_label=r.strategy_version_label,
+            dataset_health=r.dataset_health,
+            signal_quality=r.signal_quality,
+            backtest_trust=r.backtest_trust,
+            universe_symbol_count=r.universe_symbol_count,
+            metrics_json=r.metrics_json,
+            assumptions_json=r.assumptions_json,
+            run_health_label=r.run_health_label,
+        )
+
+    return StrategyShadowMonitorResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        monitor_status=result.monitor_status,
+        shadow_stability_score=result.shadow_stability_score,
+        baseline_run=_run_schema(result.baseline_run),
+        shadow_run=_run_schema(result.shadow_run),
+        metric_comparisons=[
+            ShadowMetricComparison(
+                metric_key=m.metric,
+                direction=m.direction,
+                severity=m.severity,
+                explanation=m.direction.replace("_", " "),
+                baseline_value=m.baseline_value,
+                comparison_value=m.comparison_value,
+                absolute_delta=m.absolute_delta,
+                percent_delta=m.percent_delta,
+            )
+            for m in result.metric_comparisons
+        ],
+        evidence_comparisons=[
+            ShadowEvidenceComparison(
+                evidence_type=e.evidence_type,
+                severity=e.severity,
+                explanation=e.explanation,
+                baseline_value=e.baseline_value,
+                comparison_value=e.comparison_value,
+                delta=e.delta,
+            )
+            for e in result.evidence_comparisons
+        ],
+        assumption_changes=[
+            ShadowAssumptionChange(
+                key_path=a.key_path,
+                change_type=a.change_type,
+                impact_level=a.impact_level,
+                old_value=a.old_value,
+                new_value=a.new_value,
+                impact_reason=None,
+                suggested_check=a.suggested_check,
+            )
+            for a in result.assumption_changes
+        ],
+        trust_comparison=[
+            ShadowTrustComparison(
+                dimension=t.dimension,
+                severity=t.severity,
+                explanation=t.explanation,
+                baseline_value=t.baseline_value,
+                comparison_value=t.comparison_value,
+                delta=t.delta,
+            )
+            for t in result.trust_comparison
+        ],
+        production_checks=[
+            ShadowProductionCheck(
+                check_key=c.check_key,
+                title=c.title,
+                passed=c.passed,
+                severity=c.severity,
+                evidence=c.evidence,
+                suggested_action=c.suggested_action,
+            )
+            for c in result.production_checks
+        ],
+        highlighted_findings=result.highlighted_findings,
+        blockers=result.blockers,
+        suggested_actions=result.suggested_actions,
+        deterministic_summary=result.deterministic_summary,
+    )

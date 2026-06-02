@@ -84,6 +84,7 @@ import type {
   StrategyDriftResponse,
   StrategyEvidenceFreshnessResponse,
   StrategyReadinessResponse,
+  StrategyShadowMonitorResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -982,5 +983,23 @@ export async function getStrategyReadiness(
 ): Promise<StrategyReadinessResponse> {
   return request<StrategyReadinessResponse>(
     `/api/strategies/${strategyId}/readiness`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M50: Shadow Production Monitor
+// ---------------------------------------------------------------------------
+
+export async function getStrategyShadowMonitor(
+  strategyId: string,
+  params?: { mode?: string; baseline_run_id?: string; shadow_run_id?: string },
+): Promise<StrategyShadowMonitorResponse> {
+  const qs = new URLSearchParams();
+  if (params?.mode) qs.set("mode", params.mode);
+  if (params?.baseline_run_id) qs.set("baseline_run_id", params.baseline_run_id);
+  if (params?.shadow_run_id) qs.set("shadow_run_id", params.shadow_run_id);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return request<StrategyShadowMonitorResponse>(
+    `/api/strategies/${strategyId}/shadow-monitor${query}`,
   );
 }

@@ -2708,3 +2708,99 @@ export interface StrategyReadinessResponse {
   suggested_next_actions: string[];
   progression_path: StrategyProgressionPath;
 }
+
+// ---------------------------------------------------------------------------
+// M50: Shadow Production Monitor
+// ---------------------------------------------------------------------------
+
+export type ShadowMonitorStatus =
+  | "stable"
+  | "watch"
+  | "review"
+  | "severe"
+  | "no_shadow_runs"
+  | "insufficient_baseline";
+
+export interface ShadowRunSummary {
+  run_id: string;
+  run_name: string;
+  run_type: string;
+  status: string;
+  run_health_label: string;
+  created_at: string;
+  completed_at: string | null;
+  strategy_version_label: string | null;
+  dataset_health: number | null;
+  signal_quality: number | null;
+  backtest_trust: number | null;
+  universe_symbol_count: number | null;
+  metrics_json: object | null;
+  assumptions_json: object | null;
+}
+
+export interface ShadowMetricComparison {
+  metric_key: string;
+  direction: string;
+  severity: string;
+  explanation: string;
+  baseline_value: number | null;
+  comparison_value: number | null;
+  absolute_delta: number | null;
+  percent_delta: number | null;
+}
+
+export interface ShadowEvidenceComparison {
+  evidence_type: string;
+  severity: string;
+  explanation: string;
+  baseline_value: number | null;
+  comparison_value: number | null;
+  delta: number | null;
+}
+
+export interface ShadowAssumptionChange {
+  key_path: string;
+  change_type: string;
+  impact_level: string;
+  old_value: unknown;
+  new_value: unknown;
+  impact_reason: string | null;
+  suggested_check: string | null;
+}
+
+export interface ShadowTrustComparison {
+  dimension: string;
+  severity: string;
+  explanation: string;
+  baseline_value: number | null;
+  comparison_value: number | null;
+  delta: number | null;
+}
+
+export interface ShadowProductionCheck {
+  check_key: string;
+  title: string;
+  severity: string;
+  evidence: string;
+  passed: boolean;
+  suggested_action: string | null;
+}
+
+export interface StrategyShadowMonitorResponse {
+  strategy_id: string;
+  strategy_name: string;
+  monitor_status: ShadowMonitorStatus;
+  deterministic_summary: string;
+  generated_at: string;
+  shadow_stability_score: number | null;
+  baseline_run: ShadowRunSummary | null;
+  shadow_run: ShadowRunSummary | null;
+  metric_comparisons: ShadowMetricComparison[];
+  evidence_comparisons: ShadowEvidenceComparison[];
+  assumption_changes: ShadowAssumptionChange[];
+  trust_comparison: ShadowTrustComparison[];
+  production_checks: ShadowProductionCheck[];
+  highlighted_findings: string[];
+  blockers: string[];
+  suggested_actions: string[];
+}

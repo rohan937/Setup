@@ -60,6 +60,9 @@ import type {
   EvidenceFreshnessItem,
   StrategyReadinessResponse,
   StrategyReadinessDimension,
+  StrategyShadowMonitorResponse,
+  ShadowProductionCheck,
+  ShadowMetricComparison,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -84,6 +87,7 @@ import {
   getStrategyDrift,
   getStrategyEvidenceFreshness,
   getStrategyReadiness,
+  getStrategyShadowMonitor,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -4716,6 +4720,320 @@ function ReadinessPanel({ readiness }: { readiness: StrategyReadinessResponse })
   );
 }
 
+// ---------------------------------------------------------------------------
+// M50: Shadow Production Monitor Panel
+// ---------------------------------------------------------------------------
+
+function shadowStatusStyles(status: string): { text: string; bg: string; border: string } {
+  switch (status) {
+    case "stable":
+      return { text: "text-teal-400", bg: "bg-teal-900/20", border: "border-teal-700/30" };
+    case "watch":
+      return { text: "text-yellow-400", bg: "bg-yellow-900/20", border: "border-yellow-700/30" };
+    case "review":
+      return { text: "text-orange-400", bg: "bg-orange-900/20", border: "border-orange-700/30" };
+    case "severe":
+      return { text: "text-red-400", bg: "bg-red-900/20", border: "border-red-700/30" };
+    default:
+      return { text: "text-text-muted", bg: "bg-bg-700", border: "border-border" };
+  }
+}
+
+function shadowSeverityColor(severity: string): string {
+  switch (severity) {
+    case "high": return "text-red-400";
+    case "medium": return "text-yellow-400";
+    case "low": return "text-text-secondary";
+    default: return "text-text-muted";
+  }
+}
+
+function shadowDirectionIcon(direction: string): string {
+  switch (direction) {
+    case "improved": return "▲";
+    case "deteriorated": return "▼";
+    case "changed": return "↔";
+    case "unchanged": return "—";
+    default: return "?";
+  }
+}
+
+function ShadowMonitorPanel({ monitor }: { monitor: StrategyShadowMonitorResponse }) {
+  const [checksExpanded, setChecksExpanded] = useState(false);
+  const [metricsExpanded, setMetricsExpanded] = useState(false);
+  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
+  const [assumptionsExpanded, setAssumptionsExpanded] = useState(false);
+
+  const statusStyles = shadowStatusStyles(monitor.monitor_status);
+  const nonTrivialMetrics = monitor.metric_comparisons.filter(
+    (m: ShadowMetricComparison) => m.severity !== "info" && m.severity !== "low",
+  );
+
+  return (
+    <div className="rounded-card border border-border bg-bg-card p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wide">
+          Shadow Production Monitor
+        </h3>
+        <span className={`font-mono text-xs font-semibold px-2 py-0.5 rounded border ${statusStyles.text} ${statusStyles.bg} ${statusStyles.border}`}>
+          {monitor.monitor_status.replace(/_/g, " ")}
+        </span>
+      </div>
+
+      {/* A: Status strip */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div>
+          <p className="caption">Stability Score</p>
+          <p className="mono-num text-sm font-bold text-text-primary">
+            {monitor.shadow_stability_score !== null ? monitor.shadow_stability_score.toFixed(0) : "—"}
+          </p>
+        </div>
+        {monitor.baseline_run && (
+          <div>
+            <p className="caption">Baseline</p>
+            <p className="font-mono text-2xs text-text-secondary">
+              [{monitor.baseline_run.run_type}] {monitor.baseline_run.run_name}
+            </p>
+          </div>
+        )}
+        {monitor.shadow_run && (
+          <div>
+            <p className="caption">Shadow</p>
+            <p className="font-mono text-2xs text-text-secondary">
+              [{monitor.shadow_run.run_type}] {monitor.shadow_run.run_name}
+            </p>
+          </div>
+        )}
+        <div className="ml-auto">
+          <p className="font-mono text-2xs text-text-muted">{fmtDate(monitor.generated_at)}</p>
+        </div>
+      </div>
+
+      {/* B: No shadow runs */}
+      {monitor.monitor_status === "no_shadow_runs" && (
+        <div className="rounded border border-border bg-bg-700 px-4 py-4 space-y-1">
+          <p className="font-mono text-xs font-semibold text-text-secondary">No paper or live-like run logged.</p>
+          <p className="font-mono text-2xs text-text-muted">
+            Log a paper or live-like run through the SDK to enable shadow monitoring.
+          </p>
+          <p className="mt-2 font-mono text-2xs text-text-muted bg-bg-900 rounded px-2 py-1 inline-block">
+            --run-type paper
+          </p>
+        </div>
+      )}
+
+      {/* C: Insufficient baseline */}
+      {monitor.monitor_status === "insufficient_baseline" && (
+        <div className="rounded border border-border bg-bg-700 px-4 py-3">
+          <p className="font-mono text-xs text-text-secondary">No baseline research/backtest run found.</p>
+        </div>
+      )}
+
+      {/* D: Deterministic summary */}
+      {monitor.deterministic_summary && (
+        <p className="font-mono text-2xs text-text-muted italic">{monitor.deterministic_summary}</p>
+      )}
+
+      {/* E: Production-like checks */}
+      {monitor.production_checks.length > 0 && (
+        <div>
+          <button
+            className="flex items-center gap-1.5 font-mono text-2xs text-text-secondary hover:text-text-primary"
+            onClick={() => setChecksExpanded((v) => !v)}
+          >
+            <span>{checksExpanded ? "▾" : "▸"}</span>
+            <span>Production Checks ({monitor.production_checks.length})</span>
+          </button>
+          {checksExpanded && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full font-mono text-2xs border-collapse">
+                <thead>
+                  <tr className="border-b border-border text-text-muted">
+                    <th className="text-left py-1 pr-3">Check</th>
+                    <th className="text-left py-1 pr-3">Passed</th>
+                    <th className="text-left py-1 pr-3">Severity</th>
+                    <th className="text-left py-1">Evidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monitor.production_checks.map((c: ShadowProductionCheck) => (
+                    <tr key={c.check_key} className="border-b border-border/40">
+                      <td className="py-1 pr-3 text-text-primary">{c.title}</td>
+                      <td className="py-1 pr-3">
+                        <span className={`px-1.5 py-0.5 rounded text-2xs font-semibold ${c.passed ? "bg-teal-900/30 text-teal-400" : "bg-red-900/30 text-red-400"}`}>
+                          {c.passed ? "pass" : "fail"}
+                        </span>
+                      </td>
+                      <td className={`py-1 pr-3 ${shadowSeverityColor(c.severity)}`}>{c.severity}</td>
+                      <td className="py-1 text-text-muted">{c.evidence}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* F: Metric comparisons (non-trivial severity only) */}
+      {nonTrivialMetrics.length > 0 && (
+        <div>
+          <button
+            className="flex items-center gap-1.5 font-mono text-2xs text-text-secondary hover:text-text-primary"
+            onClick={() => setMetricsExpanded((v) => !v)}
+          >
+            <span>{metricsExpanded ? "▾" : "▸"}</span>
+            <span>Metric Comparisons ({nonTrivialMetrics.length})</span>
+          </button>
+          {metricsExpanded && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full font-mono text-2xs border-collapse">
+                <thead>
+                  <tr className="border-b border-border text-text-muted">
+                    <th className="text-left py-1 pr-3">Metric</th>
+                    <th className="text-right py-1 pr-3">Baseline</th>
+                    <th className="text-right py-1 pr-3">Shadow</th>
+                    <th className="text-right py-1 pr-3">Delta</th>
+                    <th className="text-center py-1 pr-3">Dir</th>
+                    <th className="text-left py-1">Severity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nonTrivialMetrics.map((m: ShadowMetricComparison) => (
+                    <tr key={m.metric_key} className="border-b border-border/40">
+                      <td className="py-1 pr-3 text-text-primary">{m.metric_key}</td>
+                      <td className="py-1 pr-3 text-right text-text-secondary mono-num">
+                        {m.baseline_value !== null ? m.baseline_value.toFixed(4) : "—"}
+                      </td>
+                      <td className="py-1 pr-3 text-right text-text-secondary mono-num">
+                        {m.comparison_value !== null ? m.comparison_value.toFixed(4) : "—"}
+                      </td>
+                      <td className="py-1 pr-3 text-right mono-num text-text-muted">
+                        {m.absolute_delta !== null ? m.absolute_delta.toFixed(4) : "—"}
+                      </td>
+                      <td className={`py-1 pr-3 text-center font-bold ${shadowSeverityColor(m.severity)}`}>
+                        {shadowDirectionIcon(m.direction)}
+                      </td>
+                      <td className={`py-1 ${shadowSeverityColor(m.severity)}`}>{m.severity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* G: Evidence comparisons */}
+      {monitor.evidence_comparisons.length > 0 && (
+        <div>
+          <button
+            className="flex items-center gap-1.5 font-mono text-2xs text-text-secondary hover:text-text-primary"
+            onClick={() => setEvidenceExpanded((v) => !v)}
+          >
+            <span>{evidenceExpanded ? "▾" : "▸"}</span>
+            <span>Evidence Comparisons ({monitor.evidence_comparisons.length})</span>
+          </button>
+          {evidenceExpanded && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full font-mono text-2xs border-collapse">
+                <thead>
+                  <tr className="border-b border-border text-text-muted">
+                    <th className="text-left py-1 pr-3">Evidence Type</th>
+                    <th className="text-right py-1 pr-3">Baseline</th>
+                    <th className="text-right py-1 pr-3">Shadow</th>
+                    <th className="text-left py-1 pr-3">Severity</th>
+                    <th className="text-left py-1">Explanation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monitor.evidence_comparisons.map((e, i) => (
+                    <tr key={i} className="border-b border-border/40">
+                      <td className="py-1 pr-3 text-text-primary">{e.evidence_type}</td>
+                      <td className="py-1 pr-3 text-right mono-num text-text-secondary">
+                        {e.baseline_value !== null ? e.baseline_value.toFixed(2) : "—"}
+                      </td>
+                      <td className="py-1 pr-3 text-right mono-num text-text-secondary">
+                        {e.comparison_value !== null ? e.comparison_value.toFixed(2) : "—"}
+                      </td>
+                      <td className={`py-1 pr-3 ${shadowSeverityColor(e.severity)}`}>{e.severity}</td>
+                      <td className="py-1 text-text-muted">{e.explanation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* H: Assumption changes */}
+      {monitor.assumption_changes.length > 0 && (
+        <div>
+          <button
+            className="flex items-center gap-1.5 font-mono text-2xs text-text-secondary hover:text-text-primary"
+            onClick={() => setAssumptionsExpanded((v) => !v)}
+          >
+            <span>{assumptionsExpanded ? "▾" : "▸"}</span>
+            <span>Assumption Changes ({monitor.assumption_changes.length})</span>
+          </button>
+          {assumptionsExpanded && (
+            <div className="mt-2 space-y-2">
+              {monitor.assumption_changes.map((a, i) => (
+                <div key={i} className="rounded border border-border/40 bg-bg-700 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-2xs text-text-primary">{a.key_path}</span>
+                    <span className={`font-mono text-2xs ${shadowSeverityColor(a.impact_level)}`}>[{a.impact_level}]</span>
+                    <span className="font-mono text-2xs text-text-muted">{a.change_type}</span>
+                  </div>
+                  {a.impact_reason && (
+                    <p className="mt-0.5 font-mono text-2xs text-text-muted italic">{a.impact_reason}</p>
+                  )}
+                  {a.suggested_check && (
+                    <p className="mt-0.5 font-mono text-2xs text-text-muted">Check: {a.suggested_check}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* I: Blockers and suggested actions */}
+      {monitor.blockers.length > 0 && (
+        <div>
+          <p className="font-mono text-2xs font-semibold text-red-400 mb-1">Blockers</p>
+          <ul className="space-y-0.5">
+            {monitor.blockers.map((b, i) => (
+              <li key={i} className="font-mono text-2xs text-text-secondary flex gap-1.5">
+                <span className="text-red-400">•</span>{b}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {monitor.suggested_actions.length > 0 && (
+        <div>
+          <p className="font-mono text-2xs font-semibold text-text-secondary mb-1">Suggested Actions</p>
+          <ul className="space-y-0.5">
+            {monitor.suggested_actions.map((a, i) => (
+              <li key={i} className="font-mono text-2xs text-text-muted flex gap-1.5">
+                <span className="text-text-muted">→</span>{a}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* J: Disclaimer */}
+      <p className="font-mono text-2xs text-text-muted italic">
+        Deterministic shadow analysis. Not a trading recommendation.
+      </p>
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -4799,6 +5117,9 @@ export default function StrategyDetail() {
 
   // M49: readiness
   const [readiness, setReadiness] = useState<StrategyReadinessResponse | null>(null);
+
+  // M50: shadow monitor
+  const [shadowMonitor, setShadowMonitor] = useState<StrategyShadowMonitorResponse | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -4907,6 +5228,8 @@ export default function StrategyDetail() {
     getStrategyEvidenceFreshness(id).then(setFreshness).catch(() => setFreshness(null));
     // M49: load readiness in parallel
     getStrategyReadiness(id).then(setReadiness).catch(() => setReadiness(null));
+    // M50: load shadow monitor in parallel
+    getStrategyShadowMonitor(id).then(setShadowMonitor).catch(() => setShadowMonitor(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -5359,6 +5682,9 @@ export default function StrategyDetail() {
 
       {/* M48: Evidence Freshness */}
       {freshness && <FreshnessPanel freshness={freshness} />}
+
+      {/* M50: Shadow Production Monitor */}
+      {shadowMonitor && <ShadowMonitorPanel monitor={shadowMonitor} />}
     </div>
   );
 }

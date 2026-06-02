@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1333 tests, 1 skipped)
+│   └── tests/              Pytest tests (1352 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,82 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M49: Strategy Readiness Scorecard v1
+## Current milestone — M50: Shadow Production Monitor v1
+
+**Status: complete.**
+
+### M50 deliverables
+
+- **New service `backend/app/services/shadow_production.py`** — `compute_shadow_production_monitor(strategy_id, mode, baseline_run_id, shadow_run_id, db)` reuses `_run_to_summary`, `_compute_metric_drifts`, `_compute_evidence_drifts`, `_compute_assumption_drifts`, `_compute_trust_drifts` imported from M47 `strategy_drift.py`, and adds two new functions: `_compute_production_checks()` and `_compute_shadow_score()`. No AI, no external APIs. Fully deterministic. Not a trading recommendation.
+
+- **Baseline vs shadow distinction**:
+  - **Baseline runs**: `run_type` in `research` or `backtest`.
+  - **Shadow runs**: `run_type` in `paper` or `live`.
+
+- **Special statuses**:
+  - `no_shadow_runs` — no paper or live run has been logged for this strategy.
+  - `insufficient_baseline` — no research or backtest run exists to compare against.
+
+- **11 production-like checks** (all deterministic):
+  - `has_shadow_run` — at least one paper/live run exists.
+  - `metrics` — metric drift severity is not high.
+  - `dataset_evidence` — dataset evidence has not deteriorated.
+  - `signal_evidence` — signal evidence has not deteriorated.
+  - `universe_evidence` — universe evidence has not deteriorated.
+  - `assumptions` — no weakening assumption changes detected.
+  - `audit` — backtest trust drift is acceptable.
+  - `no_high_critical_alerts` — no open high or critical alerts.
+  - `freshness_not_stale` — evidence freshness status is not stale.
+  - `readiness_not_blocked` — strategy readiness verdict is not blocked.
+  - `drift_not_severe` — drift score is not in severe range.
+
+- **Shadow stability score (0–100)**:
+  - Starts at 100.
+  - High metric deterioration: −20.
+  - Medium metric deterioration: −10.
+  - Evidence deterioration (per type): penalty applied per deteriorated evidence dimension.
+  - Weakening assumptions: penalty applied per weakening change.
+  - Failed checks: high-severity check failure −15, medium −8, low −3.
+  - Trust penalties applied for audit trust drops.
+
+- **Monitor status thresholds** (derived from shadow stability score):
+  - `stable`: score >= 85.
+  - `watch`: score >= 70.
+  - `review`: score >= 50.
+  - `severe`: score < 50.
+
+- **New endpoint** `GET /api/strategies/{id}/shadow-monitor`:
+  - Read-only. No `AuditTimelineEvent` created.
+  - Query params: `mode` (default `latest_stage_pair`), `baseline_run_id` (UUID, optional), `shadow_run_id` (UUID, optional).
+  - 404 for unknown strategy.
+  - Returns `ShadowProductionMonitorResponse`.
+
+- **New schemas `backend/app/schemas/shadow_production.py`** — 7 Pydantic schemas covering production check items, metric/evidence/assumption summary rows, and the top-level monitor response.
+
+- **Frontend — `ShadowMonitorPanel`** in `StrategyDetail.tsx`:
+  - Status strip showing shadow stability score and monitor status badge.
+  - No-shadow CTA when no paper/live runs have been logged.
+  - Production checks table — one row per check with pass/fail indicator and check name.
+  - Metric drift table (collapsible) — per-metric direction and severity from the shadow vs. baseline comparison.
+  - Evidence drift table (collapsible) — dataset, signal, universe, and backtest trust delta rows.
+  - Assumption changes section (collapsible) — weakening/positive/review assumption changes.
+  - Auto-loads for each strategy on the StrategyDetail page.
+
+- **19 new backend M50 tests** (`tests/test_shadow_production_m50.py`). All 19 passed on first run.
+- **Backend total: 1352 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (64 modules, built in ~870ms). One JS chunk (578.20 kB / 125.75 kB gzip) + one CSS chunk (33.29 kB / 6.81 kB gzip). One non-fatal chunk size warning — not an error.
+- No external APIs. Deterministic. Not a trading recommendation.
+
+### What M50 does NOT build (by design)
+
+- No real broker integration or live order execution.
+- No live market data ingestion or price feeds.
+- No notification system (email, Slack, PagerDuty).
+- No automated circuit breakers or trading gates based on shadow score.
+
+---
+
+## Previously completed — M49: Strategy Readiness Scorecard v1
 
 **Status: complete.**
 
