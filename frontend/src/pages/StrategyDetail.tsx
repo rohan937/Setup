@@ -75,6 +75,8 @@ import type {
   StrategyConfigPolicy,
   ConfigPolicyEvaluation,
   ResearchReviewCase,
+  EvidenceSLAPolicy,
+  EvidenceSLAEvaluation,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -113,6 +115,10 @@ import {
   getStrategyReviewCases,
   acknowledgeResearchReviewCase,
   resolveResearchReviewCase,
+  createDefaultEvidenceSLAPolicy,
+  getEvidenceSLAPolicies,
+  evaluateEvidenceSLAPolicy,
+  getEvidenceSLAEvaluations,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -6275,6 +6281,199 @@ function ReviewCasesPanel({
   );
 }
 
+function EvidenceSLAPanel({
+  strategyId,
+  slaPolicies,
+  setSlaPolicies,
+  latestSlaEvaluation,
+  setLatestSlaEvaluation,
+  slaEvaluations,
+  setSlaEvaluations,
+}: {
+  strategyId: string;
+  slaPolicies: EvidenceSLAPolicy[];
+  setSlaPolicies: (p: EvidenceSLAPolicy[]) => void;
+  latestSlaEvaluation: EvidenceSLAEvaluation | null;
+  setLatestSlaEvaluation: (e: EvidenceSLAEvaluation | null) => void;
+  slaEvaluations: EvidenceSLAEvaluation[];
+  setSlaEvaluations: (e: EvidenceSLAEvaluation[]) => void;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
+
+  const handleCreateDefault = async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      await createDefaultEvidenceSLAPolicy(strategyId);
+      const updated = await getEvidenceSLAPolicies(strategyId);
+      setSlaPolicies(updated);
+      if (!selectedPolicyId && updated.length > 0) setSelectedPolicyId(updated[0].id);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleEvaluate = async () => {
+    const pid = selectedPolicyId || slaPolicies[0]?.id;
+    if (!pid) return;
+    setEvaluating(true);
+    setError(null);
+    try {
+      const result = await evaluateEvidenceSLAPolicy(strategyId, pid);
+      setLatestSlaEvaluation(result);
+      const evals = await getEvidenceSLAEvaluations(strategyId);
+      setSlaEvaluations(evals.items || []);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  const statusColor = (s: string) => {
+    if (s === 'passed') return 'text-cyan-400';
+    if (s === 'warning') return 'text-amber-400';
+    if (s === 'violated') return 'text-red-400';
+    if (s === 'skipped') return 'text-gray-500';
+    return 'text-gray-400';
+  };
+
+  const severityBadge = (sev: string) => {
+    if (sev === 'critical' || sev === 'high') return 'bg-red-900/40 text-red-300';
+    if (sev === 'medium') return 'bg-amber-900/40 text-amber-300';
+    return 'bg-gray-800 text-gray-400';
+  };
+
+  const overallStatusColor = (s: string) => {
+    if (s === 'passed') return 'text-cyan-400';
+    if (s === 'warning') return 'text-amber-400';
+    if (s === 'violated') return 'text-red-400';
+    return 'text-gray-400';
+  };
+
+  return (
+    <div className="border border-gray-700 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-mono font-semibold text-gray-200 tracking-wide uppercase">Evidence SLA Monitor</h3>
+        <span className="text-xs text-gray-500 font-mono">Evidence obligations — not trading approval</span>
+      </div>
+
+      {slaPolicies.length === 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-400 font-mono">No SLA policies defined. Create the default evidence obligations to track freshness and quality SLAs.</p>
+          <button
+            onClick={handleCreateDefault}
+            disabled={creating}
+            className="px-3 py-1.5 text-xs font-mono bg-cyan-900/30 border border-cyan-700 text-cyan-300 rounded hover:bg-cyan-900/50 disabled:opacity-50"
+          >
+            {creating ? 'Creating…' : 'Create Default Evidence SLA'}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 text-xs font-mono text-gray-400">
+            <span><span className="text-gray-200">{slaPolicies.length}</span> polic{slaPolicies.length === 1 ? 'y' : 'ies'}</span>
+            <span><span className="text-cyan-400">{slaPolicies.filter(p => p.is_active).length}</span> active</span>
+            {slaPolicies[0] && <span className="text-gray-500">{slaPolicies[0].rule_count} rules</span>}
+          </div>
+          <div className="space-y-1">
+            {slaPolicies.map(p => (
+              <div
+                key={p.id}
+                onClick={() => setSelectedPolicyId(p.id)}
+                className={"flex items-center justify-between px-2 py-1 rounded border cursor-pointer text-xs font-mono " + (selectedPolicyId === p.id || (!selectedPolicyId && slaPolicies[0]?.id === p.id) ? 'border-cyan-700 bg-cyan-900/20' : 'border-gray-700 hover:border-gray-600')}
+              >
+                <span className="text-gray-200">{p.name}</span>
+                <span className={p.is_active ? 'text-cyan-400' : 'text-gray-500'}>{p.is_active ? 'active' : 'inactive'}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={handleEvaluate}
+            disabled={evaluating}
+            className="px-3 py-1.5 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+          >
+            {evaluating ? 'Evaluating…' : 'Evaluate SLA'}
+          </button>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+
+      {latestSlaEvaluation && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className={"text-xs font-mono font-semibold " + overallStatusColor(latestSlaEvaluation.overall_status)}>
+              {latestSlaEvaluation.overall_status.toUpperCase().replace(/_/g, ' ')}
+            </span>
+            <span className="text-xs text-gray-500 font-mono">
+              {latestSlaEvaluation.passed_count}✓&nbsp;
+              {latestSlaEvaluation.violated_count > 0 && <span className="text-red-400">{latestSlaEvaluation.violated_count} violated&nbsp;</span>}
+              {latestSlaEvaluation.warning_count > 0 && <span className="text-amber-400">{latestSlaEvaluation.warning_count}⚠&nbsp;</span>}
+              {latestSlaEvaluation.skipped_count}○
+            </span>
+          </div>
+          {latestSlaEvaluation.deterministic_summary && (
+            <p className="text-xs text-gray-400 font-mono">{latestSlaEvaluation.deterministic_summary}</p>
+          )}
+          {latestSlaEvaluation.results && latestSlaEvaluation.results.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono border-collapse">
+                <thead>
+                  <tr className="text-gray-500 text-left border-b border-gray-700">
+                    <th className="pb-1 pr-3">Rule</th>
+                    <th className="pb-1 pr-3">Type</th>
+                    <th className="pb-1 pr-3">Status</th>
+                    <th className="pb-1 pr-3">Sev</th>
+                    <th className="pb-1 pr-3">Observed</th>
+                    <th className="pb-1 pr-3">Expected</th>
+                    <th className="pb-1">Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {latestSlaEvaluation.results.map(r => (
+                    <tr key={r.id} className="border-b border-gray-800/50">
+                      <td className="py-1 pr-3 text-gray-300 max-w-32 truncate" title={r.title}>{r.title}</td>
+                      <td className="py-1 pr-3 text-gray-500">{r.evidence_type || '—'}</td>
+                      <td className={"py-1 pr-3 " + statusColor(r.status)}>{r.status}</td>
+                      <td className="py-1 pr-3">
+                        <span className={"px-1 rounded " + severityBadge(r.severity)}>{r.severity}</span>
+                      </td>
+                      <td className="py-1 pr-3 text-gray-400">{r.observed_value || '—'}</td>
+                      <td className="py-1 pr-3 text-gray-500">{r.expected_value || '—'}</td>
+                      <td className="py-1 text-gray-500">{r.days_since_latest != null ? r.days_since_latest.toFixed(0) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {slaEvaluations.length > 1 && (
+        <details className="text-xs font-mono">
+          <summary className="text-gray-500 cursor-pointer hover:text-gray-400">Recent evaluations ({slaEvaluations.length})</summary>
+          <div className="mt-2 space-y-1">
+            {slaEvaluations.slice(0, 5).map(e => (
+              <div key={e.id} className="flex items-center gap-3 text-gray-400">
+                <span className={overallStatusColor(e.overall_status)}>{e.overall_status}</span>
+                <span>{e.passed_count}✓ {e.violated_count} violated</span>
+                <span className="text-gray-600">{new Date(e.created_at).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -6383,6 +6582,11 @@ export default function StrategyDetail() {
 
   // M55: research review cases
   const [reviewCases, setReviewCases] = useState<ResearchReviewCase[]>([]);
+
+  // M56: evidence SLA monitor
+  const [slaEvaluations, setSlaEvaluations] = useState<EvidenceSLAEvaluation[]>([]);
+  const [slaPolicies, setSlaPolicies] = useState<EvidenceSLAPolicy[]>([]);
+  const [latestSlaEvaluation, setLatestSlaEvaluation] = useState<EvidenceSLAEvaluation | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -6510,6 +6714,15 @@ export default function StrategyDetail() {
     // M55: load review cases in parallel
     getStrategyReviewCases(id)
       .then((r) => setReviewCases(r.items || []))
+      .catch(() => {});
+    // M56: load evidence SLA policies and evaluations in parallel
+    getEvidenceSLAPolicies(id).then(setSlaPolicies).catch(() => {});
+    getEvidenceSLAEvaluations(id)
+      .then((r) => {
+        const items = r.items || [];
+        setSlaEvaluations(items);
+        if (items.length > 0) setLatestSlaEvaluation(items[0]);
+      })
       .catch(() => {});
   }, [id, refreshKey]);
 
@@ -7034,6 +7247,17 @@ export default function StrategyDetail() {
         strategyId={id!}
         reviewCases={reviewCases}
         setReviewCases={setReviewCases}
+      />
+
+      {/* M56: Evidence SLA Monitor */}
+      <EvidenceSLAPanel
+        strategyId={strategy.id}
+        slaPolicies={slaPolicies}
+        setSlaPolicies={setSlaPolicies}
+        latestSlaEvaluation={latestSlaEvaluation}
+        setLatestSlaEvaluation={setLatestSlaEvaluation}
+        slaEvaluations={slaEvaluations}
+        setSlaEvaluations={setSlaEvaluations}
       />
     </div>
   );

@@ -13,13 +13,14 @@ M45 routes: /api/admin/system-health
 M53 routes: /api/strategies/{id}/regression-tests, /api/regression-test-runs/{id}
 M54 routes: /api/strategies/{id}/config-policies, /api/config-policy-evaluations/{id}
 M55 routes: /api/strategies/{id}/review-cases, /api/review-cases/{id}
+M56 routes: /api/strategies/{id}/evidence-sla/default, /api/strategies/{id}/evidence-sla/policies, /api/evidence-sla/evaluations/{id}
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import admin, alerts, api_keys, backtests, config_policies, dashboard, datasets, evidence, health, meta, portfolio, projects, regression, reliability, reports, review_cases, strategies, timeline
+from app.api.routes import admin, alerts, api_keys, backtests, config_policies, dashboard, datasets, evidence, evidence_sla, health, meta, portfolio, projects, regression, reliability, reports, review_cases, strategies, timeline
 
 api_router = APIRouter()
 
@@ -44,3 +45,4 @@ api_router.include_router(admin.router, prefix="/api")
 api_router.include_router(regression.router, prefix="/api")
 api_router.include_router(config_policies.router, prefix="/api")
 api_router.include_router(review_cases.router, prefix="/api")
+api_router.include_router(evidence_sla.router, prefix="/api")

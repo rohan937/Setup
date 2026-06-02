@@ -80,6 +80,7 @@ class EventType(StrEnum):
     research_review_cases_generated = "research_review_cases_generated"
     research_review_case_acknowledged = "research_review_case_acknowledged"
     research_review_case_resolved = "research_review_case_resolved"
+    evidence_sla_evaluated = "evidence_sla_evaluated"
 
 
 class ReliabilityScoreStatus(StrEnum):

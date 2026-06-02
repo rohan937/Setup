@@ -3125,3 +3125,65 @@ export interface ResearchReviewCaseListResponse {
   items: ResearchReviewCase[];
   total: number;
 }
+
+// ============================================================
+// M56 — Evidence SLA Monitor
+// ============================================================
+
+export interface EvidenceSLAPolicy {
+  id: string;
+  strategy_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  policy_json: Record<string, unknown>;
+  rule_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvidenceSLAPolicyCreate {
+  name: string;
+  description?: string;
+  is_active?: boolean;
+  policy_json: Record<string, unknown>;
+}
+
+export interface EvidenceSLAResult {
+  id: string;
+  evaluation_id: string;
+  rule_key: string;
+  title: string;
+  evidence_type: string | null;
+  status: 'passed' | 'warning' | 'violated' | 'skipped';
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  is_required: boolean;
+  observed_value: string | null;
+  expected_value: string | null;
+  days_since_latest: number | null;
+  latest_at: string | null;
+  evidence_json: Record<string, unknown> | null;
+  suggested_action: string | null;
+  created_at: string;
+}
+
+export interface EvidenceSLAEvaluation {
+  id: string;
+  strategy_id: string;
+  policy_id: string;
+  overall_status: 'passed' | 'warning' | 'violated' | 'insufficient_evidence';
+  passed_count: number;
+  warning_count: number;
+  violated_count: number;
+  skipped_count: number;
+  critical_violation_count: number;
+  result_json: unknown | null;
+  deterministic_summary: string | null;
+  created_at: string;
+  results: EvidenceSLAResult[];
+}
+
+export interface EvidenceSLAEvaluationListResponse {
+  items: EvidenceSLAEvaluation[];
+  total: number;
+}

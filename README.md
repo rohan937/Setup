@@ -161,7 +161,55 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M55: Research Review Cases v1
+## Current milestone — M56: Evidence SLA Monitor v1
+
+**Status:** complete
+
+### What was built
+- Migration `0021_m56_evidence_sla.py` — 3 new tables: evidence_sla_policies, evidence_sla_evaluations, evidence_sla_results
+- ORM models: EvidenceSLAPolicy, EvidenceSLAEvaluation, EvidenceSLAResult
+- Service `evidence_sla.py` — 6 functions: create_default_evidence_sla_policy (idempotent), create_evidence_sla_policy, get_evidence_sla_policies, evaluate_evidence_sla_policy, get_evidence_sla_evaluations, get_evidence_sla_evaluation
+- 15 default SLA rules: 8 freshness rules + 4 quality score rules + 2 status rules + 1 alert rule
+- New router `api/routes/evidence_sla.py` — 6 endpoints
+- EventType.evidence_sla_evaluated
+- Frontend: 5 new types, 6 new API functions, EvidenceSLAPanel in StrategyDetail.tsx
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /api/strategies/{id}/evidence-sla/default | Create default SLA policy (idempotent) |
+| POST | /api/strategies/{id}/evidence-sla/policies | Create custom SLA policy |
+| GET | /api/strategies/{id}/evidence-sla/policies | List policies |
+| POST | /api/strategies/{id}/evidence-sla/policies/{id}/evaluate | Evaluate SLA |
+| GET | /api/strategies/{id}/evidence-sla/evaluations | List evaluations |
+| GET | /api/evidence-sla/evaluations/{id} | Get evaluation detail |
+
+### Default SLA rules (15)
+- **Freshness**: runs ≤30d, dataset ≤45d, signal ≤30d, universe ≤90d, config ≤90d, audit ≤45d, reliability ≤30d, report ≤90d
+- **Quality**: dataset health ≥75, signal quality ≥75, backtest trust ≥70, evidence coverage ≥70
+- **Status**: readiness not blocked/under-instrumented, freshness not stale
+- **Alerts**: no open high/critical alerts
+
+### Language constraints
+Not an incident system. Language: "SLA violation," "evidence obligation," "requires refresh." Never: "incident," "breach," "strategy failed," "do not trade."
+
+### Deployment note
+Deployment readiness is intentionally deferred to M65. M56–M64 remain advanced product/platform features.
+
+### What M56 does not build
+- Background scheduler / automated SLA enforcement
+- External notifications (Slack, email)
+- Real-time monitoring
+- Render/Vercel/production deployment prep
+
+- **22 new backend M56 tests** (`tests/test_evidence_sla_m56.py`). All 22 passed on first run. No fixes needed.
+- **Backend total: 1500 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (built in 911ms). One non-fatal JS chunk size warning (619.23 kB) — not an error.
+- No external APIs. Deterministic. Not trading approval.
+
+---
+
+## Previously completed — M55: Research Review Cases v1
 
 **Status:** complete
 

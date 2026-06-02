@@ -38,6 +38,7 @@ from app.models.config_policy import (
     StrategyConfigPolicyResult,
 )
 from app.models.review_case import ResearchReviewCase, ResearchReviewCaseEvent
+from app.models.evidence_sla import EvidenceSLAPolicy, EvidenceSLAEvaluation, EvidenceSLAResult
 
 __all__ = [
     "Organization",
@@ -70,4 +71,7 @@ __all__ = [
     "StrategyConfigPolicyResult",
     "ResearchReviewCase",
     "ResearchReviewCaseEvent",
+    "EvidenceSLAPolicy",
+    "EvidenceSLAEvaluation",
+    "EvidenceSLAResult",
 ]

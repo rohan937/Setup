@@ -99,6 +99,10 @@ import type {
   ResearchReviewCase,
   ResearchReviewCaseGenerateResponse,
   ResearchReviewCaseListResponse,
+  EvidenceSLAPolicy,
+  EvidenceSLAPolicyCreate,
+  EvidenceSLAEvaluation,
+  EvidenceSLAEvaluationListResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -1204,4 +1208,58 @@ export async function resolveResearchReviewCase(
   return request<ResearchReviewCase>(`/api/review-cases/${caseId}/resolve`, {
     method: "POST",
   });
+}
+
+// M56 — Evidence SLA Monitor
+export async function createDefaultEvidenceSLAPolicy(
+  strategyId: string,
+): Promise<EvidenceSLAPolicy> {
+  return request<EvidenceSLAPolicy>(
+    `/api/strategies/${strategyId}/evidence-sla/default`,
+    { method: "POST" },
+  );
+}
+
+export async function createEvidenceSLAPolicy(
+  strategyId: string,
+  payload: EvidenceSLAPolicyCreate,
+): Promise<EvidenceSLAPolicy> {
+  return request<EvidenceSLAPolicy>(
+    `/api/strategies/${strategyId}/evidence-sla/policies`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function getEvidenceSLAPolicies(
+  strategyId: string,
+): Promise<EvidenceSLAPolicy[]> {
+  return request<EvidenceSLAPolicy[]>(
+    `/api/strategies/${strategyId}/evidence-sla/policies`,
+  );
+}
+
+export async function evaluateEvidenceSLAPolicy(
+  strategyId: string,
+  policyId: string,
+): Promise<EvidenceSLAEvaluation> {
+  return request<EvidenceSLAEvaluation>(
+    `/api/strategies/${strategyId}/evidence-sla/policies/${policyId}/evaluate`,
+    { method: "POST" },
+  );
+}
+
+export async function getEvidenceSLAEvaluations(
+  strategyId: string,
+): Promise<EvidenceSLAEvaluationListResponse> {
+  return request<EvidenceSLAEvaluationListResponse>(
+    `/api/strategies/${strategyId}/evidence-sla/evaluations`,
+  );
+}
+
+export async function getEvidenceSLAEvaluation(
+  evaluationId: string,
+): Promise<EvidenceSLAEvaluation> {
+  return request<EvidenceSLAEvaluation>(
+    `/api/evidence-sla/evaluations/${evaluationId}`,
+  );
 }
