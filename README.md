@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (994 tests, 1 skipped)
+│   └── tests/              Pytest tests (1013 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,131 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M31: Strategy Evidence Export v1
+## Current milestone — M32: Multi-Strategy Portfolio View v1
+
+**Status: complete.**
+
+### M32 deliverables
+
+- **New `backend/app/services/portfolio_overview.py`** — deterministic portfolio aggregation service.
+  No AI, no external APIs, read-only.
+  - `PortfolioStrategyItemData` dataclass — per-strategy row: `strategy_id`, `name`, `slug`,
+    `asset_class`, `status`, `health_score`, `reliability_score`, `coverage_score`,
+    `open_alert_count`, `critical_alert_count`, `high_alert_count`, `medium_alert_count`,
+    `low_alert_count`, `trend_flags` (`PortfolioTrendFlagsData`), `missing_evidence_count`,
+    `review_reason`.
+  - `PortfolioTrendFlagsData` dataclass — lightweight 2-point trend check per evidence series
+    (reliability, data health, backtest trust, signal quality). A series is flagged as
+    `deteriorating` when the latest value minus the previous value falls below −2.0 (threshold 2.0).
+    Fields: `reliability_deteriorating`, `data_health_deteriorating`,
+    `backtest_trust_deteriorating`, `signal_quality_deteriorating`, `any_deteriorating`.
+  - `PortfolioOverviewData` dataclass — top-level response: `strategy_count`,
+    `active_strategy_count`, `average_health_score`, `average_reliability_score`,
+    `average_coverage_score`, `total_open_alerts`, `critical_alert_count`, `high_alert_count`,
+    `medium_alert_count`, `low_alert_count`, `status_distribution` (dict of status → count),
+    `asset_class_counts` (dict of asset class → count), and four ranked sections:
+    `top_review_strategies`, `most_under_instrumented`, `strongest_evidence`,
+    `deteriorating_trend_strategies`. Also: `deterministic_summary`, `suggested_next_steps`,
+    `generated_at`.
+  - `get_portfolio_overview(db, *, project_id, organization_id, include_archived, limit_per_section)` —
+    assembles a full `PortfolioOverviewData` for the given scope.
+
+- **Four ranked sections**:
+  - `top_review_strategies` — strategies needing review (critical first, then review, then watch),
+    sorted by health status urgency.
+  - `most_under_instrumented` — strategies with lowest coverage scores (ascending), highlighting
+    where evidence is missing.
+  - `strongest_evidence` — strategies with highest coverage scores and no open alerts, sorted
+    descending by coverage score.
+  - `deteriorating_trend_strategies` — strategies where any trend series has `any_deteriorating=True`.
+
+- **New endpoint** `GET /api/portfolio/overview`:
+  - Query params: `project_id` (UUID, optional), `organization_id` (UUID, optional),
+    `include_archived` (bool, default false), `limit_per_section` (int, default 10, max 50).
+  - Returns `PortfolioOverviewResponse`. Read-only — no `AuditTimelineEvent` created.
+
+- **New router** `backend/app/api/routes/portfolio.py` registered in `app/api/router.py`.
+
+- **Aggregation fields**:
+  - Average health/reliability/coverage scores across all scored strategies (null when no data).
+  - Status distribution counts across all five health status values.
+  - Per-asset-class strategy counts.
+  - Total and per-severity open alert counts.
+
+- **Deterministic summary and suggested next steps**: rule-based text, no AI, no causal claims,
+  not investment advice. `note` field in response confirms this.
+
+- **New schema file** `app/schemas/portfolio_overview.py` —
+  `PortfolioTrendFlags`, `PortfolioStrategyItem`, `PortfolioOverviewResponse`.
+
+- **New page** `frontend/src/pages/Portfolio.tsx` at route `/portfolio`:
+  - Summary strip: active strategy count, average health score, average coverage score, total
+    open alerts.
+  - Health status distribution panel showing counts by status.
+  - Four ranked sections displayed as card lists.
+  - Full portfolio table with per-strategy health, reliability, coverage, alert counts, and
+    trend flag indicators.
+  - Suggested checks panel.
+
+- **Navigation**: "Portfolio" item added under the Analysis section in `nav.ts`.
+
+- **Dashboard**: compact Portfolio Overview panel added to `Dashboard.tsx` with key stats
+  (strategy count, average health score, critical alert count, suggested next steps count).
+
+- **Strategies page**: "Portfolio View" button added to `Strategies.tsx` linking to `/portfolio`.
+
+- **19 new backend tests** (`tests/test_portfolio_m32.py`) across 3 test classes:
+  - `TestPortfolioEndpoint` (12 tests): 200 response, response fields, seeded strategy present,
+    archived exclusion, include_archived param, limit_per_section, project_id filter,
+    health status counts, asset class counts, deterministic summary not investment advice,
+    no timeline event created, read-only.
+  - `TestPortfolioRankings` (4 tests): top_review includes critical strategies, under-instrumented
+    sorted by coverage ascending, strongest evidence has high coverage, deteriorating trends
+    requires two data points.
+  - `TestPortfolioAggregation` (3 tests): averages null when no evidence, alert totals correct,
+    suggested next steps deterministic.
+
+- **Backend total: 1013 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (62 modules, built in 625ms).
+- No external APIs required. Read-only. Not investment advice.
+
+### What M32 does NOT build (by design)
+
+- No portfolio optimization, allocation suggestions, or rebalancing recommendations.
+- No P&L attribution or return decomposition.
+- No live drift detection or position-level monitoring.
+- No AI-generated summaries or recommendations.
+- No historical persistence of portfolio snapshots (computed on demand).
+
+### Portfolio overview curl example
+
+```bash
+# Get full portfolio overview
+curl "http://localhost:8000/api/portfolio/overview" | python3 -m json.tool
+# Response: { strategy_count, active_strategy_count, average_health_score,
+#   average_reliability_score, average_coverage_score, total_open_alerts,
+#   critical_alert_count, high_alert_count, medium_alert_count, low_alert_count,
+#   status_distribution, asset_class_counts,
+#   top_review_strategies: [...], most_under_instrumented: [...],
+#   strongest_evidence: [...], deteriorating_trend_strategies: [...],
+#   deterministic_summary, suggested_next_steps: [...], note, generated_at }
+
+# Filter by project
+curl "http://localhost:8000/api/portfolio/overview?project_id=<project_id>" \
+  | python3 -m json.tool
+
+# Include archived strategies, limit sections to 5
+curl "http://localhost:8000/api/portfolio/overview?include_archived=true&limit_per_section=5" \
+  | python3 -m json.tool
+```
+
+> **M32 note:** Portfolio overview is deterministic — aggregated from existing per-strategy
+> health, reliability, coverage, and trend records. No AI, no live market data, no external calls.
+> Not investment advice.
+
+---
+
+## Previously completed — M31: Strategy Evidence Export v1
 
 **Status: complete.**
 

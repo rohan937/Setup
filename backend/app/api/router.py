@@ -8,13 +8,14 @@ M9 routes: /api/dashboard/summary
 M11 routes: /api/alerts/generate, /api/alerts
 M14 routes: /api/reports
 M24 routes: /api/api-keys
+M32 routes: /api/portfolio/overview
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import alerts, api_keys, backtests, dashboard, datasets, evidence, health, meta, projects, reliability, reports, strategies, timeline
+from app.api.routes import alerts, api_keys, backtests, dashboard, datasets, evidence, health, meta, portfolio, projects, reliability, reports, strategies, timeline
 
 api_router = APIRouter()
 
@@ -34,3 +35,4 @@ api_router.include_router(reports.router, prefix="/api")
 api_router.include_router(reliability.router, prefix="/api")
 api_router.include_router(evidence.router, prefix="/api")
 api_router.include_router(api_keys.router, prefix="/api")
+api_router.include_router(portfolio.router, prefix="/api")

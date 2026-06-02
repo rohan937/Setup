@@ -65,6 +65,7 @@ import type {
   StrategyTimelineDrilldownResponse,
   StrategyEvidenceTrendsResponse,
   StrategyExportResponse,
+  PortfolioOverview,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -770,5 +771,24 @@ export async function exportStrategyEvidence(
   const q = qs.toString();
   return request<StrategyExportResponse>(
     `/api/strategies/${strategyId}/export${q ? `?${q}` : ""}`,
+  );
+}
+
+export async function getPortfolioOverview(params?: {
+  project_id?: string;
+  organization_id?: string;
+  include_archived?: boolean;
+  limit_per_section?: number;
+}): Promise<PortfolioOverview> {
+  const qs = new URLSearchParams();
+  if (params?.project_id) qs.set("project_id", params.project_id);
+  if (params?.organization_id) qs.set("organization_id", params.organization_id);
+  if (params?.include_archived != null)
+    qs.set("include_archived", String(params.include_archived));
+  if (params?.limit_per_section != null)
+    qs.set("limit_per_section", String(params.limit_per_section));
+  const q = qs.toString();
+  return request<PortfolioOverview>(
+    `/api/portfolio/overview${q ? `?${q}` : ""}`,
   );
 }

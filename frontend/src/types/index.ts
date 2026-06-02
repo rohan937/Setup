@@ -1636,3 +1636,65 @@ export interface StrategyExportResponse {
   content?: string | null;
   raw_evidence?: object | null;
 }
+
+// ---------------------------------------------------------------------------
+// M32: Portfolio Overview
+// ---------------------------------------------------------------------------
+
+export interface PortfolioTrendFlags {
+  reliability_deteriorating: boolean;
+  data_health_deteriorating: boolean;
+  backtest_trust_deteriorating: boolean;
+  signal_quality_deteriorating: boolean;
+}
+
+export interface PortfolioStrategyItem {
+  strategy_id: string;
+  name: string;
+  slug: string;
+  asset_class: string;
+  status: string;
+  health_score: number | null;
+  health_status: string;
+  primary_concern: string;
+  reliability_score: number | null;
+  reliability_status: string | null;
+  evidence_coverage_score: number;
+  open_alert_count: number;
+  high_critical_alert_count: number;
+  latest_run_at: string | null;
+  days_since_latest_run: number | null;
+  trend_flags: PortfolioTrendFlags;
+  missing_evidence_count: number;
+  review_reason: string | null;
+}
+
+export interface PortfolioRecentActivityItem {
+  strategy_name: string;
+  event_type: string;
+  description: string;
+  timestamp: string;
+}
+
+export interface PortfolioOverview {
+  generated_at: string;
+  strategy_count: number;
+  active_strategy_count: number;
+  archived_strategy_count: number;
+  average_health_score: number | null;
+  average_reliability_score: number | null;
+  average_evidence_coverage_score: number | null;
+  open_alert_count: number;
+  high_critical_alert_count: number;
+  strategies_by_health_status: Record<string, number>;
+  strategies_by_reliability_status: Record<string, number>;
+  strategies_by_asset_class: Record<string, number>;
+  all_items: PortfolioStrategyItem[];
+  top_review_strategies: PortfolioStrategyItem[];
+  most_under_instrumented_strategies: PortfolioStrategyItem[];
+  strongest_evidence_strategies: PortfolioStrategyItem[];
+  deteriorating_trend_strategies: PortfolioStrategyItem[];
+  recent_activity: PortfolioRecentActivityItem[];
+  suggested_next_steps: string[];
+  deterministic_summary: string;
+}

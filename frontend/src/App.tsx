@@ -5,6 +5,7 @@ import Strategies from "@/pages/Strategies";
 import StrategyComparison from "@/pages/StrategyComparison";
 import StrategyDetail from "@/pages/StrategyDetail";
 import EvidenceCoverage from "@/pages/EvidenceCoverage";
+import Portfolio from "@/pages/Portfolio";
 import Timeline from "@/pages/Timeline";
 import DataHealth from "@/pages/DataHealth";
 import Backtests from "@/pages/Backtests";
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="strategies/:id" element={<StrategyDetail />} />
         <Route path="timeline" element={<Timeline />} />
         <Route path="evidence/coverage" element={<EvidenceCoverage />} />
+        <Route path="portfolio" element={<Portfolio />} />
         <Route path="data-health" element={<DataHealth />} />
         <Route path="backtests" element={<Backtests />} />
         <Route path="reports" element={<Reports />} />

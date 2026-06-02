@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, ProjectHealth, RecentEvidenceItem, Strategy, StrategyHealthListResponse } from "@/types";
-import { getDashboardSummary, getEvidenceCoverage, getProjectsHealth, getStrategies, getStrategiesHealth } from "@/lib/api";
+import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, PortfolioOverview, ProjectHealth, RecentEvidenceItem, Strategy, StrategyHealthListResponse } from "@/types";
+import { getDashboardSummary, getEvidenceCoverage, getPortfolioOverview, getProjectsHealth, getStrategies, getStrategiesHealth } from "@/lib/api";
 import Badge from "@/components/Badge";
 
 // ---------------------------------------------------------------------------
@@ -184,6 +184,7 @@ export default function Dashboard() {
   const [coverageSummary, setCoverageSummary] = useState<EvidenceCoverageSummary | null>(null);
   const [healthSummary, setHealthSummary] = useState<HealthStatusCounts | null>(null);
   const [projectsHealth, setProjectsHealth] = useState<ProjectHealth[]>([]);
+  const [portfolioOverview, setPortfolioOverview] = useState<PortfolioOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -219,6 +220,10 @@ export default function Dashboard() {
     // M28: load project health in parallel (best-effort)
     getProjectsHealth({ limit: 50 })
       .then((r) => setProjectsHealth(r.items))
+      .catch(() => {});
+    // M32: load portfolio overview in parallel (best-effort)
+    getPortfolioOverview({ limit_per_section: 3 })
+      .then(setPortfolioOverview)
       .catch(() => {});
   }, []);
 
@@ -484,6 +489,95 @@ export default function Dashboard() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Portfolio Overview panel (M32)                                     */}
+      {/* ------------------------------------------------------------------ */}
+      {!loading && portfolioOverview && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+            <p className="caption">Portfolio Overview</p>
+            <Link
+              to="/portfolio"
+              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            >
+              full view →
+            </Link>
+          </div>
+          <div className="grid grid-cols-4 divide-x divide-border px-0 py-0">
+            <div className="px-4 py-3 text-center">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
+                Strategies
+              </p>
+              <p className="mono-num mt-1 text-xl font-bold text-text-primary">
+                {portfolioOverview.active_strategy_count}
+              </p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
+                Review
+              </p>
+              <p
+                className={`mono-num mt-1 text-xl font-bold ${
+                  portfolioOverview.top_review_strategies.length > 0
+                    ? "text-orange-400"
+                    : "text-text-primary"
+                }`}
+              >
+                {portfolioOverview.top_review_strategies.length}
+              </p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
+                Avg Health
+              </p>
+              <p
+                className={`mono-num mt-1 text-xl font-bold ${
+                  portfolioOverview.average_health_score === null
+                    ? "text-text-muted"
+                    : portfolioOverview.average_health_score >= 80
+                    ? "text-teal-400"
+                    : portfolioOverview.average_health_score >= 60
+                    ? "text-yellow-400"
+                    : "text-red-400"
+                }`}
+              >
+                {portfolioOverview.average_health_score !== null
+                  ? portfolioOverview.average_health_score.toFixed(1)
+                  : "—"}
+              </p>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
+                Avg Coverage
+              </p>
+              <p
+                className={`mono-num mt-1 text-xl font-bold ${
+                  portfolioOverview.average_evidence_coverage_score === null
+                    ? "text-text-muted"
+                    : portfolioOverview.average_evidence_coverage_score >= 80
+                    ? "text-teal-400"
+                    : portfolioOverview.average_evidence_coverage_score >= 60
+                    ? "text-yellow-400"
+                    : "text-red-400"
+                }`}
+              >
+                {portfolioOverview.average_evidence_coverage_score !== null
+                  ? portfolioOverview.average_evidence_coverage_score.toFixed(1)
+                  : "—"}
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-border px-4 py-2">
+            <Link
+              to="/portfolio"
+              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            >
+              View full portfolio overview →
+            </Link>
           </div>
         </div>
       )}
