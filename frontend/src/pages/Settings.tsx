@@ -30,6 +30,12 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function projectScopeLabel(k: ApiKey): string {
+  if (!k.project_id) return "All projects (organization-wide)";
+  const shortId = k.project_id.slice(0, 8);
+  return k.project_name ? `Project ${shortId} — ${k.project_name}` : `Project ${shortId}`;
+}
+
 export default function Settings() {
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -129,6 +135,10 @@ export default function Settings() {
             </button>
           </div>
 
+          <p className="mt-1.5 font-mono text-2xs text-text-muted">
+            Leave scope as <code className="rounded bg-bg-secondary px-1 py-0.5 text-accent">evidence:write</code> for evidence bundle ingestion (SDK default).
+          </p>
+
           {createError && (
             <p className="mt-2 font-mono text-2xs text-red-400">{createError}</p>
           )}
@@ -155,6 +165,16 @@ export default function Settings() {
               <p className="mt-1 font-mono text-2xs text-text-muted">
                 Name: {revealed.api_key.name} · Prefix: {revealed.api_key.key_prefix}
               </p>
+              <p className="mt-2 font-mono text-2xs text-text-muted">
+                Use this key with the QuantFidelity SDK:
+              </p>
+              <pre className="mt-1 overflow-x-auto rounded bg-bg-secondary px-3 py-2 font-mono text-2xs text-text-secondary">
+{`from quantfidelity import QuantFidelityClient
+client = QuantFidelityClient(
+    base_url="http://localhost:8000",
+    api_key="${revealed.raw_key}",
+)`}
+              </pre>
             </div>
           )}
         </Card>
@@ -171,55 +191,74 @@ export default function Settings() {
             <p className="font-mono text-2xs text-text-muted">No API keys yet.</p>
           )}
           {!keysLoading && keys.length > 0 && (
-            <table className="w-full border-collapse font-mono text-2xs">
-              <thead>
-                <tr className="border-b border-border text-left text-text-muted">
-                  <th className="pb-1 pr-4 font-normal">Name</th>
-                  <th className="pb-1 pr-4 font-normal">Prefix</th>
-                  <th className="pb-1 pr-4 font-normal">Scopes</th>
-                  <th className="pb-1 pr-4 font-normal">Created</th>
-                  <th className="pb-1 pr-4 font-normal">Last used</th>
-                  <th className="pb-1 pr-4 font-normal">Status</th>
-                  <th className="pb-1 font-normal"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {keys.map((k) => (
-                  <tr
-                    key={k.id}
-                    className={`border-b border-border/50 ${k.status === "revoked" ? "opacity-40" : ""}`}
-                  >
-                    <td className="py-1 pr-4 text-text-primary">{k.name}</td>
-                    <td className="py-1 pr-4 text-text-secondary">{k.key_prefix}…</td>
-                    <td className="py-1 pr-4 text-text-muted">
-                      {k.scopes_json?.join(", ") ?? "—"}
-                    </td>
-                    <td className="py-1 pr-4 text-text-muted">{fmt(k.created_at)}</td>
-                    <td className="py-1 pr-4 text-text-muted">{fmt(k.last_used_at)}</td>
-                    <td className="py-1 pr-4">
-                      {k.status === "active" ? (
-                        <span className="text-green-400">active</span>
-                      ) : (
-                        <span className="text-text-muted">
-                          revoked {fmt(k.revoked_at)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-1">
-                      {k.status === "active" && (
-                        <button
-                          onClick={() => void handleRevoke(k.id)}
-                          disabled={revokingId === k.id}
-                          className="rounded border border-border px-2 py-0.5 text-text-muted hover:border-red-500 hover:text-red-400 disabled:opacity-40"
-                        >
-                          {revokingId === k.id ? "revoking…" : "revoke"}
-                        </button>
-                      )}
-                    </td>
+            <>
+              <table className="w-full border-collapse font-mono text-2xs">
+                <thead>
+                  <tr className="border-b border-border text-left text-text-muted">
+                    <th className="pb-1 pr-4 font-normal">Name</th>
+                    <th className="pb-1 pr-4 font-normal">Prefix</th>
+                    <th className="pb-1 pr-4 font-normal">Scopes</th>
+                    <th className="pb-1 pr-4 font-normal">Scope</th>
+                    <th className="pb-1 pr-4 font-normal">Created</th>
+                    <th className="pb-1 pr-4 font-normal">Last used</th>
+                    <th className="pb-1 pr-4 font-normal">Status</th>
+                    <th className="pb-1 font-normal"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {keys.map((k) => {
+                    const scopesDisplay = k.scopes_json?.length
+                      ? k.scopes_json.join(", ")
+                      : "evidence:write (default)";
+                    return (
+                      <tr
+                        key={k.id}
+                        className={`border-b border-border/50 ${k.status === "revoked" ? "opacity-40" : ""}`}
+                      >
+                        <td className="py-1 pr-4 text-text-primary">{k.name}</td>
+                        <td className="py-1 pr-4 text-text-secondary">{k.key_prefix}…</td>
+                        <td className="py-1 pr-4 text-text-muted">{scopesDisplay}</td>
+                        <td className="py-1 pr-4 text-text-muted">{projectScopeLabel(k)}</td>
+                        <td className="py-1 pr-4 text-text-muted">{fmt(k.created_at)}</td>
+                        <td className="py-1 pr-4 text-text-muted">{fmt(k.last_used_at)}</td>
+                        <td className="py-1 pr-4">
+                          {k.status === "active" ? (
+                            <span className="text-green-400">active</span>
+                          ) : (
+                            <span className="text-text-muted">
+                              revoked {fmt(k.revoked_at)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-1">
+                          {k.status === "active" && (
+                            <button
+                              onClick={() => void handleRevoke(k.id)}
+                              disabled={revokingId === k.id}
+                              className="rounded border border-border px-2 py-0.5 text-text-muted hover:border-red-500 hover:text-red-400 disabled:opacity-40"
+                            >
+                              {revokingId === k.id ? "revoking…" : "revoke"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div className="mt-3 rounded border border-border bg-bg-800 px-3 py-2">
+                <p className="font-mono text-2xs text-text-muted">
+                  <span className="font-medium text-text-secondary">Project-scoped keys</span>{" "}
+                  can only ingest evidence for strategies in that project. Organization-wide keys
+                  (no project scope) can ingest for any strategy in the organization.
+                </p>
+                <p className="mt-1 font-mono text-2xs text-text-muted">
+                  Keys require <code className="rounded bg-bg-secondary px-1 py-0.5 text-accent">evidence:write</code> scope for SDK ingestion
+                  when <code className="rounded bg-bg-secondary px-1 py-0.5 text-text-muted">QF_REQUIRE_API_KEY_FOR_INGESTION=true</code> is set.
+                </p>
+              </div>
+            </>
           )}
         </Card>
 

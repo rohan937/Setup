@@ -25,6 +25,7 @@ class ApiKeyRead(BaseModel):
     id: uuid.UUID
     organization_id: str
     project_id: str | None
+    project_name: str | None = None
     name: str
     key_prefix: str
     scopes_json: list[str] | None

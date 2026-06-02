@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (916 tests, 1 skipped)
+│   └── tests/              Pytest tests (933 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,138 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M27: Strategy Health Dashboard v1
+## Current milestone — M28: Project Health + Scoped API Keys v1
+
+**Status: complete.**
+
+### M28 deliverables
+
+- **New `backend/app/services/project_health.py`** — deterministic project health snapshot service.
+  No AI, no live market data, no external calls:
+  - `ProjectHealthSnapshot` dataclass — `project_id`, `name`, `status` (health status),
+    `health_score` (0–100 or null), `strategy_count` (int), `scored_strategy_count` (int),
+    `average_strategy_health_score` (float or null), `critical_strategy_count` (int),
+    `review_strategy_count` (int), `watch_strategy_count` (int), `healthy_strategy_count` (int),
+    `insufficient_strategy_count` (int), `open_alert_count` (int), `critical_alert_count` (int),
+    `high_alert_count` (int), `medium_alert_count` (int), `low_alert_count` (int),
+    `recent_ingestion_failure_count` (int), `generated_at`.
+  - `compute_project_health(project, db)` — computes a `ProjectHealthSnapshot` for one project.
+  - `get_projects_health(db, *, status_filter, limit, offset)` — returns a paginated list of
+    snapshots across all projects.
+
+- **Project health status rules** (evaluated in order):
+  - `critical`: any strategy in the project is `critical`, OR the project has any `critical`-severity open alerts.
+  - `review`: any strategy is `review`, OR average strategy health score < 60.
+  - `watch`: any strategy is `watch`, OR average strategy health score between 60 and 75.
+  - `healthy`: majority of strategies are `healthy` AND average strategy health score >= 75.
+  - `insufficient_evidence`: no strategies in the project, or most strategies are unscored.
+
+- **Project health score (0–100 or null)**:
+  Base = average strategy health scores across all scored strategies in the project.
+  Deductions: critical alert −20, high alert −10, medium alert −4, low alert −2 (per open alert of that severity).
+  Ingestion failure penalty applied when recent SDK ingestion batches have failed status.
+  Floor: 0.
+
+- **2 new API endpoints** registered in `app/api/routes/projects.py`:
+  - `GET /api/projects/health` — paginated health list across all projects.
+    Supports `status` filter, `limit`, `offset` query params. Returns `ProjectHealthListResponse`.
+    Literal path registered BEFORE `{project_id}` to avoid routing collision.
+  - `GET /api/projects/{id}/health` — health snapshot for one project.
+    Returns `ProjectHealthRead`. 404 for unknown project.
+
+- **Project-scoped API key enforcement**:
+  When `QF_REQUIRE_API_KEY_FOR_INGESTION=true`:
+  - Keys with a `project_id` set can only ingest evidence bundles into strategies that belong to
+    that specific project. Ingesting into a strategy in a different project returns 403.
+  - Org-level keys (`project_id=null`) are allowed to ingest into any strategy across all projects.
+  - `evidence:write` scope is required on the key; keys without this scope are rejected with 403.
+  - Keys with empty `scopes_json` are still accepted (backward-compatible with M24 `ingest` scope).
+
+- **API key creation infers `organization_id` from project** when only `project_id` is provided
+  in the create request body, so callers do not need to look up the org ID separately.
+
+- **`ApiKeyRead` schema extended** with `project_name: str | None` — populated when the key is
+  project-scoped, null for org-level keys.
+
+- **New schemas** (`app/schemas/strategy.py` and `app/schemas/project.py`):
+  `ProjectHealthRead`, `ProjectHealthListResponse`.
+
+- **Frontend — Project Health panel in `Dashboard.tsx`**:
+  - Summary panel showing project count by health status (critical / review / watch / healthy /
+    insufficient_evidence).
+  - Per-project health score, strategy count, and alert count summary.
+  - Links to individual project pages.
+
+- **Frontend — improved API key scope display in `Settings.tsx`**:
+  - Project-scoped keys show a "Project: <name>" label alongside the key prefix and status.
+  - Scope hint text explains what each scope allows (e.g. `evidence:write` vs `ingest`).
+  - SDK usage snippet shown in the Settings panel demonstrating how to pass a scoped key.
+
+- **17 new backend tests** (`tests/test_project_health_m28.py`) across 3 test classes:
+  - `TestProjectHealthEndpoint` (6 tests): seeded project has health snapshot, required fields
+    present, 404 for unknown project, list endpoint 200, list total >= 1, list status filter.
+  - `TestProjectHealthAggregation` (5 tests): no strategies returns insufficient_evidence,
+    critical strategy makes project critical, strategy counts correct, average health score
+    computed, recent failed ingestion counted.
+  - `TestProjectScopedApiKey` (6 tests): project-scoped key can ingest into matching project,
+    project-scoped key blocked for different project, org-level key can ingest any project,
+    key missing evidence:write scope rejected, empty scopes allowed (backward-compat),
+    infer org_id from project on key create.
+
+- **Backend total: 933 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (61 modules).
+- No external APIs required; no additional API keys needed beyond existing QF keys.
+
+### What M28 does NOT build (by design)
+
+- No full RBAC system, teams/members hierarchy, or per-user permissions.
+- No OAuth 2.0 or JWT token issuance.
+- No automatic scope enforcement on read endpoints (only ingestion is gated).
+- No per-key rate limiting or quota enforcement.
+- No real-time project health polling or push notifications.
+- No historical persistence of project health snapshots (computed on demand).
+
+### Project health + scoped key curl examples
+
+```bash
+# Get project health snapshot for all projects
+curl "http://localhost:8000/api/projects/health" | python3 -m json.tool
+
+# Get health for a specific project
+curl "http://localhost:8000/api/projects/<project_id>/health" | python3 -m json.tool
+# Response: { project_id, name, status, health_score, strategy_count, scored_strategy_count,
+#   average_strategy_health_score, critical_strategy_count, review_strategy_count,
+#   watch_strategy_count, healthy_strategy_count, insufficient_strategy_count,
+#   open_alert_count, critical_alert_count, high_alert_count, medium_alert_count,
+#   low_alert_count, recent_ingestion_failure_count, generated_at }
+
+# Create a project-scoped API key (org_id inferred from project automatically)
+curl -s -X POST http://localhost:8000/api/api-keys \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "CI Pipeline Key — Project Alpha",
+    "project_id": "<project_id>",
+    "scopes": ["evidence:write"]
+  }' | python3 -m json.tool
+# Response includes "key": "qf_local_...", "project_name": "Project Alpha"
+
+# Ingest with project-scoped key (when QF_REQUIRE_API_KEY_FOR_INGESTION=true)
+curl -s -X POST http://localhost:8000/api/strategies/<strategy_id>/evidence-bundles \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer qf_local_...' \
+  -d '{"strategy_run": {"run_name": "bt", "run_type": "backtest"}}' \
+  | python3 -m json.tool
+# If strategy belongs to a different project than the key's project_id → 403 Forbidden
+```
+
+> **M28 note:** Project health computation is deterministic — aggregated from per-strategy health
+> snapshots and open alert counts. No AI, no live market data, no external calls.
+> Project-scoped key enforcement applies only to evidence ingestion; all other endpoints remain
+> unauthenticated for local development. Not investment advice.
+
+---
+
+## Previously completed — M27: Strategy Health Dashboard v1
 
 **Status: complete.**
 

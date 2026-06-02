@@ -59,6 +59,8 @@ import type {
   ApiKeyRevokeResponse,
   StrategyHealth,
   StrategyHealthListResponse,
+  ProjectHealth,
+  ProjectHealthListResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -658,4 +660,27 @@ export async function getStrategiesHealth(params?: {
   if (params?.offset != null) qs.set("offset", String(params.offset));
   const q = qs.toString();
   return request<StrategyHealthListResponse>(`/api/strategies/health${q ? `?${q}` : ""}`);
+}
+
+// ---------------------------------------------------------------------------
+// M28: Project Health
+// ---------------------------------------------------------------------------
+
+export async function getProjectHealth(projectId: string): Promise<ProjectHealth> {
+  return request<ProjectHealth>(`/api/projects/${projectId}/health`);
+}
+
+export async function getProjectsHealth(params?: {
+  organization_id?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ProjectHealthListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.organization_id) qs.set("organization_id", params.organization_id);
+  if (params?.status) qs.set("status", params.status);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const q = qs.toString();
+  return request<ProjectHealthListResponse>(`/api/projects/health${q ? `?${q}` : ""}`);
 }

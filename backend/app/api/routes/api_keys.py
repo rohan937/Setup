@@ -57,7 +57,16 @@ def create_api_key(
     The ``raw_key`` in the response is the ONLY time the plaintext key is
     returned.  Store it securely — QuantFidelity will never show it again.
     """
-    org = _get_org(db, body.organization_id)
+    # If organization_id is None but project_id is provided, infer org from project.
+    resolved_org_id = body.organization_id
+    if resolved_org_id is None and body.project_id is not None:
+        from app.models.project import Project as _Project
+        _proj = db.query(_Project).filter(_Project.id == body.project_id).first()
+        if _proj is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        resolved_org_id = _proj.organization_id
+
+    org = _get_org(db, resolved_org_id)
 
     # Validate project if provided
     if body.project_id is not None:

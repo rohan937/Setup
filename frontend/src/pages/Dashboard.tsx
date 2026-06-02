@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, RecentEvidenceItem, Strategy, StrategyHealthListResponse } from "@/types";
-import { getDashboardSummary, getEvidenceCoverage, getStrategies, getStrategiesHealth } from "@/lib/api";
+import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, ProjectHealth, RecentEvidenceItem, Strategy, StrategyHealthListResponse } from "@/types";
+import { getDashboardSummary, getEvidenceCoverage, getProjectsHealth, getStrategies, getStrategiesHealth } from "@/lib/api";
 import Badge from "@/components/Badge";
 
 // ---------------------------------------------------------------------------
@@ -183,6 +183,7 @@ export default function Dashboard() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [coverageSummary, setCoverageSummary] = useState<EvidenceCoverageSummary | null>(null);
   const [healthSummary, setHealthSummary] = useState<HealthStatusCounts | null>(null);
+  const [projectsHealth, setProjectsHealth] = useState<ProjectHealth[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -214,6 +215,10 @@ export default function Dashboard() {
         });
         setHealthSummary(statusCounts);
       })
+      .catch(() => {});
+    // M28: load project health in parallel (best-effort)
+    getProjectsHealth({ limit: 50 })
+      .then((r) => setProjectsHealth(r.items))
       .catch(() => {});
   }, []);
 
@@ -426,6 +431,60 @@ export default function Dashboard() {
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Project Health summary (M28)                                       */}
+      {/* ------------------------------------------------------------------ */}
+      {!loading && projectsHealth.length > 0 && (
+        <div className="rounded-card border border-border bg-bg-700">
+          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+            <p className="caption">Project Health</p>
+            <Link
+              to="/strategies"
+              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            >
+              all strategies →
+            </Link>
+          </div>
+          <div className="divide-y divide-border">
+            {projectsHealth.map((p) => {
+              const statusChip: Record<string, string> = {
+                healthy: "text-teal-300 bg-teal-900/30 border-teal-700/30",
+                watch: "text-yellow-300 bg-yellow-900/30 border-yellow-700/30",
+                review: "text-orange-300 bg-orange-900/30 border-orange-700/30",
+                critical: "text-red-300 bg-red-900/30 border-red-700/30",
+                insufficient_evidence: "text-text-muted bg-bg-600 border-border",
+              };
+              const chip = statusChip[p.health_status] ?? statusChip.insufficient_evidence;
+              return (
+                <div key={p.project_id} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="min-w-0 flex-1 font-mono text-xs text-text-primary truncate">
+                    {p.project_name}
+                  </span>
+                  <span
+                    className={`shrink-0 inline-flex items-center rounded border px-2 py-0.5 font-mono text-2xs ${chip}`}
+                  >
+                    {p.health_status.replace("_", " ")}
+                  </span>
+                  <span className="shrink-0 font-mono text-2xs text-text-muted">
+                    {p.strategy_count} {p.strategy_count === 1 ? "strategy" : "strategies"}
+                  </span>
+                  {p.health_score !== null && (
+                    <span className={`shrink-0 mono-num font-semibold text-sm ${scoreColor(p.health_score)}`}>
+                      {p.health_score.toFixed(1)}
+                    </span>
+                  )}
+                  {p.primary_concern && (
+                    <span className="hidden sm:block shrink-0 max-w-[180px] truncate font-mono text-2xs text-text-muted">
+                      {p.primary_concern}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

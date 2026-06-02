@@ -257,6 +257,31 @@ def ingest_bundle(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # Enforce API key scopes and project scope (M28)
+    if api_key is not None:
+        # Enforce evidence:write scope
+        scopes = api_key.scopes_json or []
+        if scopes and "evidence:write" not in scopes:
+            raise HTTPException(
+                status_code=403,
+                detail="API key does not have evidence:write scope.",
+            )
+
+        # Enforce project scope if api_key.project_id is set
+        # api_key.project_id is String(36); strategy.project_id is Uuid(as_uuid=True)
+        # Compare both as strings to avoid type mismatch.
+        if api_key.project_id is not None:
+            key_proj = str(api_key.project_id)
+            strat_proj = str(strategy.project_id)
+            if key_proj != strat_proj:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "API key is scoped to a different project. "
+                        "This strategy belongs to a different project."
+                    ),
+                )
+
     org = _get_default_org(db)
 
     # Resolve idempotency key (header takes precedence over body)

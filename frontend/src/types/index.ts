@@ -1309,6 +1309,7 @@ export interface ApiKey {
   id: string;
   organization_id: string;
   project_id: string | null;
+  project_name?: string | null;
   name: string;
   key_prefix: string;
   scopes_json: string[] | null;
@@ -1377,6 +1378,44 @@ export interface StrategyHealth {
 
 export interface StrategyHealthListResponse {
   items: StrategyHealth[];
+  total: number;
+  limit: number;
+  offset: number;
+  generated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// M28: Project Health types
+// ---------------------------------------------------------------------------
+
+export type ProjectHealthStatus = "healthy" | "watch" | "review" | "critical" | "insufficient_evidence";
+
+export interface ProjectHealth {
+  project_id: string;
+  project_name: string;
+  organization_id: string;
+  health_score: number | null;
+  health_status: ProjectHealthStatus;
+  strategy_count: number;
+  healthy_strategy_count: number;
+  watch_strategy_count: number;
+  review_strategy_count: number;
+  critical_strategy_count: number;
+  insufficient_evidence_strategy_count: number;
+  average_strategy_health_score: number | null;
+  average_reliability_score: number | null;
+  average_evidence_coverage_score: number | null;
+  open_alert_count: number;
+  high_critical_alert_count: number;
+  recent_failed_ingestion_count: number;
+  latest_activity_at: string | null;
+  primary_concern: string;
+  suggested_checks: string[];
+  generated_at: string;
+}
+
+export interface ProjectHealthListResponse {
+  items: ProjectHealth[];
   total: number;
   limit: number;
   offset: number;
