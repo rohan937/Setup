@@ -1283,3 +1283,19 @@ export async function getStrategyChangeImpact(
     `/api/strategies/${strategyId}/change-impact${qs ? `?${qs}` : ""}`,
   );
 }
+
+// M58 - Run Replay Pack
+export async function getRunReplayPack(
+  strategyId: string,
+  runId: string,
+  params?: { format?: string; include_raw_json?: boolean },
+): Promise<import("@/types").RunReplayResponse> {
+  const query = new URLSearchParams();
+  if (params?.format) query.set("format", params.format);
+  if (params?.include_raw_json !== undefined)
+    query.set("include_raw_json", String(params.include_raw_json));
+  const qs = query.toString();
+  return request<import("@/types").RunReplayResponse>(
+    `/api/strategies/${strategyId}/runs/${runId}/replay-pack${qs ? `?${qs}` : ""}`,
+  );
+}

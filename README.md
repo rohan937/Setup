@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1519 tests, 1 skipped)
+│   └── tests/              Pytest tests (1549 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,69 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M57: Strategy Change Impact Analysis v1
+## Current milestone — M58: Run Replay Pack v1
+
+**Status:** complete
+
+### What was built
+- Service `run_replay.py` (read-only, no new DB tables) — `build_run_replay_pack(strategy_id, run_id, format, db)`. No AI, no external APIs. Fully deterministic. Not execution replay. Not investment advice.
+- Schemas `run_replay.py` — 4 Pydantic schemas: `ReplaySection`, `ReplayCompletenessScore`, `RunReplayPackData`, `RunReplayPackResponse`.
+- `GET /api/strategies/{id}/runs/{run_id}/replay-pack` endpoint added to `strategies.py` router.
+- Frontend `RunReplayPanel` in `StrategyDetail.tsx` — run selector, completeness score strip, 10 replay sections accordion, JSON download, Markdown copy.
+- Two optional fields added to `StrategyRun` TypeScript interface: `run_tag?: string | null` and `stage?: string | null`.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/strategies/{id}/runs/{run_id}/replay-pack | Fetch run replay pack (JSON or Markdown) |
+
+### Replay sections (10)
+| Section | Contents |
+|---------|----------|
+| `run_identity` | Run ID, run name, run tag, stage, run type, status, timestamps |
+| `strategy_version` | Strategy name, slug, version label, version notes |
+| `config_snapshot` | Params, assumptions, portfolio config, risk config at time of run |
+| `dataset_evidence` | Dataset snapshots linked to the run's strategy — health score, version, staleness |
+| `signal_evidence` | Signal snapshots — quality score, signal type, universe name |
+| `universe_evidence` | Universe snapshots — universe name, asset count, snapshot date |
+| `backtest_audit` | Backtest trust score, cost fragility, fill realism, largest penalty category |
+| `computed_context` | Drift score/status, readiness score/verdict, assumption health score/status |
+| `alerts_and_reports` | Open alerts (severity, category, message) and reports (type, format) |
+| `timeline_context` | Last 20 audit timeline events for the strategy |
+
+### Replay completeness scoring (0–100)
+- `run_identity`: always present (+10 if section has data).
+- `strategy_version`: +10 if version found.
+- `config_snapshot`: +15 if snapshot found.
+- `dataset_evidence`: +10 if at least one snapshot found.
+- `signal_evidence`: +10 if at least one snapshot found.
+- `universe_evidence`: +10 if at least one snapshot found.
+- `backtest_audit`: +15 if audit found.
+- `computed_context`: +5 if at least one of drift/readiness/assumption present.
+- `alerts_and_reports`: +5 if any alerts or reports found.
+- `timeline_context`: +10 if at least one timeline event found.
+
+### Language constraints
+Not execution replay, not investment advice. Language: "evidence state at time of run," "replay pack," "completeness score," "section present/missing." Never: "replay orders," "re-execute," "investment advice," "strategy failed."
+
+### Deployment note
+Deployment readiness is intentionally deferred to M65. M58–M64 remain advanced product/platform features.
+
+### What M58 does not build
+- Real order replay or broker execution logs
+- PDF export
+- AI-generated run summaries
+- Background pre-computation or caching of replay packs
+- Cross-run replay diff
+
+- **30 new backend M58 tests** (`tests/test_run_replay_m58.py`). All 30 passed on first run. No fixes needed.
+- **Backend total: 1549 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (Vite built in 952ms, 636.70 kB / 135.60 kB gzip). One non-blocking chunk-size warning (pre-existing, not introduced by M58).
+- No external APIs. Deterministic. Not execution replay. Not investment advice.
+
+---
+
+## Previously completed — M57: Strategy Change Impact Analysis v1
 
 **Status:** complete
 

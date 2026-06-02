@@ -80,6 +80,8 @@ import type {
   StrategyChangeImpactResponse,
   ImpactedArtifact,
   RecommendedRecheck,
+  RunReplayResponse,
+  RunReplayStatus,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -123,6 +125,7 @@ import {
   evaluateEvidenceSLAPolicy,
   getEvidenceSLAEvaluations,
   getStrategyChangeImpact,
+  getRunReplayPack,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -6855,6 +6858,331 @@ function ChangeImpactPanel({ strategyId }: { strategyId: string }) {
   );
 }
 
+// M58 - Run Replay Pack
+function replayStatusColor(status: RunReplayStatus): string {
+  if (status === "complete") return "text-cyan-400";
+  if (status === "review") return "text-amber-400";
+  return "text-red-400";
+}
+
+function replayStatusBg(status: RunReplayStatus): string {
+  if (status === "complete") return "bg-cyan-900/40 border-cyan-700/50";
+  if (status === "review") return "bg-amber-900/40 border-amber-700/50";
+  return "bg-red-900/40 border-red-700/50";
+}
+
+function severityChipClass(severity: string): string {
+  if (severity === "high") return "bg-red-900/40 text-red-300 border border-red-700/50";
+  if (severity === "medium") return "bg-amber-900/40 text-amber-300 border border-amber-700/50";
+  return "bg-zinc-800 text-zinc-400 border border-zinc-700";
+}
+
+function RunReplayPanel({
+  strategyId,
+  runs,
+}: {
+  strategyId: string;
+  runs: StrategyRun[];
+}) {
+  const [selectedRunId, setSelectedRunId] = useState<string>(
+    runs.length > 0 ? runs[0].id : "",
+  );
+  const [replayData, setReplayData] = useState<RunReplayResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [format, setFormat] = useState<"json" | "markdown">("json");
+  const [includeRaw, setIncludeRaw] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
+  function toggleSection(key: string) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function handleGenerate() {
+    if (!selectedRunId) return;
+    setLoading(true);
+    setError(null);
+    setReplayData(null);
+    getRunReplayPack(strategyId, selectedRunId, {
+      format,
+      include_raw_json: includeRaw,
+    })
+      .then((data) => setReplayData(data))
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "Failed to generate replay pack"),
+      )
+      .finally(() => setLoading(false));
+  }
+
+  function handleDownload() {
+    if (!replayData) return;
+    const isJson = format === "json";
+    const content = isJson
+      ? JSON.stringify(replayData, null, 2)
+      : replayData.content ?? JSON.stringify(replayData, null, 2);
+    const type = isJson ? "application/json" : "text/markdown";
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = replayData.metadata.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleCopyMarkdown() {
+    if (!replayData?.content) return;
+    navigator.clipboard.writeText(replayData.content);
+  }
+
+  return (
+    <div className="mt-8 rounded-lg border border-border bg-bg-700 p-4">
+      <h2 className="font-mono text-sm font-semibold text-text-primary mb-1">
+        M58 · Run Replay Pack
+      </h2>
+      <p className="font-mono text-2xs text-text-muted mb-4">
+        Reconstruct what was known at run time from logged evidence only. Not execution
+        replay or investment advice.
+      </p>
+
+      {runs.length === 0 ? (
+        <p className="font-mono text-2xs text-text-muted">No runs logged yet.</p>
+      ) : (
+        <div className="space-y-4">
+          {/* Controls */}
+          <div className="flex flex-wrap items-end gap-3">
+            {/* Run selector */}
+            <div className="flex flex-col gap-1">
+              <label className="font-mono text-2xs text-text-muted">Run</label>
+              <select
+                className="font-mono text-xs bg-bg-600 border border-border text-text-primary rounded px-2 py-1 focus:outline-none focus:border-accent-500"
+                value={selectedRunId}
+                onChange={(e) => {
+                  setSelectedRunId(e.target.value);
+                  setReplayData(null);
+                  setError(null);
+                }}
+              >
+                {runs.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.run_tag ?? r.id.slice(0, 8)} · {r.stage}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Format toggle */}
+            <div className="flex flex-col gap-1">
+              <label className="font-mono text-2xs text-text-muted">Format</label>
+              <div className="flex rounded overflow-hidden border border-border">
+                <button
+                  className={`font-mono text-2xs px-3 py-1 ${format === "json" ? "bg-accent-500 text-white" : "bg-bg-600 text-text-secondary hover:bg-bg-500"}`}
+                  onClick={() => setFormat("json")}
+                >
+                  JSON
+                </button>
+                <button
+                  className={`font-mono text-2xs px-3 py-1 ${format === "markdown" ? "bg-accent-500 text-white" : "bg-bg-600 text-text-secondary hover:bg-bg-500"}`}
+                  onClick={() => setFormat("markdown")}
+                >
+                  Markdown
+                </button>
+              </div>
+            </div>
+
+            {/* Include raw checkbox */}
+            <label className="flex items-center gap-2 cursor-pointer font-mono text-2xs text-text-secondary pb-1">
+              <input
+                type="checkbox"
+                checked={includeRaw}
+                onChange={(e) => setIncludeRaw(e.target.checked)}
+                className="accent-accent-500"
+              />
+              Include raw evidence
+            </label>
+
+            {/* Generate button */}
+            <button
+              className="font-mono text-xs bg-accent-500 text-white hover:bg-accent-600 px-4 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleGenerate}
+              disabled={loading || !selectedRunId}
+            >
+              {loading ? "Generating…" : "Generate Replay Pack"}
+            </button>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <p className="font-mono text-2xs text-red-400 border border-red-800 rounded px-3 py-2 bg-red-900/20">
+              {error}
+            </p>
+          )}
+
+          {/* Result */}
+          {replayData && (
+            <div className="space-y-4">
+              {/* Header summary row */}
+              <div
+                className={`rounded border px-4 py-3 flex flex-wrap items-center gap-4 ${replayStatusBg(replayData.replay_status)}`}
+              >
+                <span
+                  className={`font-mono text-xs font-bold uppercase tracking-widest ${replayStatusColor(replayData.replay_status)}`}
+                >
+                  {replayData.replay_status}
+                </span>
+                <span className="font-mono text-2xs text-text-secondary">
+                  completeness{" "}
+                  <span className="text-text-primary font-semibold">
+                    {(replayData.replay_completeness_score * 100).toFixed(0)}%
+                  </span>
+                </span>
+                <span className="font-mono text-2xs text-text-muted truncate max-w-xs">
+                  {replayData.metadata.filename}
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  {replayData.sections.length} section
+                  {replayData.sections.length !== 1 ? "s" : ""}
+                </span>
+                {replayData.missing_evidence.length > 0 && (
+                  <span className="font-mono text-2xs text-red-400">
+                    {replayData.missing_evidence.length} missing evidence item
+                    {replayData.missing_evidence.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+
+                {/* Download / copy buttons */}
+                <div className="ml-auto flex gap-2">
+                  <button
+                    className="font-mono text-2xs bg-accent-500 text-white hover:bg-accent-600 px-3 py-1 rounded"
+                    onClick={handleDownload}
+                  >
+                    Download
+                  </button>
+                  {format === "markdown" && replayData.content && (
+                    <button
+                      className="font-mono text-2xs bg-bg-500 border border-border text-text-secondary hover:bg-bg-400 px-3 py-1 rounded"
+                      onClick={handleCopyMarkdown}
+                    >
+                      Copy Markdown
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Sections */}
+              {replayData.sections.length > 0 && (
+                <div>
+                  <p className="font-mono text-2xs text-text-muted mb-2 uppercase tracking-wider">
+                    Sections
+                  </p>
+                  <div className="space-y-1">
+                    {replayData.sections.map((sec) => (
+                      <div
+                        key={sec.section_key}
+                        className="rounded border border-border bg-bg-600"
+                      >
+                        <button
+                          className="w-full flex items-center gap-3 px-3 py-2 text-left"
+                          onClick={() => toggleSection(sec.section_key)}
+                        >
+                          <span className="font-mono text-xs text-text-primary flex-1">
+                            {sec.title}
+                          </span>
+                          {sec.severity && (
+                            <span
+                              className={`font-mono text-2xs px-2 py-0.5 rounded ${severityChipClass(sec.severity)}`}
+                            >
+                              {sec.severity}
+                            </span>
+                          )}
+                          <span className="font-mono text-2xs text-text-muted">
+                            {expandedSections.has(sec.section_key) ? "▲" : "▼"}
+                          </span>
+                        </button>
+                        {expandedSections.has(sec.section_key) && (
+                          <div className="px-3 pb-3 border-t border-border">
+                            <p className="font-mono text-2xs text-text-secondary mt-2">
+                              {sec.summary}
+                            </p>
+                            {Object.keys(sec.evidence_json).length > 0 && (
+                              <pre className="font-mono text-2xs text-text-muted mt-2 overflow-x-auto bg-bg-700 rounded p-2 max-h-40">
+                                {JSON.stringify(sec.evidence_json, null, 2)}
+                              </pre>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Missing evidence */}
+              {replayData.missing_evidence.length > 0 && (
+                <div>
+                  <p className="font-mono text-2xs text-text-muted mb-2 uppercase tracking-wider">
+                    Missing Evidence
+                  </p>
+                  <div className="space-y-1">
+                    {replayData.missing_evidence.map((me, i) => (
+                      <div
+                        key={i}
+                        className="flex flex-wrap items-start gap-3 rounded border border-border bg-bg-600 px-3 py-2"
+                      >
+                        <span
+                          className={`font-mono text-2xs px-2 py-0.5 rounded shrink-0 ${severityChipClass(me.severity)}`}
+                        >
+                          {me.severity}
+                        </span>
+                        <span className="font-mono text-xs text-text-primary shrink-0">
+                          {me.evidence_type}
+                        </span>
+                        <span className="font-mono text-2xs text-text-secondary">
+                          {me.suggested_action}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggested review checks */}
+              {replayData.suggested_review_checks.length > 0 && (
+                <div>
+                  <p className="font-mono text-2xs text-text-muted mb-2 uppercase tracking-wider">
+                    Suggested Review Checks
+                  </p>
+                  <ul className="space-y-1">
+                    {replayData.suggested_review_checks.map((check, i) => (
+                      <li
+                        key={i}
+                        className="font-mono text-2xs text-text-secondary flex gap-2"
+                      >
+                        <span className="text-accent-500 shrink-0">·</span>
+                        {check}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Deterministic / disclaimer note */}
+              <p className="font-mono text-2xs text-text-muted border-t border-border pt-3">
+                {replayData.metadata.no_execution_replay_note}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -7643,6 +7971,9 @@ export default function StrategyDetail() {
 
       {/* M57: Strategy Change Impact Analysis */}
       <ChangeImpactPanel strategyId={strategy.id} />
+
+      {/* M58: Run Replay Pack */}
+      <RunReplayPanel strategyId={strategy.id} runs={strategy.runs} />
     </div>
   );
 }

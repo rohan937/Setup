@@ -352,6 +352,10 @@ export interface StrategyRun {
   universe_snapshot: UniverseSnapshotSummary | null;
   /** M17: lightweight signal evidence — null when no signal snapshot is linked. */
   signal_snapshot: SignalSnapshotSummary | null;
+  /** M58: optional human-readable tag for the run. */
+  run_tag?: string | null;
+  /** M58: lifecycle stage of the run (e.g. "backtest", "shadow", "live"). */
+  stage?: string | null;
 }
 
 export interface StrategyDetail extends Strategy {
@@ -3289,4 +3293,43 @@ export interface StrategyChangeImpactResponse {
   graph_blast_radius: GraphBlastRadiusSummary | null;
   deterministic_summary: string;
   suggested_actions: string[];
+}
+
+// M58 - Run Replay Pack
+export type RunReplayStatus = "complete" | "review" | "incomplete" | "sparse";
+
+export interface RunReplaySection {
+  section_key: string;
+  title: string;
+  summary: string;
+  severity: string | null;
+  evidence_json: Record<string, unknown>;
+}
+
+export interface RunReplayMissingEvidence {
+  evidence_type: string;
+  severity: "low" | "medium" | "high";
+  suggested_action: string;
+}
+
+export interface RunReplayMetadata {
+  replay_id: string;
+  generated_at: string;
+  format: string;
+  strategy_id: string;
+  run_id: string;
+  filename: string;
+  deterministic_note: string;
+  no_execution_replay_note: string;
+}
+
+export interface RunReplayResponse {
+  metadata: RunReplayMetadata;
+  replay_status: RunReplayStatus;
+  replay_completeness_score: number;
+  sections: RunReplaySection[];
+  missing_evidence: RunReplayMissingEvidence[];
+  suggested_review_checks: string[];
+  content: string | null;
+  raw_evidence: Record<string, unknown> | null;
 }

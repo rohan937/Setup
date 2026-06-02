@@ -4380,3 +4380,87 @@ def get_evidence_graph(
         edges=[_es(e) for e in result.edges],
         blast_radius=br,
     )
+
+
+# ---------------------------------------------------------------------------
+# M58 — Run Replay Pack
+# ---------------------------------------------------------------------------
+
+from app.schemas.run_replay import (  # noqa: E402
+    RunReplayMetadata,
+    RunReplayMissingEvidence,
+    RunReplayResponse,
+    RunReplaySection,
+)
+from app.services.run_replay import generate_run_replay_pack  # noqa: E402
+
+
+@router.get(
+    "/strategies/{strategy_id}/runs/{run_id}/replay-pack",
+    response_model=RunReplayResponse,
+)
+def get_run_replay_pack(
+    strategy_id: uuid.UUID,
+    run_id: uuid.UUID,
+    format: str = Query(default="json"),
+    include_raw_json: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    """Generate a deterministic run replay pack for a single strategy run.
+
+    Read-only — no DB writes, no AuditTimelineEvent created.
+    Not investment advice.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data = generate_run_replay_pack(
+            db,
+            strategy_id,
+            run_id,
+            format=format,
+            include_raw_json=include_raw_json,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+
+    return RunReplayResponse(
+        metadata=RunReplayMetadata(
+            replay_id=data.replay_id,
+            generated_at=data.generated_at,
+            format=data.format,
+            strategy_id=data.strategy_id,
+            run_id=data.run_id,
+            filename=data.filename,
+            deterministic_note=data.deterministic_note,
+            no_execution_replay_note=data.no_execution_replay_note,
+        ),
+        replay_status=data.replay_status,
+        replay_completeness_score=data.replay_completeness_score,
+        sections=[
+            RunReplaySection(
+                section_key=s.section_key,
+                title=s.title,
+                summary=s.summary,
+                severity=s.severity,
+                evidence_json=s.evidence_json,
+            )
+            for s in data.sections
+        ],
+        missing_evidence=[
+            RunReplayMissingEvidence(
+                evidence_type=m.evidence_type,
+                severity=m.severity,
+                suggested_action=m.suggested_action,
+            )
+            for m in data.missing_evidence
+        ],
+        suggested_review_checks=data.suggested_review_checks,
+        content=data.content,
+        raw_evidence=data.raw_evidence,
+    )
