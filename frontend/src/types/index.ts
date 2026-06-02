@@ -3187,3 +3187,106 @@ export interface EvidenceSLAEvaluationListResponse {
   items: EvidenceSLAEvaluation[];
   total: number;
 }
+
+// M57 - Strategy Change Impact Analysis
+export type ChangeImpactStatus =
+  | "no_change_detected"
+  | "low"
+  | "medium"
+  | "high"
+  | "requires_review";
+
+export interface ChangeImpactFocusNode {
+  node_id: string;
+  node_type: string;
+  label: string;
+  created_at: string | null;
+  score: number | null;
+  status: string | null;
+  route_hint: string | null;
+  metadata_json: unknown | null;
+}
+
+export interface ImpactedArtifact {
+  artifact_id: string;
+  artifact_type: string;
+  label: string;
+  relationship: string;
+  impact_level: "none" | "low" | "medium" | "high" | "critical";
+  reason: string;
+  current_status: string | null;
+  current_score: number | null;
+  route_hint: string | null;
+  suggested_recheck: string | null;
+}
+
+export interface RecommendedRecheck {
+  recheck_key: string;
+  title: string;
+  priority: "low" | "medium" | "high" | "critical";
+  reason: string;
+  endpoint_hint: string | null;
+  depends_on: string[];
+  status: "recommended" | "required" | "optional" | "not_needed";
+}
+
+export interface AssumptionImpactSummary {
+  has_assumption_change: boolean;
+  positive_change_count: number;
+  weakening_change_count: number;
+  review_change_count: number;
+  key_changes: string[];
+  impact_level: string;
+  suggested_checks: string[];
+}
+
+export interface QualityImpactSummary {
+  quality_impact_count: number;
+  degraded_quality_count: number;
+  missing_quality_count: number;
+  key_quality_findings: string[];
+}
+
+export interface ReadinessImpactSummary {
+  readiness_verdict: string | null;
+  promotion_risk_count: number;
+  failed_regression_count: number;
+  failed_policy_count: number;
+  sla_violation_count: number;
+  open_review_case_count: number;
+  impact_level: string;
+  suggested_checks: string[];
+}
+
+export interface GraphBlastRadiusSummary {
+  available: boolean;
+  upstream_count: number;
+  downstream_count: number;
+  affected_run_count: number;
+  affected_report_count: number;
+  affected_alert_count: number;
+  affected_audit_count: number;
+  affected_readiness: boolean;
+  affected_shadow_monitor: boolean;
+  affected_promotion_gates: boolean;
+  blast_radius_severity: string;
+}
+
+export interface StrategyChangeImpactResponse {
+  strategy_id: string;
+  strategy_name: string;
+  generated_at: string;
+  mode: string;
+  focus_node: ChangeImpactFocusNode | null;
+  impact_status: ChangeImpactStatus;
+  impact_score: number | null;
+  downstream_summary: string;
+  impacted_artifacts: ImpactedArtifact[];
+  recommended_rechecks: RecommendedRecheck[];
+  assumption_impacts: AssumptionImpactSummary;
+  quality_impacts: QualityImpactSummary;
+  readiness_impacts: ReadinessImpactSummary;
+  graph_blast_radius: GraphBlastRadiusSummary | null;
+  deterministic_summary: string;
+  suggested_actions: string[];
+}

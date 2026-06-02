@@ -1263,3 +1263,23 @@ export async function getEvidenceSLAEvaluation(
     `/api/evidence-sla/evaluations/${evaluationId}`,
   );
 }
+
+// M57 - Strategy Change Impact Analysis
+export async function getStrategyChangeImpact(
+  strategyId: string,
+  params?: {
+    mode?: string;
+    focus_node_id?: string;
+    focus_node_type?: string;
+  },
+): Promise<import("@/types").StrategyChangeImpactResponse> {
+  const query = new URLSearchParams();
+  if (params?.mode) query.set("mode", params.mode);
+  if (params?.focus_node_id) query.set("focus_node_id", params.focus_node_id);
+  if (params?.focus_node_type)
+    query.set("focus_node_type", params.focus_node_type);
+  const qs = query.toString();
+  return request<import("@/types").StrategyChangeImpactResponse>(
+    `/api/strategies/${strategyId}/change-impact${qs ? `?${qs}` : ""}`,
+  );
+}

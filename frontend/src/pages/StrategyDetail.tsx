@@ -77,6 +77,9 @@ import type {
   ResearchReviewCase,
   EvidenceSLAPolicy,
   EvidenceSLAEvaluation,
+  StrategyChangeImpactResponse,
+  ImpactedArtifact,
+  RecommendedRecheck,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -119,6 +122,7 @@ import {
   getEvidenceSLAPolicies,
   evaluateEvidenceSLAPolicy,
   getEvidenceSLAEvaluations,
+  getStrategyChangeImpact,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -6474,6 +6478,383 @@ function EvidenceSLAPanel({
   );
 }
 
+// M57 - Strategy Change Impact Analysis
+function ChangeImpactPanel({ strategyId }: { strategyId: string }) {
+  const [impact, setImpact] = useState<StrategyChangeImpactResponse | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState("latest_change");
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+
+  const MODES = [
+    { key: "latest_change", label: "Latest Change" },
+    { key: "config_change", label: "Config Change" },
+    { key: "evidence_change", label: "Evidence Change" },
+  ];
+
+  function impactStatusColor(status: string) {
+    if (status === "requires_review") return "text-red-400";
+    if (status === "high") return "text-red-400";
+    if (status === "medium") return "text-amber-400";
+    if (status === "low") return "text-cyan-400";
+    return "text-zinc-400";
+  }
+
+  function impactLevelBadge(level: string) {
+    const base = "px-1.5 py-0.5 rounded text-xs font-mono font-semibold";
+    if (level === "critical") return `${base} bg-red-900/60 text-red-300`;
+    if (level === "high") return `${base} bg-red-900/40 text-red-400`;
+    if (level === "medium") return `${base} bg-amber-900/40 text-amber-400`;
+    if (level === "low") return `${base} bg-cyan-900/40 text-cyan-400`;
+    return `${base} bg-zinc-800 text-zinc-400`;
+  }
+
+  function priorityBadge(priority: string) {
+    const base = "px-1.5 py-0.5 rounded text-xs font-mono font-semibold";
+    if (priority === "critical") return `${base} bg-red-900/60 text-red-300`;
+    if (priority === "high") return `${base} bg-orange-900/50 text-orange-400`;
+    if (priority === "medium") return `${base} bg-amber-900/40 text-amber-400`;
+    return `${base} bg-zinc-800 text-zinc-400`;
+  }
+
+  async function handleAnalyze() {
+    setLoading(true);
+    setError(null);
+    setImpact(null);
+    try {
+      const result = await getStrategyChangeImpact(strategyId, { mode });
+      setImpact(result);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load change impact");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="border border-zinc-800 rounded-lg p-4 font-mono text-sm bg-zinc-950">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-zinc-100 font-semibold text-base tracking-tight">
+            M57 — Strategy Change Impact Analysis
+          </h3>
+          <p className="text-zinc-500 text-xs mt-0.5">
+            Downstream effects — not trading approval
+          </p>
+        </div>
+        <button
+          onClick={handleAnalyze}
+          disabled={loading}
+          className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-xs font-mono disabled:opacity-50"
+        >
+          {loading ? "Analyzing..." : "Analyze"}
+        </button>
+      </div>
+
+      <div className="flex gap-1 mb-3">
+        {MODES.map((m) => (
+          <button
+            key={m.key}
+            onClick={() => setMode(m.key)}
+            className={`px-2.5 py-1 rounded text-xs font-mono ${
+              mode === m.key
+                ? "bg-cyan-900/50 text-cyan-300 border border-cyan-700"
+                : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div className="text-red-400 text-xs bg-red-900/20 border border-red-800 rounded p-2 mb-3">
+          {error}
+        </div>
+      )}
+
+      {impact && (
+        <div className="space-y-4">
+          {/* Header: status + score + summary */}
+          <div className="bg-zinc-900 border border-zinc-800 rounded p-3 space-y-1.5">
+            <div className="flex items-center gap-3">
+              <span className="text-zinc-400 text-xs">Impact Status:</span>
+              <span
+                className={`font-semibold text-sm uppercase tracking-wide ${impactStatusColor(impact.impact_status)}`}
+              >
+                {impact.impact_status.replace(/_/g, " ")}
+              </span>
+              {impact.impact_score !== null && (
+                <span className="text-zinc-500 text-xs">
+                  score:{" "}
+                  <span className="text-zinc-300">
+                    {impact.impact_score.toFixed(2)}
+                  </span>
+                </span>
+              )}
+            </div>
+            {impact.focus_node && (
+              <div className="text-zinc-400 text-xs">
+                Focus:{" "}
+                <span className="text-zinc-200">{impact.focus_node.label}</span>
+                <span className="text-zinc-600 ml-1">
+                  ({impact.focus_node.node_type})
+                </span>
+              </div>
+            )}
+            <div className="text-zinc-300 text-xs leading-relaxed">
+              {impact.deterministic_summary}
+            </div>
+            {impact.downstream_summary && (
+              <div className="text-zinc-500 text-xs">
+                {impact.downstream_summary}
+              </div>
+            )}
+          </div>
+
+          {/* 3-column grid: assumptions / quality / readiness */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+              <div className="text-zinc-400 text-xs mb-1 font-semibold">
+                Assumption Impacts
+              </div>
+              <div className="text-zinc-300 text-xs space-y-0.5">
+                <div>
+                  Weakening:{" "}
+                  <span
+                    className={
+                      impact.assumption_impacts.weakening_change_count > 0
+                        ? "text-amber-400 font-semibold"
+                        : "text-zinc-400"
+                    }
+                  >
+                    {impact.assumption_impacts.weakening_change_count}
+                  </span>
+                </div>
+                <div>
+                  Positive: {impact.assumption_impacts.positive_change_count}
+                </div>
+                <div className="text-zinc-500 text-xs capitalize">
+                  {impact.assumption_impacts.impact_level}
+                </div>
+              </div>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+              <div className="text-zinc-400 text-xs mb-1 font-semibold">
+                Quality Impacts
+              </div>
+              <div className="text-zinc-300 text-xs space-y-0.5">
+                <div>
+                  Degraded:{" "}
+                  <span
+                    className={
+                      impact.quality_impacts.degraded_quality_count > 0
+                        ? "text-amber-400 font-semibold"
+                        : "text-zinc-400"
+                    }
+                  >
+                    {impact.quality_impacts.degraded_quality_count}
+                  </span>
+                </div>
+                <div>
+                  Missing: {impact.quality_impacts.missing_quality_count}
+                </div>
+                <div>Total: {impact.quality_impacts.quality_impact_count}</div>
+              </div>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+              <div className="text-zinc-400 text-xs mb-1 font-semibold">
+                Readiness Impacts
+              </div>
+              <div className="text-zinc-300 text-xs space-y-0.5">
+                {impact.readiness_impacts.readiness_verdict && (
+                  <div className="text-zinc-200 font-semibold capitalize">
+                    {impact.readiness_impacts.readiness_verdict}
+                  </div>
+                )}
+                <div>
+                  Promo risks: {impact.readiness_impacts.promotion_risk_count}
+                </div>
+                <div>
+                  Failed regs:{" "}
+                  {impact.readiness_impacts.failed_regression_count}
+                </div>
+                <div className="text-zinc-500 text-xs capitalize">
+                  {impact.readiness_impacts.impact_level}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Graph blast radius */}
+          {impact.graph_blast_radius?.available && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+              <div className="text-zinc-400 text-xs font-semibold mb-2">
+                Graph Blast Radius —{" "}
+                <span className="capitalize">
+                  {impact.graph_blast_radius.blast_radius_severity}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
+                <div className="text-zinc-400">
+                  Upstream:{" "}
+                  <span className="text-zinc-200">
+                    {impact.graph_blast_radius.upstream_count}
+                  </span>
+                </div>
+                <div className="text-zinc-400">
+                  Downstream:{" "}
+                  <span className="text-zinc-200">
+                    {impact.graph_blast_radius.downstream_count}
+                  </span>
+                </div>
+                <div className="text-zinc-400">
+                  Affected runs:{" "}
+                  <span className="text-zinc-200">
+                    {impact.graph_blast_radius.affected_run_count}
+                  </span>
+                </div>
+                <div className="text-zinc-400">
+                  Reports:{" "}
+                  <span className="text-zinc-200">
+                    {impact.graph_blast_radius.affected_report_count}
+                  </span>
+                </div>
+                <div className="text-zinc-400">
+                  Audits:{" "}
+                  <span className="text-zinc-200">
+                    {impact.graph_blast_radius.affected_audit_count}
+                  </span>
+                </div>
+                <div className="text-zinc-400">
+                  Alerts:{" "}
+                  <span className="text-zinc-200">
+                    {impact.graph_blast_radius.affected_alert_count}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Recommended rechecks */}
+          {impact.recommended_rechecks.length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+              <div className="text-zinc-400 text-xs font-semibold mb-2">
+                Recommended Rechecks
+              </div>
+              <div className="space-y-1.5">
+                {impact.recommended_rechecks.map((r: RecommendedRecheck) => (
+                  <div
+                    key={r.recheck_key}
+                    className={`flex items-start gap-2 text-xs p-1.5 rounded ${
+                      r.status === "required"
+                        ? "bg-red-900/20 border border-red-900/40"
+                        : "bg-zinc-800/50"
+                    }`}
+                  >
+                    <span className={priorityBadge(r.priority)}>
+                      {r.priority}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-zinc-200 font-semibold">
+                        {r.title}
+                      </div>
+                      <div className="text-zinc-500 mt-0.5">{r.reason}</div>
+                    </div>
+                    {r.status === "required" && (
+                      <span className="text-red-400 text-xs font-semibold shrink-0">
+                        REQUIRED
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Impacted artifacts (collapsible) */}
+          {impact.impacted_artifacts.length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+              <button
+                onClick={() => setArtifactsOpen((v) => !v)}
+                className="flex items-center gap-2 w-full text-left text-xs text-zinc-400 font-semibold"
+              >
+                <span>{artifactsOpen ? "▾" : "▸"}</span>
+                Impacted Artifacts ({impact.impacted_artifacts.length})
+              </button>
+              {artifactsOpen && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-zinc-500 border-b border-zinc-800">
+                        <th className="text-left py-1 pr-3 font-normal">
+                          Type
+                        </th>
+                        <th className="text-left py-1 pr-3 font-normal">
+                          Label
+                        </th>
+                        <th className="text-left py-1 pr-3 font-normal">
+                          Impact
+                        </th>
+                        <th className="text-left py-1 font-normal">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {impact.impacted_artifacts.map((a: ImpactedArtifact) => (
+                        <tr
+                          key={a.artifact_id}
+                          className="border-b border-zinc-800/50"
+                        >
+                          <td className="py-1 pr-3 text-zinc-500">
+                            {a.artifact_type}
+                          </td>
+                          <td className="py-1 pr-3 text-zinc-200">
+                            {a.label}
+                          </td>
+                          <td className="py-1 pr-3">
+                            <span className={impactLevelBadge(a.impact_level)}>
+                              {a.impact_level}
+                            </span>
+                          </td>
+                          <td className="py-1 text-zinc-400">{a.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Suggested actions */}
+          {impact.suggested_actions.length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
+              <div className="text-zinc-400 text-xs font-semibold mb-2">
+                Suggested Actions
+              </div>
+              <ul className="space-y-1">
+                {impact.suggested_actions.map((action, i) => (
+                  <li key={i} className="text-zinc-300 text-xs flex gap-2">
+                    <span className="text-zinc-600 shrink-0">{i + 1}.</span>
+                    {action}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="text-zinc-600 text-xs text-right">
+            Generated: {new Date(impact.generated_at).toLocaleString()} · mode:{" "}
+            {impact.mode}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -7259,6 +7640,9 @@ export default function StrategyDetail() {
         slaEvaluations={slaEvaluations}
         setSlaEvaluations={setSlaEvaluations}
       />
+
+      {/* M57: Strategy Change Impact Analysis */}
+      <ChangeImpactPanel strategyId={strategy.id} />
     </div>
   );
 }

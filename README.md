@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1478 tests, 1 skipped)
+│   └── tests/              Pytest tests (1519 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,67 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M56: Evidence SLA Monitor v1
+## Current milestone — M57: Strategy Change Impact Analysis v1
+
+**Status:** complete
+
+### What was built
+- Service `change_impact.py` (read-only, no new DB tables) — `analyze_change_impact(strategy_id, analysis_mode, changed_artifact_type, changed_artifact_id, db)` with 4 analysis modes. No AI, no external APIs. Fully deterministic. Not trading approval.
+- Schemas `change_impact.py` — 8 Pydantic schemas: `ImpactedArtifact`, `RecheckItem`, `AssumptionImpact`, `QualityImpact`, `ReadinessImpact`, `GraphBlastRadius`, `ChangeImpactSummary`, `ChangeImpactResponse`.
+- `GET /api/strategies/{id}/change-impact` endpoint added to `strategies.py` router.
+- Frontend `ChangeImpactPanel` in `StrategyDetail.tsx` — 4-mode selector, impact score strip, impacted artifacts table, rechecks panel, assumption/quality/readiness impact panels, graph blast radius section, suggested checks.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/strategies/{id}/change-impact | Analyze change impact (4 modes) |
+
+### Analysis modes
+| Mode | Description |
+|------|-------------|
+| `full_strategy` | Full strategy impact analysis across all evidence |
+| `config_change` | Impact of a config snapshot change |
+| `run_added` | Impact of a new strategy run being added |
+| `evidence_artifact` | Impact of a specific evidence artifact change |
+
+### Downstream impact mapping
+- **Impacted artifacts**: surfaces runs, backtest audits, reliability scores, reports, readiness scorecards, shadow monitors, and promotion gates that may be affected by the change.
+- **Rechecks**: deterministic list of evidence re-checks recommended in response to the detected change.
+- **Assumption impacts**: identifies assumption categories that may be weakened or require re-evaluation.
+- **Quality impacts**: surfaces evidence quality dimensions (dataset health, signal quality, backtest trust, evidence coverage) that are affected.
+- **Readiness impacts**: maps how the change affects readiness verdict, scorecard dimensions, and promotion gate verdicts.
+- **Graph blast radius**: BFS over the evidence dependency graph to determine upstream/downstream nodes affected; severity: `high` (3+ runs affected), `medium` (1+ run/audit/report), `low` (any downstream), `none`.
+
+### Impact scoring
+- Starts at 100.
+- Critical impacted artifacts: −20 each (capped).
+- High impacted artifacts: −10 each (capped).
+- Medium impacted artifacts: −5 each (capped).
+- Weakening assumption impacts: −15 each (capped).
+- Degraded quality impacts: −10 each (capped).
+- Failed readiness/regression/policy/SLA impacts: −15 each (capped).
+- Graph blast severity high: −20; medium: −10; low: −5.
+
+### Language constraints
+Not trading approval. Language: "may require recheck," "evidence obligation affected," "downstream artifact," "blast radius." Never: "strategy failed," "incident," "do not trade."
+
+### Deployment note
+Deployment readiness is intentionally deferred to M65. M57–M64 remain advanced product/platform features.
+
+### What M57 does not build
+- Automatic reruns or re-evaluation triggers
+- New DB tables or persistent impact records
+- Background scheduling or polling
+- Notification delivery (Slack, email, PagerDuty)
+
+- **19 new backend M57 tests** (`tests/test_change_impact_m57.py`). All 19 passed on first run. No fixes needed.
+- **Backend total: 1519 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (built in 875ms). One non-fatal JS chunk size warning (629.01 kB) — not an error.
+- No external APIs. Deterministic. Not trading approval.
+
+---
+
+## Previously completed — M56: Evidence SLA Monitor v1
 
 **Status:** complete
 
