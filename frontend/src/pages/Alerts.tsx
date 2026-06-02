@@ -28,7 +28,32 @@ const RULE_LABEL: Record<string, string> = {
   data_quality_issue_high_or_critical: "Data Quality",
   backtest_issue_high_or_critical: "Backtest Issue",
   strategy_run_missing_dataset_evidence: "Missing Evidence",
+  evidence_coverage_below_threshold: "Evidence Coverage",
+  strategy_health_review_or_critical: "Strategy Health",
+  reliability_score_deteriorating: "Reliability Trend",
+  data_health_deteriorating: "Data Health Trend",
+  signal_quality_deteriorating: "Signal Quality Trend",
+  backtest_trust_deteriorating: "Backtest Trust Trend",
+  stale_strategy_run: "Stale Run",
+  repeated_failed_ingestion: "Ingestion Failures",
+  missing_signal_evidence: "Missing Signal",
+  missing_universe_evidence: "Missing Universe",
+  missing_config_evidence: "Missing Config",
 };
+
+const M33_RULE_TYPES = new Set([
+  "evidence_coverage_below_threshold",
+  "strategy_health_review_or_critical",
+  "reliability_score_deteriorating",
+  "data_health_deteriorating",
+  "signal_quality_deteriorating",
+  "backtest_trust_deteriorating",
+  "stale_strategy_run",
+  "repeated_failed_ingestion",
+  "missing_signal_evidence",
+  "missing_universe_evidence",
+  "missing_config_evidence",
+]);
 
 function SeverityDot({ severity }: { severity: string }) {
   return (
@@ -78,6 +103,9 @@ function AlertRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const suggestedCheck = (alert.metadata_json as any)?.suggested_check as string | undefined;
 
   async function handleTransition(newStatus: string) {
     setTransitioning(true);
@@ -139,6 +167,13 @@ function AlertRow({
         {expanded && alert.description && (
           <p className="mt-1.5 text-xs text-text-secondary leading-relaxed">
             {alert.description}
+          </p>
+        )}
+
+        {/* Suggested check from metadata */}
+        {suggestedCheck && (
+          <p className="font-mono text-2xs text-accent-500/70 mt-0.5 italic">
+            {suggestedCheck}
           </p>
         )}
 
@@ -232,6 +267,17 @@ const RULE_TYPE_OPTIONS = [
   { value: "data_quality_issue_high_or_critical", label: "Data Quality" },
   { value: "backtest_issue_high_or_critical", label: "Backtest Issue" },
   { value: "strategy_run_missing_dataset_evidence", label: "Missing Evidence" },
+  { value: "evidence_coverage_below_threshold", label: "Evidence Coverage" },
+  { value: "strategy_health_review_or_critical", label: "Strategy Health" },
+  { value: "reliability_score_deteriorating", label: "Reliability Trend" },
+  { value: "data_health_deteriorating", label: "Data Health Trend" },
+  { value: "signal_quality_deteriorating", label: "Signal Quality Trend" },
+  { value: "backtest_trust_deteriorating", label: "Backtest Trust Trend" },
+  { value: "stale_strategy_run", label: "Stale Run" },
+  { value: "repeated_failed_ingestion", label: "Ingestion Failures" },
+  { value: "missing_signal_evidence", label: "Missing Signal" },
+  { value: "missing_universe_evidence", label: "Missing Universe" },
+  { value: "missing_config_evidence", label: "Missing Config" },
 ];
 
 export default function Alerts() {
@@ -323,6 +369,10 @@ export default function Alerts() {
 
   const hasMore = response !== null && items.length < response.total;
 
+  // Count evidence quality alerts (M33 rule types) when no rule_type filter is active
+  const evidenceQualityCount =
+    !ruleType ? items.filter((a) => M33_RULE_TYPES.has(a.rule_type)).length : 0;
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -354,6 +404,13 @@ export default function Alerts() {
       {error && (
         <div className="rounded border border-red-800 bg-red-900/20 px-4 py-3 font-mono text-xs text-red-300">
           {error}
+        </div>
+      )}
+
+      {/* Evidence quality banner */}
+      {!loading && evidenceQualityCount > 0 && (
+        <div className="rounded border border-accent-700/40 bg-accent-900/20 px-4 py-2 font-mono text-2xs text-accent-400">
+          {evidenceQualityCount} evidence quality alert{evidenceQualityCount !== 1 ? "s" : ""}. Run evidence checks on Strategy Detail pages.
         </div>
       )}
 

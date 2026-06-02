@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1013 tests, 1 skipped)
+│   └── tests/              Pytest tests (1024 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,73 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M32: Multi-Strategy Portfolio View v1
+## Current milestone — M33: Evidence Quality Alerts v1
+
+**Status: complete.**
+
+### M33 deliverables
+
+- **11 new `AlertRuleType` values** added to `backend/app/core/constants.py`:
+  `evidence_coverage_below_threshold`, `strategy_health_review_or_critical`,
+  `reliability_score_deteriorating`, `data_health_deteriorating`,
+  `signal_quality_deteriorating`, `backtest_trust_deteriorating`,
+  `stale_strategy_run`, `missing_signal_evidence`, `missing_universe_evidence`,
+  `missing_config_evidence`, `repeated_failed_ingestion`.
+
+- **New function `run_evidence_quality_alerts(organization_id, db)`** in
+  `backend/app/services/alerts.py`, integrated into the existing
+  `run_alerts_generation` entry point so it runs alongside prior M11 alerts.
+
+- **Alert checks implemented** (all deterministic, no AI, no external calls):
+  - `evidence_coverage_below_threshold` — coverage < 50 → high; coverage < 70 → medium.
+  - `strategy_health_review_or_critical` — critical health status → critical severity;
+    review/watch health status → high severity.
+  - `reliability_score_deteriorating` — 2-point delta ≤ −15 → high; delta ≤ −7 → medium.
+  - `data_health_deteriorating` — latest data health < 50 → high; or 2-point trend
+    delta < −2 → medium.
+  - `signal_quality_deteriorating` — same 2-point delta pattern as data health.
+  - `backtest_trust_deteriorating` — trust score < 40 → critical; trust score < 60 → high;
+    2-point trend deteriorating → medium.
+  - `stale_strategy_run` — no runs at all (and strategy has had runs) → medium;
+    last run > 90 days → medium; last run > 30 days → low.
+  - `missing_signal_evidence` / `missing_universe_evidence` / `missing_config_evidence` —
+    triggered only when the strategy has at least one logged run.
+  - `repeated_failed_ingestion` — 3+ failed ingestion batches in the last 7 days → medium;
+    5+ → high.
+
+- **Alert metadata**: each alert includes `metadata_json` with `evidence_json` (rule-specific
+  context values) and `suggested_check` (deterministic action hint, no AI, not investment advice).
+
+- **Alert language examples**: "Evidence coverage critically low", "Strategy health requires
+  review", "Reliability score deteriorated", "Data health score low", "Signal quality
+  deteriorating", "Backtest trust score critically low", "Strategy has no recent runs",
+  "Strategy is missing signal evidence", "Repeated ingestion failures detected".
+
+- **Deduplication**: same pattern as existing M11 alerts — no duplicate open/acknowledged/snoozed
+  alert for the same `org + rule_type + source_type + source_id` combination.
+
+- **Frontend — `AlertRuleType`** (`frontend/src/types/index.ts`) updated with all 11 new values.
+
+- **Frontend — `Alerts.tsx`**: `suggested_check` field from `metadata_json` displayed per alert
+  row; `RULE_LABEL_MAP` extended with human-readable labels for all 11 new rule types.
+
+- **11 new backend M33 tests** (`tests/test_evidence_quality_alerts_m33.py`):
+  each of the 11 alert rule types covered with at least one passing test.
+
+- **Backend total: 1024 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (62 modules, built in 762ms).
+- No external APIs. No webhooks. Not investment advice.
+
+### What M33 does NOT build (by design)
+
+- No email or Slack notifications.
+- No AI-detected or ML-detected alerts.
+- No live market data alerts.
+- No broker or execution alerts.
+
+---
+
+## Previously completed — M32: Multi-Strategy Portfolio View v1
 
 **Status: complete.**
 

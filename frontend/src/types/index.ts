@@ -711,7 +711,18 @@ export type AlertRuleType =
   | "backtest_trust_below_threshold"
   | "data_quality_issue_high_or_critical"
   | "backtest_issue_high_or_critical"
-  | "strategy_run_missing_dataset_evidence";
+  | "strategy_run_missing_dataset_evidence"
+  | "evidence_coverage_below_threshold"
+  | "strategy_health_review_or_critical"
+  | "reliability_score_deteriorating"
+  | "data_health_deteriorating"
+  | "signal_quality_deteriorating"
+  | "backtest_trust_deteriorating"
+  | "stale_strategy_run"
+  | "repeated_failed_ingestion"
+  | "missing_signal_evidence"
+  | "missing_universe_evidence"
+  | "missing_config_evidence";
 
 export interface Alert {
   id: string;

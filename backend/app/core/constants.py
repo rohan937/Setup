@@ -134,6 +134,18 @@ class AlertRuleType(StrEnum):
     data_quality_issue_high_or_critical = "data_quality_issue_high_or_critical"
     backtest_issue_high_or_critical = "backtest_issue_high_or_critical"
     strategy_run_missing_dataset_evidence = "strategy_run_missing_dataset_evidence"
+    # M33: evidence quality checks
+    evidence_coverage_below_threshold = "evidence_coverage_below_threshold"
+    strategy_health_review_or_critical = "strategy_health_review_or_critical"
+    reliability_score_deteriorating = "reliability_score_deteriorating"
+    data_health_deteriorating = "data_health_deteriorating"
+    signal_quality_deteriorating = "signal_quality_deteriorating"
+    backtest_trust_deteriorating = "backtest_trust_deteriorating"
+    stale_strategy_run = "stale_strategy_run"
+    repeated_failed_ingestion = "repeated_failed_ingestion"
+    missing_signal_evidence = "missing_signal_evidence"
+    missing_universe_evidence = "missing_universe_evidence"
+    missing_config_evidence = "missing_config_evidence"
 
 
 class AlertStatus(StrEnum):
