@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1181 tests, 1 skipped)
+│   └── tests/              Pytest tests (1199 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,91 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M40: Config Snapshot Diff Engine v2
+## Current milestone — M41: Strategy Assumption Health Summary
+
+**Status: complete.**
+
+### M41 deliverables
+
+- **New service `backend/app/services/assumption_health.py`** — `compute_assumption_health(strategy_id, db)`
+  aggregates evidence from strategy runs, backtest audits, config snapshots, and M40 config diffs into a
+  per-category assumption health summary. No AI, no external APIs, deterministic.
+
+- **7 assumption categories** scored independently:
+  - Transaction Costs
+  - Slippage
+  - Fill Realism
+  - Borrow/Shorting
+  - Liquidity/Capacity
+  - Risk Controls
+  - Data Evidence Linkage
+
+- **Category scoring** (per category):
+  - Base score: 70 if any evidence exists for that category; null if no evidence.
+  - Positive evidence adds +10 per item, capped at 3 positive items (+30 max).
+  - Weakening config changes (from M40 diff synthesis) subtract −20 each.
+  - Backtest audit issues subtract −20 per high-severity issue, −10 per medium-severity issue.
+  - Review items (suggested checks) subtract −5 each.
+  - Final score clamped to 0–100.
+
+- **Category status thresholds**:
+  - `strong`: score >= 85
+  - `acceptable`: score >= 70
+  - `review`: score >= 50
+  - `weak`: score < 50
+  - `missing`: null (no evidence)
+
+- **Overall weighted score** (null if fewer than 3 categories are scored):
+  - Transaction Costs: 20%
+  - Slippage: 15%
+  - Fill Realism: 20%
+  - Borrow/Shorting: 10%
+  - Liquidity/Capacity: 15%
+  - Risk Controls: 10%
+  - Data Evidence Linkage: 10%
+
+- **Config diff synthesis from M40**: compares the latest two config snapshots using
+  `compare_config_snapshots_enriched()`. Surfaces positive/weakening/review changes and
+  `key_assumption_changes` per category. No config snapshots → synthesis is skipped gracefully.
+
+- **Backtest audit synthesis from M36**: pulls the latest backtest audit for the strategy and extracts
+  `trust_score`, `cost_fragility_level`, `fill_realism_level`, `largest_penalty_category`, and
+  top improvement checks. No audit → synthesis is skipped gracefully.
+
+- **New endpoint** `GET /api/strategies/{id}/assumption-health`:
+  - Read-only. No `AuditTimelineEvent` created.
+  - 404 for unknown strategy.
+  - Returns `AssumptionHealthResponse`.
+
+- **New schemas** `backend/app/schemas/assumption_health.py`:
+  `AssumptionCategoryScore`, `AssumptionHealthSummary`, `ConfigDiffSynthesis`,
+  `BacktestAuditSynthesis`, `AssumptionHealthResponse`.
+
+- **Frontend — `AssumptionHealthPanel`** in `StrategyDetail.tsx`:
+  - Overall assumption health score chip with weighted score and overall status badge.
+  - Category scorecard grid — one card per assumption category showing score, status badge,
+    evidence count, and top issue.
+  - Config changes section — lists key assumption changes with impact level badges (positive /
+    weakening / review) sourced from M40 diff synthesis.
+  - Backtest synthesis section — trust score, cost fragility level, fill realism level,
+    largest penalty category, and top improvement checks from M36 audit synthesis.
+  - Suggested checks panel — deduplicated list of actionable checks across all categories.
+
+- **17 new backend M41 tests** (`tests/test_assumption_health_m41.py`).
+- **Backend total: 1199 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in ~700ms).
+- No external APIs. Deterministic. Not investment advice.
+
+### What M41 does NOT build (by design)
+
+- No AI-generated assumption assessments or automated assumption repair.
+- No policy engine or compliance rule enforcement.
+- No live execution validation or real-time fill monitoring.
+- No cross-strategy assumption benchmarking or industry comparisons.
+
+---
+
+## Previously completed — M40: Config Snapshot Diff Engine v2
 
 **Status: complete.**
 

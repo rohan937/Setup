@@ -73,6 +73,7 @@ import type {
   SignalQualityDrilldownResponse,
   UniverseCoverageAnalysisResponse,
   ConfigSnapshotComparisonV2Response,
+  StrategyAssumptionHealthResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -864,5 +865,17 @@ export async function compareConfigSnapshotsV2(
 ): Promise<ConfigSnapshotComparisonV2Response> {
   return request<ConfigSnapshotComparisonV2Response>(
     `/api/strategies/${strategyId}/config-snapshots/compare-v2?snapshot_a_id=${snapshotAId}&snapshot_b_id=${snapshotBId}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M41: Assumption Health
+// ---------------------------------------------------------------------------
+
+export async function getStrategyAssumptionHealth(
+  strategyId: string,
+): Promise<StrategyAssumptionHealthResponse> {
+  return request<StrategyAssumptionHealthResponse>(
+    `/api/strategies/${strategyId}/assumption-health`,
   );
 }

@@ -2259,3 +2259,57 @@ export interface ConfigSnapshotComparisonV2Response {
   highlighted_changes: string[];
   suggested_checks: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M41: Assumption Health
+// ---------------------------------------------------------------------------
+
+export interface AssumptionCategoryScorecard {
+  category_key: string;
+  title: string;
+  status: string;
+  score: number | null;
+  evidence_count: number;
+  positive_evidence: string[];
+  review_items: string[];
+  weakening_changes: string[];
+  suggested_checks: string[];
+}
+
+export interface ConfigDiffAssumptionSummary {
+  snapshot_a_label: string | null;
+  snapshot_b_label: string | null;
+  total_changes: number;
+  positive_change_count: number;
+  weakening_change_count: number;
+  review_change_count: number;
+  key_assumption_changes: Record<string, unknown>[];
+  warning: string | null;
+}
+
+export interface BacktestAuditAssumptionSummary {
+  backtest_audit_id: string;
+  trust_score: number;
+  overall_status: string;
+  cost_fragility_level: string | null;
+  fill_realism_level: string | null;
+  largest_penalty_category: string | null;
+  top_improvement_checks: unknown[];
+}
+
+export interface StrategyAssumptionHealthResponse {
+  strategy_id: string;
+  strategy_name: string;
+  status: string;
+  deterministic_summary: string;
+  overall_assumption_score: number | null;
+  generated_at: string;
+  category_scorecards: AssumptionCategoryScorecard[];
+  latest_config_diff_summary: ConfigDiffAssumptionSummary | null;
+  latest_backtest_audit_summary: BacktestAuditAssumptionSummary | null;
+  key_assumption_changes: Record<string, unknown>[];
+  weakening_change_count: number;
+  positive_change_count: number;
+  review_change_count: number;
+  suggested_checks: string[];
+}

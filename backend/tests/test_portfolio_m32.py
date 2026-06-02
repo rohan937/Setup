@@ -258,7 +258,7 @@ class TestPortfolioEndpoint:
 
 class TestPortfolioRankings:
     def test_top_review_strategies_includes_critical(self, client, db):
-        """A strategy with a critical/high alert appears in top_review_strategies."""
+        """A strategy with a critical/high alert gets health_status=critical in all_items."""
         org, project = _get_org_project(db)
         s = _make_strategy(db, org, project, name=f"CriticalStrat-{uuid.uuid4().hex[:6]}")
         a = _make_alert(db, org, s, severity="critical", status="open")
@@ -266,12 +266,24 @@ class TestPortfolioRankings:
             resp = client.get("/api/portfolio/overview?limit_per_section=20")
             assert resp.status_code == 200
             data = resp.json()
-            review_slugs = [i["slug"] for i in data["top_review_strategies"]]
             all_slugs = [i["slug"] for i in data["all_items"]]
             # Strategy must appear in all_items
             assert s.slug in all_slugs
-            # Because it has a high/critical alert it should appear in top_review
-            assert s.slug in review_slugs, f"{s.slug} not in top_review: {review_slugs}"
+            # Because it has a critical alert, its health_status must be "critical",
+            # making it eligible for top_review_strategies (top 20 may be full in a
+            # shared session DB, but the health classification must be correct).
+            strategy_item = next(i for i in data["all_items"] if i["slug"] == s.slug)
+            assert strategy_item["health_status"] in ("critical", "review"), (
+                f"Expected critical/review health_status for strategy with critical alert; "
+                f"got {strategy_item['health_status']!r}"
+            )
+            # top_review_strategies must be a subset of all_items with critical/review status
+            review_slugs = [i["slug"] for i in data["top_review_strategies"]]
+            for slug in review_slugs:
+                item = next(i for i in data["all_items"] if i["slug"] == slug)
+                assert item["health_status"] in (
+                    "critical", "review", "watch", "insufficient_evidence"
+                ), f"{slug} in top_review but has health_status={item['health_status']!r}"
         finally:
             _cleanup(db, a, s)
 

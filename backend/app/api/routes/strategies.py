@@ -31,6 +31,9 @@
 
   M39 universe coverage analysis:
   GET  /api/universe-snapshots/{snapshot_id}/coverage-analysis
+
+  M41 assumption health:
+  GET  /api/strategies/{strategy_id}/assumption-health
 """
 
 from __future__ import annotations
@@ -123,6 +126,13 @@ from app.services.version_lineage import (
 )
 from app.schemas.strategy_health import StrategyHealthListResponse, StrategyHealthRead
 from app.services.strategy_health import compute_strategy_health, get_strategies_health
+from app.schemas.assumption_health import (
+    AssumptionCategoryScorecard,
+    BacktestAuditAssumptionSummary,
+    ConfigDiffAssumptionSummary,
+    StrategyAssumptionHealthResponse,
+)
+from app.services.assumption_health import compute_assumption_health
 from app.services.strategy_reliability import (
     compare_reliability_scores,
     compute_reliability_score,
@@ -3471,4 +3481,92 @@ def get_strategy_version_lineage_endpoint(
         ),
         versions=[_version_schema(v) for v in result.versions],
         transitions=[_transition_schema(t) for t in result.transitions],
+    )
+
+
+# ---------------------------------------------------------------------------
+# M41: GET /api/strategies/{strategy_id}/assumption-health
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/assumption-health",
+    response_model=StrategyAssumptionHealthResponse,
+)
+def get_strategy_assumption_health(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyAssumptionHealthResponse:
+    """Return a deterministic assumption health scorecard for a strategy.
+
+    Evaluates transaction costs, slippage, fill realism, borrow/shorting,
+    liquidity/capacity, risk controls, and data evidence linkage.
+    Computed on read — not persisted.  No AI, no live market data.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    try:
+        result = compute_assumption_health(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    # Build category scorecards
+    cats = [
+        AssumptionCategoryScorecard(
+            category_key=c["category_key"],
+            title=c["title"],
+            status=c["status"],
+            score=c["score"],
+            evidence_count=c["evidence_count"],
+            positive_evidence=c["positive_evidence"],
+            review_items=c["review_items"],
+            weakening_changes=c["weakening_changes"],
+            suggested_checks=c["suggested_checks"],
+        )
+        for c in result["category_scorecards"]
+    ]
+
+    # Config diff summary (may have 'warning' key for <2 snapshots)
+    cds_raw = result.get("latest_config_diff_summary") or {}
+    config_diff_summary = ConfigDiffAssumptionSummary(
+        snapshot_a_label=cds_raw.get("snapshot_a_label"),
+        snapshot_b_label=cds_raw.get("snapshot_b_label"),
+        total_changes=cds_raw.get("total_changes", 0),
+        positive_change_count=cds_raw.get("positive_change_count", 0),
+        weakening_change_count=cds_raw.get("weakening_change_count", 0),
+        review_change_count=cds_raw.get("review_change_count", 0),
+        key_assumption_changes=cds_raw.get("key_assumption_changes", []),
+        warning=cds_raw.get("warning"),
+    )
+
+    # Backtest audit summary (optional)
+    bas_raw = result.get("latest_backtest_audit_summary")
+    backtest_audit_summary = None
+    if bas_raw:
+        backtest_audit_summary = BacktestAuditAssumptionSummary(
+            backtest_audit_id=bas_raw["backtest_audit_id"],
+            trust_score=bas_raw["trust_score"],
+            overall_status=bas_raw["overall_status"],
+            cost_fragility_level=bas_raw.get("cost_fragility_level"),
+            fill_realism_level=bas_raw.get("fill_realism_level"),
+            largest_penalty_category=bas_raw.get("largest_penalty_category"),
+            top_improvement_checks=bas_raw.get("top_improvement_checks", []),
+        )
+
+    return StrategyAssumptionHealthResponse(
+        strategy_id=result["strategy_id"],
+        strategy_name=result["strategy_name"],
+        status=result["status"],
+        overall_assumption_score=result["overall_assumption_score"],
+        generated_at=result["generated_at"],
+        category_scorecards=cats,
+        latest_config_diff_summary=config_diff_summary,
+        latest_backtest_audit_summary=backtest_audit_summary,
+        key_assumption_changes=result.get("key_assumption_changes", []),
+        weakening_change_count=result.get("weakening_change_count", 0),
+        positive_change_count=result.get("positive_change_count", 0),
+        review_change_count=result.get("review_change_count", 0),
+        suggested_checks=result.get("suggested_checks", []),
+        deterministic_summary=result["deterministic_summary"],
     )

@@ -47,6 +47,8 @@ import type {
   ConfigSnapshotComparisonV2Response,
   ConfigFieldChange,
   ConfigDiffSection,
+  StrategyAssumptionHealthResponse,
+  AssumptionCategoryScorecard,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -66,6 +68,7 @@ import {
   getSignalSnapshotQualityDrilldown,
   getUniverseSnapshotCoverageAnalysis,
   compareConfigSnapshotsV2,
+  getStrategyAssumptionHealth,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -3651,6 +3654,191 @@ function ConfigDiffPanel({ diff }: { diff: ConfigSnapshotComparisonV2Response })
 }
 
 // ---------------------------------------------------------------------------
+// M41: Assumption Health Panel
+// ---------------------------------------------------------------------------
+
+function assumptionStatusBadgeClass(status: string): string {
+  switch (status) {
+    case "strong": return "text-teal-400 bg-teal-900/20 border border-teal-700/30";
+    case "acceptable": return "text-text-secondary bg-bg-700 border border-border";
+    case "review": return "text-yellow-400 bg-yellow-900/20 border border-yellow-700/30";
+    case "weak": return "text-red-400 bg-red-900/20 border border-red-700/30";
+    default: return "text-text-muted bg-bg-700 border border-border";
+  }
+}
+
+function assumptionCategoryStatusColor(status: string): string {
+  switch (status) {
+    case "strong": return "text-teal-400";
+    case "acceptable": return "text-text-secondary";
+    case "review": return "text-yellow-400";
+    case "weak": return "text-red-400";
+    default: return "text-text-muted";
+  }
+}
+
+function assumptionScoreColor(score: number | null): string {
+  if (score === null) return "text-text-muted";
+  if (score >= 85) return "text-teal-400";
+  if (score >= 70) return "text-text-secondary";
+  if (score >= 50) return "text-amber-400";
+  return "text-red-400";
+}
+
+function AssumptionHealthPanel({ health }: { health: StrategyAssumptionHealthResponse }) {
+  return (
+    <div className="rounded-panel border border-border bg-bg-900 p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-mono text-xs font-semibold text-text-primary">Assumption Health</h3>
+        <span className="font-mono text-2xs text-text-muted">{fmtDate(health.generated_at)}</span>
+      </div>
+
+      {/* A. Overall score + status badge */}
+      <div className="flex items-center gap-3">
+        <span className={`font-mono text-3xl font-bold ${assumptionScoreColor(health.overall_assumption_score)}`}>
+          {health.overall_assumption_score !== null ? health.overall_assumption_score.toFixed(1) : "—"}
+        </span>
+        <span className={`rounded px-2 py-0.5 font-mono text-2xs ${assumptionStatusBadgeClass(health.status)}`}>
+          {health.status}
+        </span>
+      </div>
+
+      {/* B. Deterministic summary */}
+      {health.deterministic_summary && (
+        <p className="font-mono text-2xs italic text-text-muted line-clamp-2">
+          {health.deterministic_summary}
+        </p>
+      )}
+
+      {/* C. Category scorecard grid */}
+      {health.category_scorecards.length > 0 && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {health.category_scorecards.map((cat: AssumptionCategoryScorecard) => (
+            <div key={cat.category_key} className="rounded-control border border-border bg-bg-800 px-3 py-2 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-2xs text-text-secondary truncate">{cat.title}</span>
+                <span className={`font-mono text-2xs ${assumptionCategoryStatusColor(cat.status)}`}>
+                  {cat.status}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`font-mono text-xs font-semibold ${assumptionScoreColor(cat.score)}`}>
+                  {cat.score !== null ? cat.score.toFixed(1) : "—"}
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  {cat.evidence_count} evidence
+                </span>
+              </div>
+              {(cat.score !== null && cat.score < 70 || cat.status !== "strong") && (
+                <div className="space-y-0.5 pt-0.5">
+                  {cat.review_items[0] && (
+                    <p className="font-mono text-2xs text-text-muted truncate">⚠ {cat.review_items[0]}</p>
+                  )}
+                  {cat.suggested_checks[0] && (
+                    <p className="font-mono text-2xs text-text-muted/70 truncate">↳ {cat.suggested_checks[0]}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* D. Config assumption changes */}
+      {health.latest_config_diff_summary && !health.latest_config_diff_summary.warning && (
+        <div className="rounded-control border border-border bg-bg-800 px-3 py-2 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-2xs text-text-secondary font-semibold">Config Changes</span>
+            {health.latest_config_diff_summary.positive_change_count > 0 && (
+              <span className="rounded px-1.5 py-0.5 font-mono text-2xs text-teal-400 bg-teal-900/20 border border-teal-700/30">
+                +{health.latest_config_diff_summary.positive_change_count} positive
+              </span>
+            )}
+            {health.latest_config_diff_summary.weakening_change_count > 0 && (
+              <span className="rounded px-1.5 py-0.5 font-mono text-2xs text-red-400 bg-red-900/20 border border-red-700/30">
+                -{health.latest_config_diff_summary.weakening_change_count} weakening
+              </span>
+            )}
+            {health.latest_config_diff_summary.review_change_count > 0 && (
+              <span className="rounded px-1.5 py-0.5 font-mono text-2xs text-yellow-400 bg-yellow-900/20 border border-yellow-700/30">
+                {health.latest_config_diff_summary.review_change_count} review
+              </span>
+            )}
+          </div>
+          {health.latest_config_diff_summary.weakening_change_count > 0 &&
+            health.latest_config_diff_summary.key_assumption_changes.slice(0, 5).map((change, i) => {
+              const c = change as { key?: string; old_value?: unknown; new_value?: unknown; impact_level?: string };
+              return (
+                <div key={i} className="flex items-center gap-2 font-mono text-2xs text-text-muted flex-wrap">
+                  <span className="text-text-secondary">{c.key ?? "—"}</span>
+                  <span>{String(c.old_value ?? "—")}</span>
+                  <span className="text-text-muted">→</span>
+                  <span>{String(c.new_value ?? "—")}</span>
+                  {c.impact_level && (
+                    <span className="rounded px-1 py-0.5 text-2xs text-red-400 bg-red-900/20 border border-red-700/30">
+                      {c.impact_level}
+                    </span>
+                  )}
+                </div>
+              );
+            })
+          }
+        </div>
+      )}
+
+      {/* E. Backtest audit synthesis */}
+      {health.latest_backtest_audit_summary && (
+        <div className="rounded-control border border-border bg-bg-800 px-3 py-2 space-y-2">
+          <p className="font-mono text-2xs text-text-secondary font-semibold">Backtest Audit Synthesis</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-2xs text-text-muted">
+            <span>Trust: <span className={assumptionScoreColor(health.latest_backtest_audit_summary.trust_score)}>
+              {health.latest_backtest_audit_summary.trust_score.toFixed(1)}
+            </span></span>
+            {health.latest_backtest_audit_summary.fill_realism_level && (
+              <span>Fill: <span className="text-text-secondary">{health.latest_backtest_audit_summary.fill_realism_level}</span></span>
+            )}
+            {health.latest_backtest_audit_summary.cost_fragility_level && (
+              <span>Cost fragility: <span className="text-text-secondary">{health.latest_backtest_audit_summary.cost_fragility_level}</span></span>
+            )}
+            {health.latest_backtest_audit_summary.largest_penalty_category && (
+              <span>Largest penalty: <span className="text-text-secondary">{health.latest_backtest_audit_summary.largest_penalty_category}</span></span>
+            )}
+          </div>
+          {health.latest_backtest_audit_summary.top_improvement_checks.length > 0 && (
+            <ul className="space-y-0.5">
+              {(health.latest_backtest_audit_summary.top_improvement_checks.slice(0, 3) as { check_key?: string; title?: string }[]).map((chk, i) => (
+                <li key={i} className="font-mono text-2xs text-text-muted">
+                  ↳ <span className="text-accent-300">{chk.check_key ?? "—"}</span>
+                  {chk.title ? <span> — {chk.title}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* F. Suggested checks */}
+      {health.suggested_checks.length > 0 && (
+        <div className="rounded-control border border-border/60 bg-bg-800 px-3 py-2">
+          <p className="font-mono text-2xs text-text-muted mb-1">Suggested Checks</p>
+          <ul className="space-y-0.5">
+            {health.suggested_checks.slice(0, 8).map((c, i) => (
+              <li key={i} className="font-mono text-2xs text-accent-300">↳ {c}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* G. Disclaimer */}
+      <p className="font-mono text-2xs text-text-muted/50">
+        Deterministic summary. Not investment advice.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -3731,6 +3919,9 @@ export default function StrategyDetail() {
   const [configDiffLoading, setConfigDiffLoading] = useState(false);
   const [configDiffSnapshotA, setConfigDiffSnapshotA] = useState<string>("");
   const [configDiffSnapshotB, setConfigDiffSnapshotB] = useState<string>("");
+
+  // M41: assumption health
+  const [assumptionHealth, setAssumptionHealth] = useState<StrategyAssumptionHealthResponse | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -3829,6 +4020,8 @@ export default function StrategyDetail() {
     getStrategyEvidenceTrends(id).then(setEvidenceTrends).catch(() => setEvidenceTrends(null));
     // M35: load version lineage in parallel
     getStrategyVersionLineage(id).then(setVersionLineage).catch(() => setVersionLineage(null));
+    // M41: load assumption health in parallel
+    getStrategyAssumptionHealth(id).then(setAssumptionHealth).catch(() => setAssumptionHealth(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -4259,6 +4452,9 @@ export default function StrategyDetail() {
       {configDiffLoading && (
         <p className="font-mono text-2xs text-text-muted">Comparing configs…</p>
       )}
+
+      {/* M41: Assumption Health */}
+      {assumptionHealth && <AssumptionHealthPanel health={assumptionHealth} />}
     </div>
   );
 }
