@@ -82,6 +82,9 @@ import type {
   RecommendedRecheck,
   RunReplayResponse,
   RunReplayStatus,
+  StrategyExperiment,
+  StrategyExperimentDetail,
+  StrategyExperimentAnalysis,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -126,6 +129,12 @@ import {
   getEvidenceSLAEvaluations,
   getStrategyChangeImpact,
   getRunReplayPack,
+  createStrategyExperiment,
+  getStrategyExperiments,
+  getStrategyExperiment,
+  addRunToExperiment,
+  analyzeStrategyExperiment,
+  getExperimentAnalyses,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -7183,6 +7192,467 @@ function RunReplayPanel({
   );
 }
 
+// M59 - Experiment Registry Panel
+function ExperimentPanel({
+  strategyId,
+  runs,
+  experiments,
+  setExperiments,
+}: {
+  strategyId: string;
+  runs: StrategyRun[];
+  experiments: StrategyExperiment[];
+  setExperiments: (e: StrategyExperiment[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newType, setNewType] = useState("");
+  const [newHyp, setNewHyp] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [experimentDetail, setExperimentDetail] = useState<StrategyExperimentDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const [addRunId, setAddRunId] = useState("");
+  const [variantLabel, setVariantLabel] = useState("");
+  const [variantKey, setVariantKey] = useState("");
+  const [addRunLoading, setAddRunLoading] = useState(false);
+  const [addRunError, setAddRunError] = useState<string | null>(null);
+
+  const [analyzing, setAnalyzing] = useState(false);
+  const [latestAnalysis, setLatestAnalysis] = useState<StrategyExperimentAnalysis | null>(null);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyses, setAnalyses] = useState<StrategyExperimentAnalysis[]>([]);
+
+  function loadDetail(expId: string) {
+    setDetailLoading(true);
+    setExperimentDetail(null);
+    setLatestAnalysis(null);
+    setAnalyses([]);
+    Promise.all([
+      getStrategyExperiment(expId),
+      getExperimentAnalyses(expId),
+    ])
+      .then(([detail, analysisResp]) => {
+        setExperimentDetail(detail);
+        const items = analysisResp.items || [];
+        setAnalyses(items);
+        if (items.length > 0) setLatestAnalysis(items[0]);
+      })
+      .catch(() => {})
+      .finally(() => setDetailLoading(false));
+  }
+
+  function handleSelectExperiment(expId: string) {
+    if (selectedId === expId) {
+      setSelectedId(null);
+      setExperimentDetail(null);
+    } else {
+      setSelectedId(expId);
+      loadDetail(expId);
+    }
+  }
+
+  async function handleCreate() {
+    if (!newName.trim()) return;
+    setCreateLoading(true);
+    setCreateError(null);
+    try {
+      const exp = await createStrategyExperiment(strategyId, {
+        name: newName.trim(),
+        description: newDesc.trim() || undefined,
+        experiment_type: newType.trim() || undefined,
+        hypothesis: newHyp.trim() || undefined,
+      });
+      setExperiments([exp, ...experiments]);
+      setNewName("");
+      setNewDesc("");
+      setNewType("");
+      setNewHyp("");
+      setCreating(false);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create experiment.");
+    } finally {
+      setCreateLoading(false);
+    }
+  }
+
+  async function handleAddRun() {
+    if (!selectedId || !addRunId.trim()) return;
+    setAddRunLoading(true);
+    setAddRunError(null);
+    try {
+      await addRunToExperiment(selectedId, {
+        strategy_run_id: addRunId.trim(),
+        variant_label: variantLabel.trim() || undefined,
+        variant_key: variantKey.trim() || undefined,
+      });
+      setAddRunId("");
+      setVariantLabel("");
+      setVariantKey("");
+      loadDetail(selectedId);
+      // refresh count in list
+      getStrategyExperiments(strategyId)
+        .then((r) => setExperiments(r.items || []))
+        .catch(() => {});
+    } catch (err) {
+      setAddRunError(err instanceof Error ? err.message : "Failed to add run.");
+    } finally {
+      setAddRunLoading(false);
+    }
+  }
+
+  async function handleAnalyze() {
+    if (!selectedId) return;
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    try {
+      const result = await analyzeStrategyExperiment(selectedId);
+      setLatestAnalysis(result);
+      setAnalyses((prev) => [result, ...prev]);
+    } catch (err) {
+      setAnalyzeError(err instanceof Error ? err.message : "Analysis failed.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  function variantStatusColor(status: string): string {
+    switch (status) {
+      case "strong_evidence": return "text-cyan-400";
+      case "usable": return "text-blue-400";
+      case "review": return "text-amber-400";
+      case "weak": return "text-orange-400";
+      case "insufficient_evidence": return "text-red-400";
+      default: return "text-text-secondary";
+    }
+  }
+
+  const resultJson = latestAnalysis?.result_json as {
+    variants?: { run_id: string; variant_label?: string | null; variant_status?: string; evidence_score?: number; trust_score?: number | null; review_reasons?: string[] }[];
+    metric_comparisons?: { metric_key: string; mean_value?: number | null; spread?: number | null; available_count?: number }[];
+    ranking?: { rank: number; run_id: string; variant_label?: string | null; score?: number | null; reason?: string }[];
+  } | null;
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 bg-surface-secondary hover:bg-surface-tertiary transition-colors"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wider">
+          M59 — Experiment Registry
+        </span>
+        <span className="font-mono text-xs text-text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4 bg-surface">
+          {/* Create experiment */}
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-xs text-text-secondary">
+              {experiments.length} experiment{experiments.length !== 1 ? "s" : ""}
+            </span>
+            <button
+              className="font-mono text-xs px-3 py-1 rounded bg-accent-600 hover:bg-accent-500 text-white transition-colors"
+              onClick={() => setCreating((v) => !v)}
+            >
+              {creating ? "Cancel" : "+ New Experiment"}
+            </button>
+          </div>
+
+          {creating && (
+            <div className="border border-border rounded p-3 space-y-2 bg-surface-secondary">
+              <input
+                className="w-full font-mono text-xs bg-surface border border-border rounded px-2 py-1 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-500"
+                placeholder="Name *"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+              <input
+                className="w-full font-mono text-xs bg-surface border border-border rounded px-2 py-1 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-500"
+                placeholder="Type (e.g. parameter_sweep)"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+              />
+              <input
+                className="w-full font-mono text-xs bg-surface border border-border rounded px-2 py-1 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-500"
+                placeholder="Hypothesis"
+                value={newHyp}
+                onChange={(e) => setNewHyp(e.target.value)}
+              />
+              <textarea
+                className="w-full font-mono text-xs bg-surface border border-border rounded px-2 py-1 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-500 resize-none"
+                placeholder="Description"
+                rows={2}
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+              />
+              {createError && (
+                <p className="font-mono text-2xs text-red-400">{createError}</p>
+              )}
+              <button
+                className="font-mono text-xs px-3 py-1 rounded bg-accent-600 hover:bg-accent-500 text-white transition-colors disabled:opacity-50"
+                onClick={handleCreate}
+                disabled={createLoading || !newName.trim()}
+              >
+                {createLoading ? "Creating..." : "Create"}
+              </button>
+            </div>
+          )}
+
+          {/* Experiment list */}
+          {experiments.length === 0 ? (
+            <p className="font-mono text-xs text-text-muted">No experiments yet.</p>
+          ) : (
+            <div className="space-y-1">
+              {experiments.map((exp) => (
+                <div key={exp.id}>
+                  <button
+                    className={`w-full text-left px-3 py-2 rounded border transition-colors font-mono text-xs ${
+                      selectedId === exp.id
+                        ? "border-accent-500 bg-surface-secondary text-text-primary"
+                        : "border-border bg-surface hover:bg-surface-secondary text-text-secondary"
+                    }`}
+                    onClick={() => handleSelectExperiment(exp.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-text-primary">{exp.name}</span>
+                      <span className={`text-2xs px-1.5 py-0.5 rounded ${exp.status === "active" ? "bg-green-900/40 text-green-400" : "bg-surface-tertiary text-text-muted"}`}>
+                        {exp.status}
+                      </span>
+                    </div>
+                    <div className="flex gap-3 mt-0.5 text-2xs text-text-muted">
+                      {exp.experiment_type && <span>{exp.experiment_type}</span>}
+                      <span>{exp.run_count} run{exp.run_count !== 1 ? "s" : ""}</span>
+                      <span>{new Date(exp.created_at).toLocaleDateString()}</span>
+                    </div>
+                    {exp.hypothesis && (
+                      <p className="mt-1 text-2xs text-text-muted italic truncate">{exp.hypothesis}</p>
+                    )}
+                  </button>
+
+                  {/* Expanded detail */}
+                  {selectedId === exp.id && (
+                    <div className="border border-accent-500/30 border-t-0 rounded-b p-3 space-y-3 bg-surface-secondary">
+                      {detailLoading && (
+                        <p className="font-mono text-2xs text-text-muted animate-pulse">Loading detail...</p>
+                      )}
+
+                      {/* Runs in experiment */}
+                      {experimentDetail && (
+                        <div>
+                          <p className="font-mono text-2xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
+                            Enrolled Runs ({experimentDetail.experiment_runs.length})
+                          </p>
+                          {experimentDetail.experiment_runs.length === 0 ? (
+                            <p className="font-mono text-2xs text-text-muted">No runs enrolled.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {experimentDetail.experiment_runs.map((er) => (
+                                <div key={er.id} className="flex items-center justify-between px-2 py-1 rounded bg-surface border border-border">
+                                  <span className="font-mono text-2xs text-text-primary">{er.strategy_run_id.slice(0, 8)}…</span>
+                                  {er.variant_label && (
+                                    <span className="font-mono text-2xs text-accent-400">{er.variant_label}</span>
+                                  )}
+                                  {er.variant_key && (
+                                    <span className="font-mono text-2xs text-text-muted">{er.variant_key}</span>
+                                  )}
+                                  <span className="font-mono text-2xs text-text-muted">{new Date(er.created_at).toLocaleDateString()}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Add run */}
+                      <div className="space-y-1">
+                        <p className="font-mono text-2xs font-semibold text-text-secondary uppercase tracking-wider">Add Run</p>
+                        <select
+                          className="w-full font-mono text-xs bg-surface border border-border rounded px-2 py-1 text-text-primary focus:outline-none focus:border-accent-500"
+                          value={addRunId}
+                          onChange={(e) => setAddRunId(e.target.value)}
+                        >
+                          <option value="">Select run...</option>
+                          {runs.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.run_name ?? r.run_type} ({r.id.slice(0, 8)})
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex gap-2">
+                          <input
+                            className="flex-1 font-mono text-xs bg-surface border border-border rounded px-2 py-1 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-500"
+                            placeholder="Variant label"
+                            value={variantLabel}
+                            onChange={(e) => setVariantLabel(e.target.value)}
+                          />
+                          <input
+                            className="flex-1 font-mono text-xs bg-surface border border-border rounded px-2 py-1 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-500"
+                            placeholder="Variant key"
+                            value={variantKey}
+                            onChange={(e) => setVariantKey(e.target.value)}
+                          />
+                        </div>
+                        {addRunError && (
+                          <p className="font-mono text-2xs text-red-400">{addRunError}</p>
+                        )}
+                        <button
+                          className="font-mono text-xs px-3 py-1 rounded bg-surface-tertiary hover:bg-surface-secondary border border-border text-text-secondary transition-colors disabled:opacity-50"
+                          onClick={handleAddRun}
+                          disabled={addRunLoading || !addRunId}
+                        >
+                          {addRunLoading ? "Adding..." : "Add Run"}
+                        </button>
+                      </div>
+
+                      {/* Analyze */}
+                      <div>
+                        <button
+                          className="font-mono text-xs px-3 py-1 rounded bg-accent-700 hover:bg-accent-600 text-white transition-colors disabled:opacity-50"
+                          onClick={handleAnalyze}
+                          disabled={analyzing}
+                        >
+                          {analyzing ? "Analyzing..." : "Run Evidence Analysis"}
+                        </button>
+                        {analyzeError && (
+                          <p className="font-mono text-2xs text-red-400 mt-1">{analyzeError}</p>
+                        )}
+                      </div>
+
+                      {/* Latest analysis result */}
+                      {latestAnalysis && (
+                        <div className="space-y-2 border-t border-border pt-2">
+                          <div className="flex items-center justify-between">
+                            <p className="font-mono text-2xs font-semibold text-text-secondary uppercase tracking-wider">
+                              Analysis Result
+                            </p>
+                            <span className={`font-mono text-2xs px-1.5 py-0.5 rounded ${
+                              latestAnalysis.overall_status === "strong_evidence" ? "bg-cyan-900/40 text-cyan-400" :
+                              latestAnalysis.overall_status === "usable" ? "bg-blue-900/40 text-blue-400" :
+                              latestAnalysis.overall_status === "review" ? "bg-amber-900/40 text-amber-400" :
+                              "bg-red-900/40 text-red-400"
+                            }`}>
+                              {latestAnalysis.overall_status}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-2xs">
+                            <span className="text-text-muted">Variants</span>
+                            <span className="text-text-primary">{latestAnalysis.variant_count}</span>
+                            <span className="text-text-muted">Runs</span>
+                            <span className="text-text-primary">{latestAnalysis.run_count}</span>
+                            {latestAnalysis.best_evidenced_run_id && (
+                              <>
+                                <span className="text-text-muted">Best-Evidenced Variant</span>
+                                <span className="text-cyan-400">{latestAnalysis.best_evidenced_run_id.slice(0, 8)}</span>
+                              </>
+                            )}
+                            {latestAnalysis.weakest_evidence_run_id && (
+                              <>
+                                <span className="text-text-muted">Weakest Variant</span>
+                                <span className="text-orange-400">{latestAnalysis.weakest_evidence_run_id.slice(0, 8)}</span>
+                              </>
+                            )}
+                          </div>
+
+                          {latestAnalysis.deterministic_summary && (
+                            <p className="font-mono text-2xs text-text-secondary bg-surface rounded px-2 py-1.5 border border-border">
+                              {latestAnalysis.deterministic_summary}
+                            </p>
+                          )}
+
+                          {/* Variant table */}
+                          {resultJson?.variants && resultJson.variants.length > 0 && (
+                            <div>
+                              <p className="font-mono text-2xs font-semibold text-text-muted uppercase tracking-wider mb-1">Variant Summary</p>
+                              <div className="overflow-x-auto">
+                                <table className="w-full font-mono text-2xs">
+                                  <thead>
+                                    <tr className="border-b border-border">
+                                      <th className="text-left py-1 text-text-muted font-normal">Run</th>
+                                      <th className="text-left py-1 text-text-muted font-normal">Label</th>
+                                      <th className="text-right py-1 text-text-muted font-normal">Evidence</th>
+                                      <th className="text-left py-1 text-text-muted font-normal">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {resultJson.variants.map((v, i) => (
+                                      <tr key={i} className="border-b border-border/40">
+                                        <td className="py-1 text-text-secondary">{v.run_id.slice(0, 8)}</td>
+                                        <td className="py-1 text-text-primary">{v.variant_label ?? "—"}</td>
+                                        <td className="py-1 text-right text-text-primary">
+                                          {v.evidence_score != null ? v.evidence_score.toFixed(2) : "—"}
+                                        </td>
+                                        <td className={`py-1 ${variantStatusColor(v.variant_status ?? "")}`}>
+                                          {v.variant_status ?? "—"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Metric comparison */}
+                          {resultJson?.metric_comparisons && resultJson.metric_comparisons.length > 0 && (
+                            <div>
+                              <p className="font-mono text-2xs font-semibold text-text-muted uppercase tracking-wider mb-1">Metric Comparison</p>
+                              <div className="overflow-x-auto">
+                                <table className="w-full font-mono text-2xs">
+                                  <thead>
+                                    <tr className="border-b border-border">
+                                      <th className="text-left py-1 text-text-muted font-normal">Metric</th>
+                                      <th className="text-right py-1 text-text-muted font-normal">Mean</th>
+                                      <th className="text-right py-1 text-text-muted font-normal">Spread</th>
+                                      <th className="text-right py-1 text-text-muted font-normal">N</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {resultJson.metric_comparisons.map((m, i) => (
+                                      <tr key={i} className="border-b border-border/40">
+                                        <td className="py-1 text-text-primary">{m.metric_key}</td>
+                                        <td className="py-1 text-right text-text-secondary">
+                                          {m.mean_value != null ? m.mean_value.toFixed(4) : "—"}
+                                        </td>
+                                        <td className="py-1 text-right text-text-muted">
+                                          {m.spread != null ? m.spread.toFixed(4) : "—"}
+                                        </td>
+                                        <td className="py-1 text-right text-text-muted">{m.available_count ?? "—"}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
+                          <p className="font-mono text-2xs text-text-muted border-t border-border pt-2">
+                            Evidence-based comparison only. Not investment advice.
+                          </p>
+                          <p className="font-mono text-2xs text-text-muted">
+                            Analyzed {new Date(latestAnalysis.created_at).toLocaleString()} · {analyses.length} total analysis run{analyses.length !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -7296,6 +7766,11 @@ export default function StrategyDetail() {
   const [slaEvaluations, setSlaEvaluations] = useState<EvidenceSLAEvaluation[]>([]);
   const [slaPolicies, setSlaPolicies] = useState<EvidenceSLAPolicy[]>([]);
   const [latestSlaEvaluation, setLatestSlaEvaluation] = useState<EvidenceSLAEvaluation | null>(null);
+
+  // M59: experiment registry
+  const [experiments, setExperiments] = useState<StrategyExperiment[]>([]);
+  const [_selectedExperiment, _setSelectedExperiment] = useState<StrategyExperimentDetail | null>(null);
+  const [_experimentAnalyses, _setExperimentAnalyses] = useState<StrategyExperimentAnalysis[]>([]);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -7432,6 +7907,10 @@ export default function StrategyDetail() {
         setSlaEvaluations(items);
         if (items.length > 0) setLatestSlaEvaluation(items[0]);
       })
+      .catch(() => {});
+    // M59: load experiments in parallel
+    getStrategyExperiments(id)
+      .then((r) => setExperiments(r.items || []))
       .catch(() => {});
   }, [id, refreshKey]);
 
@@ -7974,6 +8453,14 @@ export default function StrategyDetail() {
 
       {/* M58: Run Replay Pack */}
       <RunReplayPanel strategyId={strategy.id} runs={strategy.runs} />
+
+      {/* M59: Experiment Registry */}
+      <ExperimentPanel
+        strategyId={strategy.id}
+        runs={strategy.runs || []}
+        experiments={experiments}
+        setExperiments={setExperiments}
+      />
     </div>
   );
 }

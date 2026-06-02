@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1549 tests, 1 skipped)
+│   └── tests/              Pytest tests (1572 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,57 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M58: Run Replay Pack v1
+## Current milestone — M59: Experiment Registry
+
+**Status:** complete
+
+### What was built
+- Migration `0022_m59_experiment_registry.py` — 3 new tables: `strategy_experiments`, `strategy_experiment_runs`, `strategy_experiment_analyses`.
+- ORM models `StrategyExperiment`, `StrategyExperimentRun`, `StrategyExperimentAnalysis` in `models/experiment.py`.
+- Service `experiments.py` — 7 functions: `create_experiment`, `list_experiments`, `get_experiment`, `add_experiment_run`, `list_experiment_runs`, `create_experiment_analysis`, `get_experiment_analysis`.
+- Schemas `schemas/experiment.py` — 10 Pydantic schemas covering experiment CRUD, run association, and analysis results.
+- Router `routes/experiments.py` — 8 endpoints wired into the strategies router.
+- `EventType` constants — 3 new values: `EXPERIMENT_CREATED`, `EXPERIMENT_RUN_ADDED`, `EXPERIMENT_ANALYSED`.
+- Frontend `ExperimentPanel` in `StrategyDetail.tsx` — experiment list, run association UI, and analysis results display.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| POST   | /api/strategies/{id}/experiments | Create a new experiment |
+| GET    | /api/strategies/{id}/experiments | List experiments for a strategy |
+| GET    | /api/strategies/{id}/experiments/{exp_id} | Get experiment detail |
+| DELETE | /api/strategies/{id}/experiments/{exp_id} | Delete an experiment |
+| POST   | /api/strategies/{id}/experiments/{exp_id}/runs | Associate a strategy run with an experiment |
+| GET    | /api/strategies/{id}/experiments/{exp_id}/runs | List runs in an experiment |
+| POST   | /api/strategies/{id}/experiments/{exp_id}/analyses | Create an experiment analysis |
+| GET    | /api/strategies/{id}/experiments/{exp_id}/analyses/{analysis_id} | Get experiment analysis detail |
+
+### Experiment analysis behavior
+- Evidence scoring 0–100 based on observed metric deltas, sample size, and run completeness.
+- `variant_status` field records observed outcome per variant (e.g., `higher_sharpe_observed`, `lower_drawdown_observed`) — descriptive only.
+- Metric comparison is descriptive: reports observed differences in logged metrics across variants. No causal inference. No statistical significance testing.
+
+### Language constraints
+Not optimization, not outcome prediction. Language: "best-evidenced variant," "observed metric delta," "evidence score," "variant status." Never: "winner," "most profitable," "optimal parameters," "statistically significant."
+
+### Deployment note
+Deployment readiness is intentionally deferred to M65. M59–M64 remain advanced product/platform features.
+
+### What M59 does not build
+- Parameter optimization or hyperparameter search
+- AI-generated experiment summaries
+- Notebook integration
+- Automated experiment scheduling
+- Cross-strategy experiment comparison
+
+- **23 new backend M59 tests** (`tests/test_experiments_m59.py`). All 23 passed on first run. No fixes needed.
+- **Backend total: 1572 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (Vite built in 904ms, 650.27 kB / 137.87 kB gzip). One non-blocking chunk-size warning (pre-existing, not introduced by M59).
+- No external APIs. Deterministic. Not investment advice.
+
+---
+
+## Previously completed — M58: Run Replay Pack v1
 
 **Status:** complete
 

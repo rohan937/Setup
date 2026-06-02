@@ -3333,3 +3333,104 @@ export interface RunReplayResponse {
   content: string | null;
   raw_evidence: Record<string, unknown> | null;
 }
+
+// M59 - Experiment Registry
+export interface StrategyExperiment {
+  id: string;
+  strategy_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  experiment_type: string | null;
+  hypothesis: string | null;
+  status: "active" | "archived";
+  metadata_json: Record<string, unknown> | null;
+  run_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrategyExperimentRun {
+  id: string;
+  experiment_id: string;
+  strategy_run_id: string;
+  variant_label: string | null;
+  variant_key: string | null;
+  variant_params_json: Record<string, unknown> | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface StrategyExperimentDetail extends StrategyExperiment {
+  experiment_runs: StrategyExperimentRun[];
+}
+
+export interface StrategyExperimentCreate {
+  name: string;
+  description?: string;
+  experiment_type?: string;
+  hypothesis?: string;
+  slug?: string;
+}
+
+export interface ExperimentRunAddRequest {
+  strategy_run_id: string;
+  variant_label?: string;
+  variant_key?: string;
+  variant_params_json?: Record<string, unknown>;
+  notes?: string;
+}
+
+export interface ExperimentVariantSummary {
+  experiment_run_id: string;
+  run_id: string;
+  run_name: string;
+  run_type: string;
+  variant_label: string | null;
+  variant_key: string | null;
+  variant_params_json: Record<string, unknown> | null;
+  evidence_score: number;
+  trust_score: number | null;
+  dataset_health: number | null;
+  signal_quality: number | null;
+  replay_completeness: number | null;
+  variant_status: string;
+  review_reasons: string[];
+}
+
+export interface ExperimentMetricComparison {
+  metric_key: string;
+  available_count: number;
+  min_value: number | null;
+  max_value: number | null;
+  mean_value: number | null;
+  spread: number | null;
+  values_by_run_id: Record<string, number>;
+}
+
+export interface ExperimentRankingItem {
+  rank: number;
+  run_id: string;
+  variant_label: string | null;
+  score: number | null;
+  reason: string;
+}
+
+export interface StrategyExperimentAnalysis {
+  id: string;
+  experiment_id: string;
+  analysis_label: string | null;
+  overall_status: string;
+  variant_count: number;
+  run_count: number;
+  best_evidenced_run_id: string | null;
+  weakest_evidence_run_id: string | null;
+  deterministic_summary: string | null;
+  result_json: unknown;
+  created_at: string;
+}
+
+export interface StrategyExperimentAnalysisListResponse {
+  items: StrategyExperimentAnalysis[];
+  total: number;
+}

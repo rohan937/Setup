@@ -82,6 +82,9 @@ class EventType(StrEnum):
     research_review_case_resolved = "research_review_case_resolved"
     evidence_sla_evaluated = "evidence_sla_evaluated"
     strategy_change_impact_analyzed = "strategy_change_impact_analyzed"
+    strategy_experiment_created = "strategy_experiment_created"
+    strategy_experiment_run_added = "strategy_experiment_run_added"
+    strategy_experiment_analyzed = "strategy_experiment_analyzed"
 
 
 class ReliabilityScoreStatus(StrEnum):

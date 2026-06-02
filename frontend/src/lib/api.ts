@@ -1299,3 +1299,83 @@ export async function getRunReplayPack(
     `/api/strategies/${strategyId}/runs/${runId}/replay-pack${qs ? `?${qs}` : ""}`,
   );
 }
+
+// M59 - Experiment Registry
+export async function createStrategyExperiment(
+  strategyId: string,
+  payload: import("@/types").StrategyExperimentCreate,
+): Promise<import("@/types").StrategyExperiment> {
+  return request<import("@/types").StrategyExperiment>(
+    `/api/strategies/${strategyId}/experiments`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function getStrategyExperiments(
+  strategyId: string,
+  params?: { status?: string },
+): Promise<{ items: import("@/types").StrategyExperiment[]; total: number }> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  const qs = query.toString();
+  return request<{ items: import("@/types").StrategyExperiment[]; total: number }>(
+    `/api/strategies/${strategyId}/experiments${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function getStrategyExperiment(
+  experimentId: string,
+): Promise<import("@/types").StrategyExperimentDetail> {
+  return request<import("@/types").StrategyExperimentDetail>(
+    `/api/experiments/${experimentId}`,
+  );
+}
+
+export async function addRunToExperiment(
+  experimentId: string,
+  payload: import("@/types").ExperimentRunAddRequest,
+): Promise<import("@/types").StrategyExperimentRun> {
+  return request<import("@/types").StrategyExperimentRun>(
+    `/api/experiments/${experimentId}/runs`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function removeRunFromExperiment(
+  experimentId: string,
+  runId: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/experiments/${experimentId}/runs/${runId}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "Request failed");
+    throw new Error(text);
+  }
+}
+
+export async function analyzeStrategyExperiment(
+  experimentId: string,
+): Promise<import("@/types").StrategyExperimentAnalysis> {
+  return request<import("@/types").StrategyExperimentAnalysis>(
+    `/api/experiments/${experimentId}/analyze`,
+    { method: "POST" },
+  );
+}
+
+export async function getExperimentAnalyses(
+  experimentId: string,
+): Promise<import("@/types").StrategyExperimentAnalysisListResponse> {
+  return request<import("@/types").StrategyExperimentAnalysisListResponse>(
+    `/api/experiments/${experimentId}/analyses`,
+  );
+}
+
+export async function getExperimentAnalysis(
+  analysisId: string,
+): Promise<import("@/types").StrategyExperimentAnalysis> {
+  return request<import("@/types").StrategyExperimentAnalysis>(
+    `/api/experiment-analyses/${analysisId}`,
+  );
+}
