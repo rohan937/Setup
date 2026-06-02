@@ -68,6 +68,7 @@ import type {
   PortfolioOverview,
   MultiRunComparisonRequest,
   MultiRunComparisonResponse,
+  StrategyVersionLineageResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -802,4 +803,12 @@ export async function compareStrategyRunsMulti(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function getStrategyVersionLineage(
+  strategyId: string,
+): Promise<StrategyVersionLineageResponse> {
+  return request<StrategyVersionLineageResponse>(
+    `/api/strategies/${strategyId}/version-lineage`,
+  );
 }

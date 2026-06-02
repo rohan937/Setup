@@ -99,6 +99,19 @@ from app.schemas.strategy import (
     UniverseSnapshotRead,
     UniverseSnapshotSummary,
 )
+from app.schemas.version_lineage import (
+    StrategyVersionLineageItem,
+    StrategyVersionLineageSummary,
+    StrategyVersionTransition,
+    StrategyVersionLineageResponse,
+)
+from app.services.version_lineage import (
+    get_strategy_version_lineage,
+    StrategyVersionLineageData,
+    StrategyVersionLineageItemData,
+    StrategyVersionLineageSummaryData,
+    StrategyVersionTransitionData,
+)
 from app.schemas.strategy_health import StrategyHealthListResponse, StrategyHealthRead
 from app.services.strategy_health import compute_strategy_health, get_strategies_health
 from app.services.strategy_reliability import (
@@ -2950,4 +2963,101 @@ def export_strategy_evidence(
         ],
         content=result.content,
         raw_evidence=result.raw_evidence,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M35: GET /api/strategies/{strategy_id}/version-lineage
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/version-lineage",
+    response_model=StrategyVersionLineageResponse,
+)
+def get_strategy_version_lineage_endpoint(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyVersionLineageResponse:
+    """Return full version lineage for a strategy, including per-version evidence
+    coverage scores, transitions between versions, and summary statistics."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        result: StrategyVersionLineageData = get_strategy_version_lineage(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    def _version_schema(v: StrategyVersionLineageItemData) -> StrategyVersionLineageItem:
+        return StrategyVersionLineageItem(
+            version_id=v.version_id,
+            version_label=v.version_label,
+            git_commit=v.git_commit,
+            branch_name=v.branch_name,
+            code_path=v.code_path,
+            signal_name=v.signal_name,
+            signal_description=v.signal_description,
+            created_at=v.created_at,
+            updated_at=v.updated_at,
+            run_count=v.run_count,
+            backtest_run_count=v.backtest_run_count,
+            research_run_count=v.research_run_count,
+            paper_run_count=v.paper_run_count,
+            live_run_count=v.live_run_count,
+            config_snapshot_count=v.config_snapshot_count,
+            universe_snapshot_count=v.universe_snapshot_count,
+            signal_snapshot_count=v.signal_snapshot_count,
+            dataset_linked_run_count=v.dataset_linked_run_count,
+            backtest_audit_count=v.backtest_audit_count,
+            latest_run_at=v.latest_run_at,
+            latest_config_snapshot_label=v.latest_config_snapshot_label,
+            latest_universe_snapshot_label=v.latest_universe_snapshot_label,
+            latest_signal_snapshot_label=v.latest_signal_snapshot_label,
+            latest_backtest_trust_score=v.latest_backtest_trust_score,
+            latest_data_health_score=v.latest_data_health_score,
+            latest_signal_quality_score=v.latest_signal_quality_score,
+            has_config=v.has_config,
+            has_universe=v.has_universe,
+            has_signal=v.has_signal,
+            has_runs=v.has_runs,
+            has_dataset_linked_runs=v.has_dataset_linked_runs,
+            has_backtest_audit=v.has_backtest_audit,
+            version_evidence_score=v.version_evidence_score,
+            lineage_status=v.lineage_status,
+            suggested_checks=v.suggested_checks,
+        )
+
+    def _transition_schema(t: StrategyVersionTransitionData) -> StrategyVersionTransition:
+        return StrategyVersionTransition(
+            from_version_label=t.from_version_label,
+            to_version_label=t.to_version_label,
+            created_at_delta_days=t.created_at_delta_days,
+            git_commit_changed=t.git_commit_changed,
+            branch_changed=t.branch_changed,
+            signal_name_changed=t.signal_name_changed,
+            config_hash_changed=t.config_hash_changed,
+            universe_hash_changed=t.universe_hash_changed,
+            signal_hash_changed=t.signal_hash_changed,
+        )
+
+    s = result.summary
+    return StrategyVersionLineageResponse(
+        summary=StrategyVersionLineageSummary(
+            strategy_id=s.strategy_id,
+            strategy_name=s.strategy_name,
+            version_count=s.version_count,
+            latest_version_label=s.latest_version_label,
+            most_instrumented_version_id=s.most_instrumented_version_id,
+            least_instrumented_version_id=s.least_instrumented_version_id,
+            average_version_evidence_score=s.average_version_evidence_score,
+            versions_missing_config=s.versions_missing_config,
+            versions_missing_signal=s.versions_missing_signal,
+            versions_missing_universe=s.versions_missing_universe,
+            versions_without_runs=s.versions_without_runs,
+            deterministic_summary=s.deterministic_summary,
+            generated_at=s.generated_at,
+        ),
+        versions=[_version_schema(v) for v in result.versions],
+        transitions=[_transition_schema(t) for t in result.transitions],
     )

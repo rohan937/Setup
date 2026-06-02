@@ -1804,3 +1804,76 @@ export interface MultiRunComparisonResponse {
   highlighted_differences: string[];
   suggested_next_steps: string[];
 }
+
+// M35: Version Lineage
+export interface StrategyVersionLineageItem {
+  version_id: string;
+  version_label: string;
+  git_commit: string | null;
+  branch_name: string | null;
+  code_path: string | null;
+  signal_name: string | null;
+  signal_description: string | null;
+  created_at: string;
+  updated_at: string;
+  run_count: number;
+  backtest_run_count: number;
+  research_run_count: number;
+  paper_run_count: number;
+  live_run_count: number;
+  config_snapshot_count: number;
+  universe_snapshot_count: number;
+  signal_snapshot_count: number;
+  dataset_linked_run_count: number;
+  backtest_audit_count: number;
+  latest_run_at: string | null;
+  latest_config_snapshot_label: string | null;
+  latest_universe_snapshot_label: string | null;
+  latest_signal_snapshot_label: string | null;
+  latest_backtest_trust_score: number | null;
+  latest_data_health_score: number | null;
+  latest_signal_quality_score: number | null;
+  has_config: boolean;
+  has_universe: boolean;
+  has_signal: boolean;
+  has_runs: boolean;
+  has_dataset_linked_runs: boolean;
+  has_backtest_audit: boolean;
+  version_evidence_score: number;
+  lineage_status: string;
+  suggested_checks: string[];
+}
+
+export interface StrategyVersionTransition {
+  from_version_label: string;
+  to_version_label: string;
+  created_at_delta_days: number;
+  git_commit_changed: boolean;
+  branch_changed: boolean;
+  signal_name_changed: boolean;
+  config_hash_changed: boolean | null;
+  universe_hash_changed: boolean | null;
+  signal_hash_changed: boolean | null;
+}
+
+export interface StrategyVersionLineageSummary {
+  strategy_id: string;
+  strategy_name: string;
+  latest_version_label: string;
+  version_count: number;
+  versions_missing_config: number;
+  versions_missing_signal: number;
+  versions_missing_universe: number;
+  versions_without_runs: number;
+  most_instrumented_version_id: string | null;
+  least_instrumented_version_id: string | null;
+  average_version_evidence_score: number | null;
+  deterministic_summary: string;
+  generated_at: string;
+}
+
+export interface StrategyVersionLineageResponse {
+  summary: StrategyVersionLineageSummary;
+  versions: StrategyVersionLineageItem[];
+  transitions: StrategyVersionTransition[];
+}

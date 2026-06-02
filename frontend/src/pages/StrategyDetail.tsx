@@ -25,6 +25,9 @@ import type {
   StrategyTimelineDrilldownItem,
   StrategyTimelineDrilldownResponse,
   StrategyVersion,
+  StrategyVersionLineageResponse,
+  StrategyVersionLineageItem,
+  StrategyVersionTransition,
   TrendPoint,
   TrendSummary,
   TimelineEvent,
@@ -43,6 +46,7 @@ import {
   getStrategyTimeline,
   getStrategyEvidenceTrends,
   getStrategyTimelineDrilldown,
+  getStrategyVersionLineage,
   ingestEvidenceBundle,
   runBacktestAudit,
 } from "@/lib/api";
@@ -2359,6 +2363,220 @@ function ExportPanel({ strategyId }: { strategyId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// M35: Version Lineage Panel
+// ---------------------------------------------------------------------------
+
+function lineageScoreColor(score: number): string {
+  if (score >= 80) return "text-teal-400";
+  if (score >= 60) return "text-yellow-400";
+  if (score >= 30) return "text-orange-400";
+  return "text-red-400";
+}
+
+function lineageStatusBadgeClass(status: string): string {
+  switch (status) {
+    case "well_instrumented":
+      return "text-teal-300 bg-teal-900/20 border-teal-700/30";
+    case "usable":
+      return "text-text-secondary bg-bg-800 border-border";
+    case "partial":
+      return "text-yellow-300 bg-yellow-900/20 border-yellow-700/30";
+    case "under_instrumented":
+      return "text-red-300 bg-red-900/20 border-red-700/30";
+    default:
+      return "text-text-muted bg-bg-800 border-border";
+  }
+}
+
+function VersionLineagePanel({ lineage }: { lineage: StrategyVersionLineageResponse }) {
+  const { summary, versions, transitions } = lineage;
+  const avgScore = summary.average_version_evidence_score;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <p className="caption">Version Lineage</p>
+        <span className="font-mono text-2xs text-text-muted">
+          generated {new Date(summary.generated_at).toLocaleString()}
+        </span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Summary strip */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded border border-border bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-secondary">
+            {summary.version_count} version{summary.version_count !== 1 ? "s" : ""}
+          </span>
+          {avgScore !== null && (
+            <span className={`rounded border border-border bg-bg-800 px-2 py-0.5 font-mono text-2xs font-semibold ${lineageScoreColor(avgScore)}`}>
+              avg score {avgScore.toFixed(1)}
+            </span>
+          )}
+          {summary.most_instrumented_version_id && (
+            <span className="rounded border border-border bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-muted">
+              best: {summary.latest_version_label}
+            </span>
+          )}
+          {summary.versions_missing_signal > 0 && (
+            <span className="rounded border border-yellow-700/30 bg-yellow-900/20 px-2 py-0.5 font-mono text-2xs text-yellow-300">
+              {summary.versions_missing_signal} missing signal
+            </span>
+          )}
+          {summary.versions_without_runs > 0 && (
+            <span className="rounded border border-orange-700/30 bg-orange-900/20 px-2 py-0.5 font-mono text-2xs text-orange-300">
+              {summary.versions_without_runs} no runs
+            </span>
+          )}
+        </div>
+
+        {/* Deterministic summary */}
+        <p className="font-mono text-2xs text-text-muted leading-relaxed">
+          {summary.deterministic_summary}
+        </p>
+
+        {/* Version rows */}
+        <div className="space-y-2">
+          {versions.map((v: StrategyVersionLineageItem) => (
+            <div
+              key={v.version_id}
+              className="rounded-control border border-border/50 bg-bg-800 px-3 py-2.5 space-y-1.5"
+            >
+              {/* Row 1: label + git + branch + score + status */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-xs font-bold text-text-primary">
+                  {v.version_label}
+                </span>
+                {v.git_commit && (
+                  <span className="font-mono text-2xs text-text-muted">
+                    {v.git_commit.slice(0, 8)}
+                  </span>
+                )}
+                {v.branch_name && (
+                  <span className="font-mono text-2xs text-text-muted">
+                    {v.branch_name}
+                  </span>
+                )}
+                {v.signal_name && (
+                  <span className="rounded border border-border/50 bg-bg-700 px-1.5 py-0.5 font-mono text-2xs text-text-secondary">
+                    {v.signal_name}
+                  </span>
+                )}
+                <span className={`font-mono text-xs font-semibold ${lineageScoreColor(v.version_evidence_score)}`}>
+                  {v.version_evidence_score.toFixed(1)}
+                </span>
+                <span className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-2xs ${lineageStatusBadgeClass(v.lineage_status)}`}>
+                  {v.lineage_status.replace(/_/g, " ")}
+                </span>
+              </div>
+
+              {/* Row 2: evidence chips */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {v.run_count > 0 && (
+                  <span className="rounded border border-teal-700/30 bg-teal-900/20 px-1.5 py-0.5 font-mono text-2xs text-teal-300">
+                    {v.run_count} run{v.run_count !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {v.config_snapshot_count > 0 && (
+                  <span className="rounded border border-border/50 bg-bg-700 px-1.5 py-0.5 font-mono text-2xs text-text-secondary">
+                    {v.config_snapshot_count} cfg
+                  </span>
+                )}
+                {v.universe_snapshot_count > 0 && (
+                  <span className="rounded border border-border/50 bg-bg-700 px-1.5 py-0.5 font-mono text-2xs text-text-secondary">
+                    {v.universe_snapshot_count} uni
+                  </span>
+                )}
+                {v.signal_snapshot_count > 0 && (
+                  <span className="rounded border border-border/50 bg-bg-700 px-1.5 py-0.5 font-mono text-2xs text-text-secondary">
+                    {v.signal_snapshot_count} sig
+                  </span>
+                )}
+                {v.backtest_audit_count > 0 && (
+                  <span className="rounded border border-border/50 bg-bg-700 px-1.5 py-0.5 font-mono text-2xs text-text-secondary">
+                    {v.backtest_audit_count} audit{v.backtest_audit_count !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {!v.has_config && (
+                  <span className="font-mono text-2xs text-text-muted/60">no config</span>
+                )}
+                {!v.has_signal && (
+                  <span className="font-mono text-2xs text-text-muted/60">no signal</span>
+                )}
+              </div>
+
+              {/* Row 3: mini-scores */}
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-2xs text-text-muted">
+                  BT:{" "}
+                  <span className="text-text-secondary">
+                    {v.latest_backtest_trust_score !== null ? v.latest_backtest_trust_score.toFixed(1) : "—"}
+                  </span>
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  Data:{" "}
+                  <span className="text-text-secondary">
+                    {v.latest_data_health_score !== null ? v.latest_data_health_score.toFixed(1) : "—"}
+                  </span>
+                </span>
+                <span className="font-mono text-2xs text-text-muted">
+                  Sig:{" "}
+                  <span className="text-text-secondary">
+                    {v.latest_signal_quality_score !== null ? v.latest_signal_quality_score.toFixed(1) : "—"}
+                  </span>
+                </span>
+              </div>
+
+              {/* Row 4: suggested check (first only) */}
+              {v.suggested_checks.length > 0 && (
+                <p className="font-mono text-2xs italic text-text-muted/70">
+                  · {v.suggested_checks[0]}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Transitions section */}
+        {transitions.length > 0 && (
+          <div>
+            <p className="caption mb-2">Version Changes</p>
+            <div className="space-y-1">
+              {transitions.map((t: StrategyVersionTransition, i: number) => {
+                const changes: string[] = [];
+                if (t.git_commit_changed) changes.push("git changed");
+                if (t.branch_changed) changes.push("branch changed");
+                if (t.signal_name_changed) changes.push("signal name changed");
+                if (t.config_hash_changed) changes.push("config hash changed");
+                if (t.universe_hash_changed) changes.push("universe hash changed");
+                if (t.signal_hash_changed) changes.push("signal hash changed");
+                return (
+                  <div key={i} className="font-mono text-2xs text-text-muted">
+                    <span className="text-text-secondary">
+                      {t.from_version_label} → {t.to_version_label}
+                    </span>
+                    {" "}
+                    <span className="text-text-muted/60">
+                      ({t.created_at_delta_days}d)
+                    </span>
+                    {changes.length > 0 && (
+                      <span className="text-text-muted/80">
+                        {": "}
+                        {changes.join(", ")}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -2420,6 +2638,9 @@ export default function StrategyDetail() {
 
   // M30: evidence trends
   const [evidenceTrends, setEvidenceTrends] = useState<StrategyEvidenceTrendsResponse | null>(null);
+
+  // M35: version lineage
+  const [versionLineage, setVersionLineage] = useState<StrategyVersionLineageResponse | null>(null);
 
   async function handleGenerateReport() {
     if (!id) return;
@@ -2502,6 +2723,8 @@ export default function StrategyDetail() {
     getStrategyTimelineDrilldown(id, { limit: 30 }).then(setTimelineDrilldown).catch(() => setTimelineDrilldown(null));
     // M30: load evidence trends in parallel
     getStrategyEvidenceTrends(id).then(setEvidenceTrends).catch(() => setEvidenceTrends(null));
+    // M35: load version lineage in parallel
+    getStrategyVersionLineage(id).then(setVersionLineage).catch(() => setVersionLineage(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -2887,6 +3110,9 @@ export default function StrategyDetail() {
 
       {/* M31: Strategy Evidence Export */}
       <ExportPanel strategyId={id!} />
+
+      {/* M35: Version Lineage */}
+      {versionLineage && <VersionLineagePanel lineage={versionLineage} />}
     </div>
   );
 }

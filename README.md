@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1046 tests, 1 skipped)
+│   └── tests/              Pytest tests (1069 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,83 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M34: Multi-Strategy Run Comparison v1
+## Current milestone — M35: Strategy Version Lineage Tracker v1
+
+**Status: complete.**
+
+### M35 deliverables
+
+- **New `backend/app/services/version_lineage.py`** — deterministic version lineage service.
+  No AI, no external APIs, read-only.
+  - `_compute_version_item(version, runs, ...)` — builds per-version evidence counts, latest evidence values, and evidence score.
+  - `_compute_transitions(items)` — detects changes between adjacent versions: git/branch/signal_name changes plus config/universe/signal hash changes.
+  - `get_strategy_version_lineage(strategy_id, db)` — assembles the full lineage response including all version items, transitions, and summary fields.
+
+- **New endpoint** `GET /api/strategies/{id}/version-lineage`:
+  - Read-only. No `AuditTimelineEvent` created.
+  - 404 for unknown strategy.
+
+- **Per-version evidence counts**:
+  - `run_count` broken out by run type (backtest, paper, live, research, optimization).
+  - `config_snapshot_count`, `universe_snapshot_count`, `signal_snapshot_count`.
+  - `dataset_linked_run_count` — runs that have a linked dataset snapshot.
+  - `backtest_audit_count`.
+
+- **Per-version latest evidence**:
+  - `run_at` — most recent run timestamp for that version.
+  - `config_label`, `universe_label`, `signal_name` — latest labels from respective snapshots.
+  - `backtest_trust_score`, `data_health_score`, `signal_quality_score` — latest scores from linked records.
+
+- **Version evidence score (0–100)**:
+  - Config snapshot present: 15 pts.
+  - Universe snapshot present: 15 pts.
+  - Signal snapshot present: 20 pts.
+  - At least one run: 20 pts.
+  - Dataset-linked run present: 15 pts.
+  - Backtest audit present: 15 pts.
+
+- **Lineage status per version**:
+  - `well_instrumented`: score >= 80.
+  - `usable`: score >= 60.
+  - `partial`: score >= 30.
+  - `under_instrumented`: score < 30.
+
+- **Version transitions** (detected between adjacent versions):
+  - Git commit hash change.
+  - Branch change.
+  - Signal name change.
+  - Config hash change.
+  - Universe hash change.
+  - Signal hash change.
+
+- **Summary fields**:
+  - `most_instrumented_version` — version label with highest evidence score.
+  - `least_instrumented_version` — version label with lowest evidence score.
+  - `average_evidence_score` — mean score across all versions.
+  - `versions_missing_runs`, `versions_missing_config`, `versions_missing_universe`, `versions_missing_signal`, `versions_missing_backtest_audit` — counts of versions lacking each evidence type.
+  - `deterministic_summary` — rule-based text, no AI, not investment advice.
+
+- **New schema file** `app/schemas/version_lineage.py` — `VersionLineageItem`, `VersionTransition`, `VersionLineageSummary`, `VersionLineageResponse`.
+
+- **Frontend — `VersionLineagePanel`** in `StrategyDetail.tsx`:
+  - Summary chips: total versions, average evidence score, under-instrumented count, missing evidence counts.
+  - Per-version rows: evidence chips (config / universe / signal / runs / dataset / backtest), evidence score badge, lineage status badge (well_instrumented / usable / partial / under_instrumented).
+  - Transitions section: per-transition row showing what changed between adjacent versions.
+
+- **23 new backend M35 tests** (`tests/test_version_lineage_m35.py`).
+- **Backend total: 1069 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in 591ms).
+- No external APIs. Read-only. Not investment advice.
+
+### What M35 does NOT build (by design)
+
+- No GitHub integration or git commit ingestion.
+- No AI lineage analysis or recommendations.
+- No graph visualization of version lineage.
+
+---
+
+## Previously completed — M34: Multi-Strategy Run Comparison v1
 
 **Status: complete.**
 
