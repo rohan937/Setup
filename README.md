@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1223 tests, 1 skipped)
+│   └── tests/              Pytest tests (1246 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,69 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M43: Strategy Timeline Analytics v1
+## Current milestone — M44: Strategy Comparison Report v1
+
+**Status: complete.**
+
+### M44 deliverables
+
+- **New service `backend/app/services/strategy_comparison_report.py`** — `generate_strategy_comparison_report(strategy_ids, format, include_raw_json, db)` aggregates health, reliability, coverage, assumption health, trends, and alerts per strategy into a structured comparison report. No AI, no external APIs, deterministic.
+
+- **New endpoint** `POST /api/strategies/compare/report`:
+  - **Request body**: `strategy_ids` (list of 2–4 UUIDs), `format` (`json` or `markdown`), `include_raw_json` (bool).
+  - Registered BEFORE `GET /strategies/{strategy_id}` to avoid routing collision.
+  - Returns `StrategyComparisonReportResponse`.
+  - 404 for unknown strategies. 400 for invalid strategy count or format.
+
+- **Report sections** — 7 sections per report:
+  - `comparison_summary` — overall summary across all compared strategies.
+  - `health_comparison` — health scores and statuses per strategy.
+  - `reliability_comparison` — reliability scores per strategy.
+  - `coverage_comparison` — evidence coverage scores per strategy.
+  - `assumption_comparison` — assumption health scores and category statuses per strategy.
+  - `trend_comparison` — trend directions (reliability, data health, backtest trust, signal quality) per strategy.
+  - `alerts_comparison` — open alert counts and severities per strategy.
+
+- **Rankings** — four ranked orderings, deterministic, nulls last:
+  - By `evidence_coverage` — "higher evidence coverage".
+  - By `reliability_score`.
+  - By `health_score`.
+  - By `assumption_health`.
+
+- **Suggested review agenda** — deterministic checklist; critical health first, weakening config changes, deteriorating trends. Language uses "requires review" — never "best strategy", "most profitable", "buy/sell".
+
+- **JSON format** — `StrategyComparisonReportResponse` with `metadata` + `sections` + `strategy_summaries` + `rankings`.
+
+- **Markdown format** — same response envelope + `content` string with full Markdown report.
+
+- **Filename** — `quantfidelity_strategy_comparison_report_{timestamp}.json` or `.md` (included in response metadata for client-side download).
+
+- **Language**: "higher evidence coverage", "requires review" — never "best strategy", "most profitable", "buy/sell".
+
+- **New schemas `backend/app/schemas/strategy_comparison_report.py`** — request and response Pydantic models.
+
+- **Frontend — report generation panel in `StrategyComparison.tsx`**:
+  - "Export JSON" and "Export Markdown" buttons — download via `Blob`.
+  - "Copy Markdown" button for markdown format.
+  - Rankings summary panel (evidence coverage, reliability, health, assumption health).
+  - Suggested review agenda panel.
+
+- **23 new backend M44 tests** (`tests/test_strategy_comparison_report_m44.py`). All 23 passed on first run.
+- **Backend total: 1246 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in ~813ms).
+- No external APIs. Deterministic. Not investment advice.
+
+### What M44 does NOT build (by design)
+
+- No AI-generated reports.
+- No PDF export.
+- No live performance comparison.
+- No portfolio allocation or rebalancing recommendations.
+- No scheduled delivery or email/Slack notifications.
+
+---
+
+## Previously completed — M43: Strategy Timeline Analytics v1
 
 **Status: complete.**
 

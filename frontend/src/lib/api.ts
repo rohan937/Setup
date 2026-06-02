@@ -75,6 +75,8 @@ import type {
   ConfigSnapshotComparisonV2Response,
   StrategyAssumptionHealthResponse,
   StrategyTimelineAnalyticsResponse,
+  StrategyComparisonReportRequest,
+  StrategyComparisonReportResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -896,4 +898,17 @@ export async function getStrategyTimelineAnalytics(
   return request<StrategyTimelineAnalyticsResponse>(
     `/api/strategies/${strategyId}/timeline/analytics${query}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// M44: Strategy Comparison Report
+// ---------------------------------------------------------------------------
+
+export async function generateStrategyComparisonReport(
+  payload: StrategyComparisonReportRequest,
+): Promise<StrategyComparisonReportResponse> {
+  return request<StrategyComparisonReportResponse>("/api/strategies/compare/report", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

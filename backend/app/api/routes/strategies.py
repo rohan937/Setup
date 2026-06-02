@@ -175,6 +175,17 @@ from app.services.strategy_export import (
     StrategyExportSectionData,
     StrategyExportMetadataData,
 )
+from app.schemas.strategy_comparison_report import (
+    StrategyComparisonReportRequest,
+    StrategyComparisonReportMetadata,
+    StrategyComparisonReportSection,
+    StrategyComparisonReportStrategySummary,
+    StrategyComparisonReportResponse,
+)
+from app.services.strategy_comparison_report import (
+    generate_strategy_comparison_report,
+    StrategyComparisonReportData,
+)
 from app.services.config_snapshots import (
     compare_config_snapshots,
     compare_config_snapshots_enriched,
@@ -694,6 +705,98 @@ def compare_strategies_endpoint(
         generated_at=result.generated_at,
     )
 
+
+# ---------------------------------------------------------------------------
+# POST /api/strategies/compare/report  (M44)
+# Registered BEFORE GET /strategies/{strategy_id} to avoid path collision.
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/strategies/compare/report",
+    response_model=StrategyComparisonReportResponse,
+    status_code=200,
+)
+def generate_comparison_report(
+    payload: StrategyComparisonReportRequest,
+    db: Session = Depends(get_db),
+) -> StrategyComparisonReportResponse:
+    """Generate a deterministic side-by-side comparison report for 2–4 strategies.
+
+    Evidence-based report only — never investment advice.
+    """
+    if len(payload.strategy_ids) < 2:
+        raise HTTPException(status_code=422, detail="At least 2 strategy IDs required.")
+    if len(payload.strategy_ids) > 4:
+        raise HTTPException(status_code=422, detail="At most 4 strategy IDs may be compared.")
+    if payload.format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+
+    try:
+        ids = [uuid.UUID(s) for s in payload.strategy_ids]
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="One or more strategy IDs are not valid UUIDs."
+        )
+
+    try:
+        result: StrategyComparisonReportData = generate_strategy_comparison_report(
+            ids, db, format=payload.format, include_raw_json=payload.include_raw_json
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return StrategyComparisonReportResponse(
+        format=result.format,
+        filename=result.filename,
+        metadata=StrategyComparisonReportMetadata(
+            report_id=result.metadata.report_id,
+            generated_at=result.metadata.generated_at,
+            format=result.metadata.format,
+            note=result.metadata.note,
+            strategy_count=result.metadata.strategy_count,
+            strategy_ids=result.metadata.strategy_ids,
+        ),
+        sections=[
+            StrategyComparisonReportSection(
+                section_key=sec.section_key,
+                title=sec.title,
+                summary=sec.summary,
+                severity=sec.severity,
+                evidence_json=sec.evidence_json,
+            )
+            for sec in result.sections
+        ],
+        strategy_summaries=[
+            StrategyComparisonReportStrategySummary(
+                strategy_id=s.strategy_id,
+                name=s.name,
+                asset_class=s.asset_class,
+                status=s.status,
+                health_status=s.health_status,
+                health_score=s.health_score,
+                primary_concern=s.primary_concern,
+                reliability_score=s.reliability_score,
+                reliability_status=s.reliability_status,
+                evidence_coverage_score=s.evidence_coverage_score,
+                assumption_status=s.assumption_status,
+                assumption_score=s.assumption_score,
+                weakening_change_count=s.weakening_change_count,
+                positive_change_count=s.positive_change_count,
+                open_alert_count=s.open_alert_count,
+                high_critical_alert_count=s.high_critical_alert_count,
+                reliability_trend=s.reliability_trend,
+                data_health_trend=s.data_health_trend,
+                backtest_trust_trend=s.backtest_trust_trend,
+                signal_quality_trend=s.signal_quality_trend,
+                suggested_checks=s.suggested_checks,
+            )
+            for s in result.strategy_summaries
+        ],
+        rankings=result.rankings,
+        suggested_review_agenda=result.suggested_review_agenda,
+        content=result.content,
+        raw_evidence=result.raw_evidence,
+    )
 
 
 # ---------------------------------------------------------------------------

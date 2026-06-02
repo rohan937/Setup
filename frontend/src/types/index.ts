@@ -2359,3 +2359,66 @@ export interface StrategyTimelineAnalyticsResponse {
   gaps: TimelineInactivityGap[];
   suggested_checks: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M44: Strategy Comparison Report
+// ---------------------------------------------------------------------------
+
+export interface StrategyComparisonReportRequest {
+  strategy_ids: string[];
+  format?: string;
+  include_raw_json?: boolean;
+}
+
+export interface StrategyComparisonReportMetadata {
+  report_id: string;
+  format: string;
+  note: string;
+  generated_at: string;
+  strategy_count: number;
+  strategy_ids: string[];
+}
+
+export interface StrategyComparisonReportSection {
+  section_key: string;
+  title: string;
+  summary: string;
+  severity: string | null;
+  evidence_json: Record<string, unknown> | null;
+}
+
+export interface StrategyComparisonReportStrategySummary {
+  strategy_id: string;
+  name: string;
+  asset_class: string;
+  status: string;
+  health_status: string | null;
+  health_score: number | null;
+  primary_concern: string | null;
+  reliability_score: number | null;
+  reliability_status: string | null;
+  evidence_coverage_score: number | null;
+  assumption_status: string | null;
+  assumption_score: number | null;
+  reliability_trend: string | null;
+  data_health_trend: string | null;
+  backtest_trust_trend: string | null;
+  signal_quality_trend: string | null;
+  weakening_change_count: number;
+  positive_change_count: number;
+  open_alert_count: number;
+  high_critical_alert_count: number;
+  suggested_checks: string[];
+}
+
+export interface StrategyComparisonReportResponse {
+  format: string;
+  filename: string;
+  metadata: StrategyComparisonReportMetadata;
+  sections: StrategyComparisonReportSection[];
+  strategy_summaries: StrategyComparisonReportStrategySummary[];
+  rankings: Record<string, unknown[]>;
+  suggested_review_agenda: string[];
+  content: string | null;
+  raw_evidence: Record<string, unknown> | null;
+}

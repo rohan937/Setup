@@ -14,8 +14,10 @@ import type {
   Strategy,
   StrategyComparisonItem,
   StrategyComparisonResponse,
+  StrategyComparisonReportResponse,
+  StrategyComparisonReportRequest,
 } from "@/types";
-import { getStrategies, compareStrategies } from "@/lib/api";
+import { getStrategies, compareStrategies, generateStrategyComparisonReport } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Badge from "@/components/Badge";
 
@@ -300,6 +302,162 @@ function RankingTable({
 }
 
 // ---------------------------------------------------------------------------
+// M44: Comparison Report Panel
+// ---------------------------------------------------------------------------
+
+function ComparisonReportPanel({
+  report,
+}: {
+  report: StrategyComparisonReportResponse;
+  selectedIds: string[];
+}) {
+  function downloadJSON() {
+    const blob = new Blob([JSON.stringify(report, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = report.filename.endsWith(".json")
+      ? report.filename
+      : report.filename + ".json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadMarkdown() {
+    if (!report.content) return;
+    const blob = new Blob([report.content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = report.filename.endsWith(".md")
+      ? report.filename
+      : report.filename + ".md";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function copyMarkdown() {
+    if (!report.content) return;
+    navigator.clipboard.writeText(report.content).catch(() => {});
+  }
+
+  const rankingDimensions = Object.keys(report.rankings);
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700 p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="font-mono text-2xs uppercase tracking-widest text-text-muted">
+          Comparison Report
+        </p>
+        <p className="font-mono text-2xs text-text-muted/60">
+          generated {new Date(report.metadata.generated_at).toLocaleTimeString()}
+        </p>
+      </div>
+
+      {/* Meta */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-mono text-2xs text-text-secondary truncate max-w-xs">
+          {report.filename}
+        </span>
+        <span className="inline-flex rounded border border-border bg-bg-600 px-1.5 py-px font-mono text-2xs text-text-muted">
+          {report.format}
+        </span>
+        <span className="font-mono text-2xs text-text-muted">
+          {report.sections.length} section{report.sections.length !== 1 ? "s" : ""}
+        </span>
+        <span className="font-mono text-2xs text-text-muted">
+          {report.metadata.strategy_count} strateg{report.metadata.strategy_count !== 1 ? "ies" : "y"}
+        </span>
+      </div>
+
+      {/* Download / copy buttons */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={downloadJSON}
+          className="rounded-control border border-border px-3 py-1 font-mono text-2xs text-text-secondary hover:text-text-primary hover:border-border-hover"
+        >
+          Download JSON
+        </button>
+        {report.content !== null && (
+          <button
+            onClick={downloadMarkdown}
+            className="rounded-control border border-border px-3 py-1 font-mono text-2xs text-text-secondary hover:text-text-primary hover:border-border-hover"
+          >
+            Download Markdown
+          </button>
+        )}
+        {report.format === "markdown" && report.content !== null && (
+          <button
+            onClick={copyMarkdown}
+            className="rounded-control border border-border px-3 py-1 font-mono text-2xs text-text-secondary hover:text-text-primary hover:border-border-hover"
+          >
+            Copy Markdown
+          </button>
+        )}
+      </div>
+
+      {/* Suggested Review Agenda */}
+      {report.suggested_review_agenda.length > 0 && (
+        <div>
+          <p className="font-mono text-2xs uppercase tracking-widest text-text-muted mb-1">
+            Suggested Review Agenda
+          </p>
+          <ul className="list-disc list-inside space-y-0.5">
+            {report.suggested_review_agenda.slice(0, 5).map((item, i) => (
+              <li key={i} className="font-mono text-2xs text-text-muted">
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Rankings summary */}
+      {rankingDimensions.length > 0 && (
+        <div>
+          <p className="font-mono text-2xs uppercase tracking-widest text-text-muted mb-1">
+            Rankings Summary
+          </p>
+          <div className="space-y-1">
+            {rankingDimensions.map((dim) => {
+              const items = report.rankings[dim] as Array<{ rank: number; name: string; score_label?: string }>;
+              if (!items || items.length === 0) return null;
+              const first = items[0];
+              const last = items[items.length - 1];
+              return (
+                <div key={dim} className="flex items-center gap-3">
+                  <span className="font-mono text-2xs text-text-muted w-36 shrink-0 truncate">
+                    {dim.replace(/_/g, " ")}
+                  </span>
+                  <span className="font-mono text-2xs text-green-400 truncate">
+                    highest: {first.name}
+                    {first.score_label ? ` (${first.score_label})` : ""}
+                  </span>
+                  {items.length > 1 && (
+                    <span className="font-mono text-2xs text-yellow-400 truncate">
+                      needs review: {last.name}
+                      {last.score_label ? ` (${last.score_label})` : ""}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Disclaimer */}
+      <p className="font-mono text-2xs text-text-muted/50">
+        Deterministic report. Not investment advice.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -312,6 +470,11 @@ export default function StrategyComparison() {
   const [comparing, setComparing] = useState(false);
   const [result, setResult] = useState<StrategyComparisonResponse | null>(null);
   const [compareError, setCompareError] = useState<string | null>(null);
+
+  const [reportResult, setReportResult] = useState<StrategyComparisonReportResponse | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [includeRawJson, setIncludeRawJson] = useState(false);
 
   useEffect(() => {
     setLoadingList(true);
@@ -350,6 +513,26 @@ export default function StrategyComparison() {
       setCompareError(err instanceof Error ? err.message : "Comparison failed.");
     } finally {
       setComparing(false);
+    }
+  }
+
+  async function handleGenerateReport(format: string) {
+    if (selected.size < 2) return;
+    setReportLoading(true);
+    setReportError(null);
+    setReportResult(null);
+    const payload: StrategyComparisonReportRequest = {
+      strategy_ids: Array.from(selected),
+      format,
+      include_raw_json: includeRawJson,
+    };
+    try {
+      const res = await generateStrategyComparisonReport(payload);
+      setReportResult(res);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Report generation failed.");
+    } finally {
+      setReportLoading(false);
     }
   }
 
@@ -679,6 +862,61 @@ export default function StrategyComparison() {
             This comparison is based on logged QuantFidelity evidence only. It is not investment
             advice or a recommendation to trade any strategy.
           </p>
+
+          {/* Generate Report */}
+          <div className="rounded-card border border-border bg-bg-700 p-4 space-y-3">
+            <p className="font-mono text-2xs uppercase tracking-widest text-text-muted">
+              Comparison Report
+            </p>
+
+            {selected.size < 2 ? (
+              <p className="font-mono text-xs text-text-muted">
+                Select 2–4 strategies to generate a report.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeRawJson}
+                    onChange={(e) => setIncludeRawJson(e.target.checked)}
+                    className="accent-accent-500"
+                  />
+                  <span className="font-mono text-xs text-text-secondary">
+                    Include raw evidence JSON
+                  </span>
+                </label>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleGenerateReport("json")}
+                    disabled={selected.size < 2 || reportLoading}
+                    className="rounded-control bg-bg-600 border border-border px-4 py-1.5 font-mono text-xs text-text-secondary hover:text-text-primary hover:border-border-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {reportLoading ? "Generating report…" : "Generate JSON Report"}
+                  </button>
+                  <button
+                    onClick={() => handleGenerateReport("markdown")}
+                    disabled={selected.size < 2 || reportLoading}
+                    className="rounded-control bg-bg-600 border border-border px-4 py-1.5 font-mono text-xs text-text-secondary hover:text-text-primary hover:border-border-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {reportLoading ? "Generating report…" : "Generate Markdown Report"}
+                  </button>
+                </div>
+
+                {reportError && (
+                  <p className="font-mono text-xs text-red-400">{reportError}</p>
+                )}
+
+                {reportResult && (
+                  <ComparisonReportPanel
+                    report={reportResult}
+                    selectedIds={Array.from(selected)}
+                  />
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
     </>
