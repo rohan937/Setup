@@ -161,7 +161,51 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M59: Experiment Registry
+## Current milestone — M60: Parameter Sweep Reliability Analysis
+
+**Status:** complete
+
+### What was built
+- Service `services/parameter_sweep.py` — read-only analysis service, no new DB tables. Uses the existing `StrategyExperimentAnalysis` table to store sweep results.
+- Schemas `schemas/parameter_sweep.py` — 8 Pydantic schemas covering sweep requests, per-parameter results, region classification, fragility signals, and the top-level sweep response.
+- Endpoint `POST /api/experiments/{id}/sweep-analysis` added to `routes/experiments.py` router.
+- Parameter auto-detection — numeric and categorical parameters are identified automatically from experiment run metadata.
+- Numeric region detection — four region types: `stable`, `fragile`, `narrow_peak`, `under_instrumented`.
+- Seven fragility signals tracked per parameter: `narrow_peak`, `evidence_degradation`, `trust_degradation`, `metric_instability`, and three composite variants.
+- Sweep score 0–100 computed from the weighted combination of region classifications and observed fragility signals across all detected parameters.
+- Frontend `ParameterSweepSubPanel` component embedded inside `ExperimentPanel` in `StrategyDetail.tsx` — displays per-parameter region breakdown, fragility signal list, and overall sweep score.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| POST   | /api/experiments/{id}/sweep-analysis | Run parameter sweep reliability analysis for an experiment |
+
+### Sweep analysis behavior
+- Parameters are detected automatically from run metadata; no manual specification required.
+- Numeric parameters are sorted by value before region classification.
+- Region classification is applied per parameter: `stable` (consistent metrics across the range), `fragile` (high variance), `narrow_peak` (metrics degrade sharply outside a small range), `under_instrumented` (too few data points for classification).
+- Fragility signals are reported descriptively — they record what was observed in the data, not predictions or recommendations.
+
+### Language constraints
+Descriptive only. Language: "stable parameter region," "fragile region," "observed metric variance," "sweep score." Never: "best parameter," "winner," "most profitable," "optimal value."
+
+### Deployment note
+Deployment readiness is intentionally deferred to M65. M60–M64 remain advanced product/platform features.
+
+### What M60 does not build
+- Automatic parameter optimization or hyperparameter search
+- AI-generated parameter recommendations
+- Charting or visualisation of sweep curves
+- Cross-experiment parameter comparison
+
+- **26 new backend M60 tests** (`tests/test_parameter_sweep_m60.py`). All 26 passed on first run. No fixes needed.
+- **Backend total: 1598 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (Vite built in 1.02s, 656.78 kB / 138.88 kB gzip). One non-blocking chunk-size warning (advisory only, pre-existing).
+- No external APIs. Deterministic. Not investment advice.
+
+---
+
+## Previously completed — M59: Experiment Registry
 
 **Status:** complete
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services import experiments as svc
+from app.services.parameter_sweep import analyze_parameter_sweep
 from app.schemas.experiment import (
     StrategyExperimentCreate,
     StrategyExperimentRead,
@@ -17,6 +18,16 @@ from app.schemas.experiment import (
     ExperimentRunAddRequest,
     StrategyExperimentAnalysisRead,
     StrategyExperimentAnalysisListResponse,
+)
+from app.schemas.parameter_sweep import (
+    ParameterSweepAnalysisRequest,
+    ParameterSweepAnalysisResponse,
+    DetectedParameter,
+    ParameterSweepVariant,
+    ParameterSweepMetricComparison,
+    ParameterSweepRegion,
+    ParameterSweepFragilitySignals,
+    ParameterSweepRankingItem,
 )
 from app.models.strategy import Strategy
 from app.models.experiment import StrategyExperiment
@@ -202,6 +213,146 @@ def analyze_experiment(
     db.commit()
     db.refresh(analysis)
     return StrategyExperimentAnalysisRead.model_validate(analysis)
+
+
+@router.post(
+    "/experiments/{experiment_id}/sweep-analysis",
+    response_model=ParameterSweepAnalysisResponse,
+)
+def sweep_analysis(
+    experiment_id: str,
+    body: ParameterSweepAnalysisRequest,
+    db: Session = Depends(get_db),
+) -> ParameterSweepAnalysisResponse:
+    """Run a deterministic parameter sweep reliability analysis for an experiment."""
+    _parse_uuid(experiment_id)
+
+    try:
+        result = analyze_parameter_sweep(
+            db,
+            experiment_id,
+            parameter_key=body.parameter_key,
+            analysis_label=body.analysis_label,
+            persist=body.persist,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+
+    if body.persist:
+        db.commit()
+
+    fragility = result.fragility_signals
+    fragility_schema = ParameterSweepFragilitySignals(
+        fragile_variant_count=fragility.fragile_variant_count,
+        review_variant_count=fragility.review_variant_count,
+        under_instrumented_variant_count=fragility.under_instrumented_variant_count,
+        narrow_peak_detected=fragility.narrow_peak_detected,
+        evidence_degradation_detected=fragility.evidence_degradation_detected,
+        trust_degradation_detected=fragility.trust_degradation_detected,
+        metric_instability_detected=fragility.metric_instability_detected,
+    ) if fragility is not None else ParameterSweepFragilitySignals(
+        fragile_variant_count=0,
+        review_variant_count=0,
+        under_instrumented_variant_count=0,
+        narrow_peak_detected=False,
+        evidence_degradation_detected=False,
+        trust_degradation_detected=False,
+        metric_instability_detected=False,
+    )
+
+    return ParameterSweepAnalysisResponse(
+        experiment_id=result.experiment_id,
+        strategy_id=result.strategy_id,
+        parameter_key=result.parameter_key,
+        generated_at=result.generated_at,
+        sweep_status=result.sweep_status,
+        sweep_reliability_score=result.sweep_reliability_score,
+        detected_parameters=[
+            DetectedParameter(
+                parameter_key=d.parameter_key,
+                value_count=d.value_count,
+                numeric=d.numeric,
+                unique_values=d.unique_values,
+                coverage_rate=d.coverage_rate,
+                examples=d.examples,
+            )
+            for d in result.detected_parameters
+        ],
+        variant_summaries=[
+            ParameterSweepVariant(
+                experiment_run_id=v.experiment_run_id,
+                run_id=v.run_id,
+                run_name=v.run_name,
+                run_type=v.run_type,
+                variant_label=v.variant_label,
+                parameter_key=v.parameter_key,
+                parameter_value=v.parameter_value,
+                parameter_value_numeric=v.parameter_value_numeric,
+                sharpe=v.sharpe,
+                annual_return=v.annual_return,
+                max_drawdown=v.max_drawdown,
+                volatility=v.volatility,
+                turnover=v.turnover,
+                hit_rate=v.hit_rate,
+                trade_count=v.trade_count,
+                dataset_health=v.dataset_health,
+                signal_quality=v.signal_quality,
+                backtest_trust=v.backtest_trust,
+                evidence_score=v.evidence_score,
+                variant_status=v.variant_status,
+                review_reasons=v.review_reasons,
+                suggested_checks=v.suggested_checks,
+            )
+            for v in result.variant_summaries
+        ],
+        metric_comparisons=[
+            ParameterSweepMetricComparison(
+                metric_key=mc["metric_key"],
+                available_count=mc["available_count"],
+                min_value=mc["min_value"],
+                max_value=mc["max_value"],
+                mean_value=mc["mean_value"],
+                range_value=mc["range_value"],
+                values_by_run_id=mc["values_by_run_id"],
+            )
+            for mc in result.metric_comparisons
+        ],
+        regions=[
+            ParameterSweepRegion(
+                region_key=r.region_key,
+                label=r.label,
+                parameter_min=r.parameter_min,
+                parameter_max=r.parameter_max,
+                variant_count=r.variant_count,
+                run_ids=r.run_ids,
+                status=r.status,
+                evidence_score_avg=r.evidence_score_avg,
+                backtest_trust_avg=r.backtest_trust_avg,
+                metric_stability_score=r.metric_stability_score,
+                reason=r.reason,
+                suggested_check=r.suggested_check,
+            )
+            for r in result.regions
+        ],
+        fragility_signals=fragility_schema,
+        rankings=[
+            ParameterSweepRankingItem(
+                rank=r.rank,
+                run_id=r.run_id,
+                variant_label=r.variant_label,
+                parameter_value=r.parameter_value,
+                score=r.score,
+                reason=r.reason,
+            )
+            for r in result.rankings
+        ],
+        suggested_checks=result.suggested_checks,
+        deterministic_summary=result.deterministic_summary,
+        analysis_id=result.analysis_id,
+    )
 
 
 @router.get(

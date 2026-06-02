@@ -85,6 +85,7 @@ import type {
   StrategyExperiment,
   StrategyExperimentDetail,
   StrategyExperimentAnalysis,
+  ParameterSweepAnalysisResponse,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -135,6 +136,7 @@ import {
   addRunToExperiment,
   analyzeStrategyExperiment,
   getExperimentAnalyses,
+  analyzeParameterSweep,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -7192,6 +7194,169 @@ function RunReplayPanel({
   );
 }
 
+// M60 - Parameter Sweep Reliability Analysis
+function ParameterSweepSubPanel({ experimentId }: { experimentId: string }) {
+  const [sweepResult, setSweepResult] = useState<ParameterSweepAnalysisResponse | null>(null);
+  const [sweepLoading, setSweepLoading] = useState(false);
+  const [sweepError, setSweepError] = useState<string | null>(null);
+  const [paramKey, setParamKey] = useState("");
+  const [persistSweep, setPersistSweep] = useState(true);
+
+  const handleSweep = async () => {
+    setSweepLoading(true);
+    setSweepError(null);
+    try {
+      const result = await analyzeParameterSweep(experimentId, {
+        parameter_key: paramKey || undefined,
+        persist: persistSweep,
+      });
+      setSweepResult(result);
+    } catch (e) {
+      setSweepError(String(e));
+    } finally {
+      setSweepLoading(false);
+    }
+  };
+
+  const statusColor = (s: string) => {
+    if (s === "stable") return "text-cyan-400";
+    if (s === "usable") return "text-blue-400";
+    if (s === "review") return "text-amber-400";
+    if (s === "fragile") return "text-red-400";
+    return "text-gray-400";
+  };
+
+  return (
+    <div className="mt-4 border-t border-gray-700 pt-4 space-y-3">
+      <p className="text-xs font-mono font-semibold text-gray-400 uppercase tracking-wide">Parameter Sweep Analysis</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="text"
+          placeholder="Parameter key (auto-detect if empty)"
+          value={paramKey}
+          onChange={e => setParamKey(e.target.value)}
+          className="px-2 py-1 text-xs font-mono bg-gray-900 border border-gray-700 text-gray-200 rounded w-48"
+        />
+        <label className="flex items-center gap-1 text-xs font-mono text-gray-400 cursor-pointer">
+          <input type="checkbox" checked={persistSweep} onChange={e => setPersistSweep(e.target.checked)} className="accent-cyan-500" />
+          Save analysis
+        </label>
+        <button
+          onClick={handleSweep}
+          disabled={sweepLoading}
+          className="px-3 py-1 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+        >
+          {sweepLoading ? "Analyzing..." : "Analyze Sweep"}
+        </button>
+      </div>
+      {sweepError && <p className="text-xs text-red-400 font-mono">{sweepError}</p>}
+      {sweepResult && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className={"text-xs font-mono font-semibold " + statusColor(sweepResult.sweep_status)}>
+              {sweepResult.sweep_status.toUpperCase().replace(/_/g, " ")}
+            </span>
+            {sweepResult.sweep_reliability_score != null && (
+              <span className="text-xs font-mono text-gray-400">Score: {sweepResult.sweep_reliability_score.toFixed(0)}/100</span>
+            )}
+            {sweepResult.parameter_key && (
+              <span className="text-xs font-mono text-gray-500">Parameter: {sweepResult.parameter_key}</span>
+            )}
+          </div>
+          {sweepResult.deterministic_summary && (
+            <p className="text-xs font-mono text-gray-400 leading-relaxed">{sweepResult.deterministic_summary}</p>
+          )}
+          {/* Detected parameters */}
+          {sweepResult.detected_parameters.length > 0 && (
+            <details className="text-xs font-mono">
+              <summary className="text-gray-500 cursor-pointer hover:text-gray-400">Detected parameters ({sweepResult.detected_parameters.length})</summary>
+              <div className="mt-1 space-y-1">
+                {sweepResult.detected_parameters.map(p => (
+                  <div key={p.parameter_key} className="flex gap-3 text-gray-400">
+                    <span className="text-gray-300 w-32">{p.parameter_key}</span>
+                    <span>{p.value_count} values</span>
+                    <span>{p.numeric ? "numeric" : "categorical"}</span>
+                    <span className="text-gray-600">{(p.coverage_rate * 100).toFixed(0)}% coverage</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+          {/* Variant sweep table */}
+          {sweepResult.variant_summaries.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono border-collapse">
+                <thead>
+                  <tr className="text-gray-500 text-left border-b border-gray-700">
+                    <th className="pb-1 pr-2">Variant</th>
+                    <th className="pb-1 pr-2">Param</th>
+                    <th className="pb-1 pr-2">Evidence</th>
+                    <th className="pb-1 pr-2">Trust</th>
+                    <th className="pb-1 pr-2">Sharpe</th>
+                    <th className="pb-1 pr-2">Drawdown</th>
+                    <th className="pb-1">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sweepResult.variant_summaries.map(v => (
+                    <tr key={v.run_id} className="border-b border-gray-800/50">
+                      <td className="py-1 pr-2 text-gray-300 truncate max-w-24" title={v.variant_label || v.run_name}>{v.variant_label || v.run_name}</td>
+                      <td className="py-1 pr-2 text-gray-400">{v.parameter_value || "—"}</td>
+                      <td className="py-1 pr-2 text-gray-300">{v.evidence_score.toFixed(0)}</td>
+                      <td className="py-1 pr-2 text-gray-400">{v.backtest_trust?.toFixed(0) ?? "—"}</td>
+                      <td className="py-1 pr-2 text-gray-400">{v.sharpe?.toFixed(2) ?? "—"}</td>
+                      <td className="py-1 pr-2 text-gray-400">{v.max_drawdown?.toFixed(2) ?? "—"}</td>
+                      <td className={"py-1 " + statusColor(v.variant_status)}>{v.variant_status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {/* Fragility signals */}
+          {sweepResult.fragility_signals && (
+            <div className="flex gap-3 flex-wrap text-xs font-mono">
+              {sweepResult.fragility_signals.narrow_peak_detected && <span className="text-amber-400">Narrow peak</span>}
+              {sweepResult.fragility_signals.evidence_degradation_detected && <span className="text-amber-400">Evidence degradation</span>}
+              {sweepResult.fragility_signals.trust_degradation_detected && <span className="text-amber-400">Trust degradation</span>}
+              {sweepResult.fragility_signals.metric_instability_detected && <span className="text-amber-400">Metric instability</span>}
+              {sweepResult.fragility_signals.fragile_variant_count > 0 && <span className="text-red-400">{sweepResult.fragility_signals.fragile_variant_count} fragile</span>}
+            </div>
+          )}
+          {/* Regions */}
+          {sweepResult.regions.length > 0 && (
+            <details className="text-xs font-mono">
+              <summary className="text-gray-500 cursor-pointer hover:text-gray-400">Detected regions ({sweepResult.regions.length})</summary>
+              <div className="mt-2 space-y-1">
+                {sweepResult.regions.map(r => (
+                  <div key={r.region_key} className={"px-2 py-1 rounded border " + (r.status === "stable" ? "border-cyan-800" : r.status === "fragile" ? "border-red-800" : "border-amber-800")}>
+                    <span className={statusColor(r.status)}>{r.label}</span>
+                    <span className="ml-2 text-gray-500">{r.variant_count} variants</span>
+                    {r.parameter_min != null && <span className="ml-2 text-gray-600">[{r.parameter_min}–{r.parameter_max}]</span>}
+                    <div className="text-gray-500">{r.reason}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+          {/* Suggested checks */}
+          {sweepResult.suggested_checks.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-gray-600 uppercase text-xs tracking-wide">Suggested Checks</p>
+              {sweepResult.suggested_checks.slice(0, 5).map((c, i) => (
+                <div key={i} className="flex items-start gap-1.5 text-xs font-mono text-gray-400">
+                  <span className="text-cyan-600">›</span><span>{c}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-gray-600 font-mono">Evidence-based analysis. Not investment advice. Not parameter optimization.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // M59 - Experiment Registry Panel
 function ExperimentPanel({
   strategyId,
@@ -7641,6 +7806,9 @@ function ExperimentPanel({
                           </p>
                         </div>
                       )}
+
+                      {/* M60 - Parameter Sweep Analysis */}
+                      <ParameterSweepSubPanel experimentId={exp.id} />
                     </div>
                   )}
                 </div>

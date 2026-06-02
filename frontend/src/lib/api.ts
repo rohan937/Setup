@@ -1379,3 +1379,17 @@ export async function getExperimentAnalysis(
     `/api/experiment-analyses/${analysisId}`,
   );
 }
+
+// M60 - Parameter Sweep Reliability Analysis
+export async function analyzeParameterSweep(
+  experimentId: string,
+  payload: import("@/types").ParameterSweepAnalysisRequest,
+): Promise<import("@/types").ParameterSweepAnalysisResponse> {
+  return request<import("@/types").ParameterSweepAnalysisResponse>(
+    `/api/experiments/${experimentId}/sweep-analysis`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}

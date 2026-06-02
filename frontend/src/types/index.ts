@@ -3434,3 +3434,106 @@ export interface StrategyExperimentAnalysisListResponse {
   items: StrategyExperimentAnalysis[];
   total: number;
 }
+
+// M60 - Parameter Sweep Reliability Analysis
+export interface ParameterSweepAnalysisRequest {
+  parameter_key?: string;
+  analysis_label?: string;
+  persist?: boolean;
+}
+
+export interface DetectedParameter {
+  parameter_key: string;
+  value_count: number;
+  numeric: boolean;
+  unique_values: unknown[];
+  coverage_rate: number;
+  examples: unknown[];
+}
+
+export interface ParameterSweepVariant {
+  experiment_run_id: string;
+  run_id: string;
+  run_name: string;
+  run_type: string;
+  variant_label: string | null;
+  parameter_key: string | null;
+  parameter_value: string | null;
+  parameter_value_numeric: number | null;
+  sharpe: number | null;
+  annual_return: number | null;
+  max_drawdown: number | null;
+  volatility: number | null;
+  turnover: number | null;
+  hit_rate: number | null;
+  trade_count: number | null;
+  dataset_health: number | null;
+  signal_quality: number | null;
+  backtest_trust: number | null;
+  evidence_score: number;
+  variant_status: string;
+  review_reasons: string[];
+  suggested_checks: string[];
+}
+
+export interface ParameterSweepMetricComparison {
+  metric_key: string;
+  available_count: number;
+  min_value: number | null;
+  max_value: number | null;
+  mean_value: number | null;
+  range_value: number | null;
+  values_by_run_id: Record<string, unknown>;
+}
+
+export interface ParameterSweepRegion {
+  region_key: string;
+  label: string;
+  parameter_min: number | null;
+  parameter_max: number | null;
+  variant_count: number;
+  run_ids: string[];
+  status: string;
+  evidence_score_avg: number | null;
+  backtest_trust_avg: number | null;
+  metric_stability_score: number | null;
+  reason: string;
+  suggested_check: string | null;
+}
+
+export interface ParameterSweepFragilitySignals {
+  fragile_variant_count: number;
+  review_variant_count: number;
+  under_instrumented_variant_count: number;
+  narrow_peak_detected: boolean;
+  evidence_degradation_detected: boolean;
+  trust_degradation_detected: boolean;
+  metric_instability_detected: boolean;
+}
+
+export interface ParameterSweepRankingItem {
+  rank: number;
+  run_id: string;
+  variant_label: string | null;
+  parameter_value: string | null;
+  score: number | null;
+  reason: string;
+}
+
+export interface ParameterSweepAnalysisResponse {
+  experiment_id: string;
+  strategy_id: string;
+  parameter_key: string | null;
+  generated_at: string;
+  sweep_status: string;
+  sweep_reliability_score: number | null;
+  detected_parameters: DetectedParameter[];
+  variant_summaries: ParameterSweepVariant[];
+  metric_comparisons: ParameterSweepMetricComparison[];
+  regions: ParameterSweepRegion[];
+  fragility_signals: ParameterSweepFragilitySignals;
+  rankings: ParameterSweepRankingItem[];
+  suggested_checks: string[];
+  deterministic_summary: string;
+  analysis_id: string | null;
+}

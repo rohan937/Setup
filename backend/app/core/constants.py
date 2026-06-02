@@ -85,6 +85,7 @@ class EventType(StrEnum):
     strategy_experiment_created = "strategy_experiment_created"
     strategy_experiment_run_added = "strategy_experiment_run_added"
     strategy_experiment_analyzed = "strategy_experiment_analyzed"
+    strategy_sweep_analyzed = "strategy_sweep_analyzed"
 
 
 class ReliabilityScoreStatus(StrEnum):
