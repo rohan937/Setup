@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1454 tests, 1 skipped)
+│   └── tests/              Pytest tests (1478 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,60 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M54: Strategy Config Policy Engine v1
+## Current milestone — M55: Research Review Cases v1
+
+**Status:** complete
+
+### What was built
+- Migration `0020_m55_review_cases.py` — 2 new tables: research_review_cases, research_review_case_events
+- ORM models: ResearchReviewCase, ResearchReviewCaseEvent
+- Service `review_cases.py` — 5 functions: generate_research_review_cases, get_research_review_cases, get_research_review_case, acknowledge_research_review_case, resolve_research_review_case
+- 7 deterministic case categories: reliability, evidence quality, freshness, assumptions, regression, promotion, shadow
+- Dedup: existing open/acknowledged case with same strategy_id + case_key is refreshed, not duplicated
+- Acknowledge/resolve workflow with case events and timeline events
+- 3 new EventType values: research_review_cases_generated, research_review_case_acknowledged, research_review_case_resolved
+- New router `api/routes/review_cases.py` — 5 endpoints
+- Frontend: 5 new types, 5 new API functions, ReviewCasesPanel in StrategyDetail.tsx
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /api/strategies/{id}/review-cases/generate | Generate/refresh review cases |
+| GET | /api/strategies/{id}/review-cases | List review cases (filter by status) |
+| GET | /api/review-cases/{id} | Get case detail with events |
+| POST | /api/review-cases/{id}/acknowledge | Acknowledge open case |
+| POST | /api/review-cases/{id}/resolve | Resolve case |
+
+### Case generation categories
+| Category | Trigger | Severity |
+|---|---|---|
+| reliability | Readiness blocked/requires_review or backtest trust < 60 | high/critical |
+| evidence_quality | High/critical evidence alerts open | high |
+| freshness | 2+ evidence types stale/missing | medium/high |
+| assumptions | Assumption health weak/review or config policy failed | medium/high |
+| regression | Regression test run failed with required failures | medium/high |
+| promotion | Promotion gate blocked/requires_review | medium/high |
+| shadow | Shadow monitor review/severe | medium/critical |
+
+### Language constraints
+Not an incident system. Language: "research review case," "requires review," "evidence cluster." Never: "incident," "breach," "strategy failed," "do not trade."
+
+### What M55 does not build
+- Full incident management
+- Notifications/webhooks
+- Assignment/team workflows
+- External integrations
+- AI case summaries
+- Production trading controls
+
+- **24 new backend M55 tests** (`tests/test_review_cases_m55.py`). All 24 passed on first run. No fixes needed.
+- **Backend total: 1478 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (built in 989ms). One non-fatal JS chunk size warning (612.74 kB) — not an error.
+- No external APIs. Deterministic. Not trading approval.
+
+---
+
+## Previously completed — M54: Strategy Config Policy Engine v1
 
 **Status:** complete
 

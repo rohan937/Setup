@@ -3070,3 +3070,58 @@ export interface ConfigPolicyEvaluationListResponse {
   items: ConfigPolicyEvaluation[];
   total: number;
 }
+
+// ============================================================
+// M55 — Research Review Cases
+// ============================================================
+
+export type ResearchReviewCaseStatus = 'open' | 'acknowledged' | 'resolved';
+
+export interface ResearchReviewCaseEvent {
+  id: string;
+  case_id: string;
+  event_type: string;
+  title: string;
+  description: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ResearchReviewCase {
+  id: string;
+  strategy_id: string;
+  title: string;
+  case_key: string;
+  status: ResearchReviewCaseStatus;
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  category: string;
+  summary: string | null;
+  deterministic_summary: string | null;
+  evidence_json: Record<string, unknown> | null;
+  suggested_actions_json: string[] | null;
+  linked_alert_ids_json: string[] | null;
+  linked_regression_run_ids_json: string[] | null;
+  linked_policy_evaluation_ids_json: string[] | null;
+  linked_backtest_audit_ids_json: string[] | null;
+  linked_run_ids_json: string[] | null;
+  linked_snapshot_ids_json: string[] | null;
+  opened_at: string;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+  events: ResearchReviewCaseEvent[];
+}
+
+export interface ResearchReviewCaseGenerateResponse {
+  strategy_id: string;
+  generated_count: number;
+  refreshed_count: number;
+  total_open: number;
+  cases: ResearchReviewCase[];
+}
+
+export interface ResearchReviewCaseListResponse {
+  items: ResearchReviewCase[];
+  total: number;
+}

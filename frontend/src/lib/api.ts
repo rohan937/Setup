@@ -96,6 +96,9 @@ import type {
   ConfigPolicyEvaluationRequest,
   ConfigPolicyEvaluation,
   ConfigPolicyEvaluationListResponse,
+  ResearchReviewCase,
+  ResearchReviewCaseGenerateResponse,
+  ResearchReviewCaseListResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -1159,4 +1162,46 @@ export async function getConfigPolicyEvaluation(
   return request<ConfigPolicyEvaluation>(
     `/api/config-policy-evaluations/${evaluationId}`,
   );
+}
+
+// M55 — Research Review Cases
+export async function generateResearchReviewCases(
+  strategyId: string,
+): Promise<ResearchReviewCaseGenerateResponse> {
+  return request<ResearchReviewCaseGenerateResponse>(
+    `/api/strategies/${strategyId}/review-cases/generate`,
+    { method: "POST" },
+  );
+}
+
+export async function getStrategyReviewCases(
+  strategyId: string,
+  status?: string,
+): Promise<ResearchReviewCaseListResponse> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request<ResearchReviewCaseListResponse>(
+    `/api/strategies/${strategyId}/review-cases${qs}`,
+  );
+}
+
+export async function getResearchReviewCase(
+  caseId: string,
+): Promise<ResearchReviewCase> {
+  return request<ResearchReviewCase>(`/api/review-cases/${caseId}`);
+}
+
+export async function acknowledgeResearchReviewCase(
+  caseId: string,
+): Promise<ResearchReviewCase> {
+  return request<ResearchReviewCase>(`/api/review-cases/${caseId}/acknowledge`, {
+    method: "POST",
+  });
+}
+
+export async function resolveResearchReviewCase(
+  caseId: string,
+): Promise<ResearchReviewCase> {
+  return request<ResearchReviewCase>(`/api/review-cases/${caseId}/resolve`, {
+    method: "POST",
+  });
 }

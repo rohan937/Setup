@@ -37,6 +37,7 @@ from app.models.config_policy import (
     StrategyConfigPolicyEvaluation,
     StrategyConfigPolicyResult,
 )
+from app.models.review_case import ResearchReviewCase, ResearchReviewCaseEvent
 
 __all__ = [
     "Organization",
@@ -67,4 +68,6 @@ __all__ = [
     "StrategyConfigPolicy",
     "StrategyConfigPolicyEvaluation",
     "StrategyConfigPolicyResult",
+    "ResearchReviewCase",
+    "ResearchReviewCaseEvent",
 ]

@@ -77,6 +77,9 @@ class EventType(StrEnum):
     demo_seeded = "demo_seeded"
     regression_tests_run = "regression_tests_run"
     config_policy_evaluated = "config_policy_evaluated"
+    research_review_cases_generated = "research_review_cases_generated"
+    research_review_case_acknowledged = "research_review_case_acknowledged"
+    research_review_case_resolved = "research_review_case_resolved"
 
 
 class ReliabilityScoreStatus(StrEnum):

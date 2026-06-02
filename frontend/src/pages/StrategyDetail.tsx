@@ -74,6 +74,7 @@ import type {
   RegressionTestOverallStatus,
   StrategyConfigPolicy,
   ConfigPolicyEvaluation,
+  ResearchReviewCase,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -108,6 +109,10 @@ import {
   getStrategyConfigPolicies,
   evaluateConfigPolicy,
   getConfigPolicyEvaluations,
+  generateResearchReviewCases,
+  getStrategyReviewCases,
+  acknowledgeResearchReviewCase,
+  resolveResearchReviewCase,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -6071,6 +6076,205 @@ function ConfigPolicyPanel({
   );
 }
 
+// ---------------------------------------------------------------------------
+// M55: Research Review Cases panel
+// ---------------------------------------------------------------------------
+function ReviewCasesPanel({
+  strategyId,
+  reviewCases,
+  setReviewCases,
+}: {
+  strategyId: string;
+  reviewCases: ResearchReviewCase[];
+  setReviewCases: (c: ResearchReviewCase[]) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const result = await generateResearchReviewCases(strategyId);
+      setReviewCases(result.cases);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleAcknowledge = async (caseId: string) => {
+    try {
+      const updated = await acknowledgeResearchReviewCase(caseId);
+      setReviewCases(reviewCases.map((c) => (c.id === caseId ? updated : c)));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleResolve = async (caseId: string) => {
+    try {
+      const updated = await resolveResearchReviewCase(caseId);
+      setReviewCases(reviewCases.map((c) => (c.id === caseId ? updated : c)));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const severityTextColor = (sev: string) => {
+    if (sev === "critical") return "text-red-400";
+    if (sev === "high") return "text-orange-400";
+    if (sev === "medium") return "text-amber-400";
+    if (sev === "low") return "text-blue-400";
+    return "text-gray-400";
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === "open") return "bg-red-900/30 text-red-300";
+    if (status === "acknowledged") return "bg-amber-900/30 text-amber-300";
+    if (status === "resolved") return "bg-cyan-900/30 text-cyan-300";
+    return "bg-gray-800 text-gray-400";
+  };
+
+  const openCases = reviewCases.filter((c) => c.status === "open");
+  const ackCases = reviewCases.filter((c) => c.status === "acknowledged");
+  const resolvedCases = reviewCases.filter((c) => c.status === "resolved");
+
+  return (
+    <div className="border border-gray-700 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-mono font-semibold text-gray-200 tracking-wide uppercase">
+          Research Review Cases
+        </h3>
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="px-3 py-1.5 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+        >
+          {generating ? "Generating…" : "Generate Review Cases"}
+        </button>
+      </div>
+
+      {reviewCases.length > 0 && (
+        <div className="flex gap-3 text-xs font-mono">
+          {openCases.length > 0 && (
+            <span className="text-red-400">{openCases.length} open</span>
+          )}
+          {ackCases.length > 0 && (
+            <span className="text-amber-400">{ackCases.length} acknowledged</span>
+          )}
+          {resolvedCases.length > 0 && (
+            <span className="text-gray-500">{resolvedCases.length} resolved</span>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+
+      {reviewCases.length === 0 && !generating && (
+        <p className="text-xs text-gray-500 font-mono">
+          No review cases. Click &ldquo;Generate&rdquo; to evaluate current evidence state.
+        </p>
+      )}
+
+      <div className="space-y-2">
+        {reviewCases.map((c) => (
+          <div
+            key={c.id}
+            className={
+              "border rounded-lg p-3 space-y-2 " +
+              (c.status === "resolved" ? "border-gray-700 opacity-60" : "border-gray-600")
+            }
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={"text-xs font-mono font-semibold " + severityTextColor(c.severity)}>
+                  {c.title}
+                </span>
+                <span className={"px-1.5 py-0.5 rounded text-xs font-mono " + statusBadge(c.status)}>
+                  {c.status}
+                </span>
+                <span className="text-xs text-gray-600 font-mono">{c.category}</span>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                {c.status === "open" && (
+                  <button
+                    onClick={() => handleAcknowledge(c.id)}
+                    className="px-2 py-0.5 text-xs font-mono border border-amber-700 text-amber-400 rounded hover:bg-amber-900/20"
+                  >
+                    Ack
+                  </button>
+                )}
+                {(c.status === "open" || c.status === "acknowledged") && (
+                  <button
+                    onClick={() => handleResolve(c.id)}
+                    className="px-2 py-0.5 text-xs font-mono border border-cyan-700 text-cyan-400 rounded hover:bg-cyan-900/20"
+                  >
+                    Resolve
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {c.deterministic_summary && (
+              <p className="text-xs text-gray-400 font-mono leading-relaxed">
+                {c.deterministic_summary}
+              </p>
+            )}
+
+            {c.suggested_actions_json && c.suggested_actions_json.length > 0 && (
+              <div className="space-y-0.5">
+                {c.suggested_actions_json.slice(0, 3).map((a, i) => (
+                  <div key={i} className="flex items-start gap-1.5 text-xs font-mono text-gray-500">
+                    <span className="text-cyan-600 mt-0.5">›</span>
+                    <span>{a}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+              className="text-xs font-mono text-gray-600 hover:text-gray-400"
+            >
+              {expandedId === c.id ? "▲ Hide evidence" : "▼ Show evidence"}
+            </button>
+
+            {expandedId === c.id && c.evidence_json && (
+              <div className="bg-gray-900 rounded p-2 text-xs font-mono text-gray-400 space-y-1">
+                {Object.entries(c.evidence_json)
+                  .slice(0, 12)
+                  .map(([k, v]) => (
+                    <div key={k} className="flex gap-2">
+                      <span className="text-gray-600 w-40 shrink-0">{k}</span>
+                      <span className="text-gray-300">{String(v)}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            <div className="text-xs text-gray-600 font-mono">
+              Opened {new Date(c.opened_at).toLocaleDateString()}
+              {c.acknowledged_at && (
+                <span className="ml-2">
+                  · Ack&apos;d {new Date(c.acknowledged_at).toLocaleDateString()}
+                </span>
+              )}
+              {c.resolved_at && (
+                <span className="ml-2">
+                  · Resolved {new Date(c.resolved_at).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -6176,6 +6380,9 @@ export default function StrategyDetail() {
   const [configPolicies, setConfigPolicies] = useState<StrategyConfigPolicy[]>([]);
   const [configPolicyEvaluations, setConfigPolicyEvaluations] = useState<ConfigPolicyEvaluation[]>([]);
   const [latestEvaluation, setLatestEvaluation] = useState<ConfigPolicyEvaluation | null>(null);
+
+  // M55: research review cases
+  const [reviewCases, setReviewCases] = useState<ResearchReviewCase[]>([]);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -6299,6 +6506,10 @@ export default function StrategyDetail() {
         setConfigPolicyEvaluations(r.items || []);
         if (r.items && r.items.length > 0) setLatestEvaluation(r.items[0]);
       })
+      .catch(() => {});
+    // M55: load review cases in parallel
+    getStrategyReviewCases(id)
+      .then((r) => setReviewCases(r.items || []))
       .catch(() => {});
   }, [id, refreshKey]);
 
@@ -6816,6 +7027,13 @@ export default function StrategyDetail() {
         setLatestEvaluation={setLatestEvaluation}
         configPolicyEvaluations={configPolicyEvaluations}
         setConfigPolicyEvaluations={setConfigPolicyEvaluations}
+      />
+
+      {/* M55: Research Review Cases */}
+      <ReviewCasesPanel
+        strategyId={id!}
+        reviewCases={reviewCases}
+        setReviewCases={setReviewCases}
       />
     </div>
   );
