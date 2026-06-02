@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1417 tests, 1 skipped)
+│   └── tests/              Pytest tests (1454 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,57 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M53: Strategy Regression Test Suite v1
+## Current milestone — M54: Strategy Config Policy Engine v1
+
+**Status:** complete
+
+### What was built
+- Migration `0019_m54_config_policies.py` — 3 new tables: strategy_config_policies, strategy_config_policy_evaluations, strategy_config_policy_results
+- ORM models: StrategyConfigPolicy, StrategyConfigPolicyEvaluation, StrategyConfigPolicyResult
+- Service `config_policies.py` — 6 functions: create_default_config_policy (idempotent), create_config_policy, get_config_policies, evaluate_config_policy, get_config_policy_evaluations, get_config_policy_evaluation
+- 15 default assumption guardrail rules covering costs/slippage, fill realism, borrow/shorting, risk controls, liquidity/capacity, and evidence linkage
+- New router `api/routes/config_policies.py` — 6 endpoints
+- Timeline event `config_policy_evaluated` on every evaluation
+- Frontend: 6 new types, 6 new API functions, ConfigPolicyPanel in StrategyDetail.tsx
+- ~22 new tests
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /api/strategies/{id}/config-policies/default | Create default guardrails (idempotent) |
+| POST | /api/strategies/{id}/config-policies | Create custom policy |
+| GET | /api/strategies/{id}/config-policies | List policies |
+| POST | /api/strategies/{id}/config-policies/{policy_id}/evaluate | Evaluate against latest or selected snapshot |
+| GET | /api/strategies/{id}/config-policy-evaluations | List recent evaluations |
+| GET | /api/config-policy-evaluations/{id} | Get detailed evaluation |
+
+### Default assumption guardrails (15 rules)
+- **Costs**: transaction_cost_bps must exist; slippage_bps recommended
+- **Fill realism**: fill_model required; must not be same_close/close/same_bar/exact_close
+- **Borrow**: borrow_cost_bps required when short_enabled=true (conditional rule)
+- **Risk controls**: max_leverage <= 2.0; max_position_weight <= 0.25; stop_loss/risk_limit recommended
+- **Liquidity**: liquidity_filter recommended; participation_rate <= 0.15 when present
+- **Evidence**: dataset_version reference recommended (info severity)
+
+### Language constraints
+This is not trading approval. Language used: "policy violation," "requires review," "assumption guardrail," "evidence gate result." Never: "strategy failed," "do not trade."
+
+### What M54 does not build
+- Full policy DSL/parser
+- User/team RBAC or approval workflows
+- Automatic config repair
+- AI-generated policies
+- External validation
+- Notification system
+
+- **37 new backend M54 tests** (`tests/test_config_policies_m54.py`). All 37 passed on first run. No fixes needed.
+- **Backend total: 1454 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (64 modules, built in 854ms). One non-fatal JS chunk size warning (607.91 kB) — not an error.
+- No external APIs. Deterministic. Not trading approval.
+
+---
+
+## Previously completed — M53: Strategy Regression Test Suite v1
 
 **Status: complete.**
 

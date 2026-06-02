@@ -91,6 +91,11 @@ import type {
   StrategyRegressionTestRun,
   StrategyRegressionTestRunListResponse,
   StrategyRegressionTestRunRequest,
+  StrategyConfigPolicy,
+  StrategyConfigPolicyCreate,
+  ConfigPolicyEvaluationRequest,
+  ConfigPolicyEvaluation,
+  ConfigPolicyEvaluationListResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -1098,5 +1103,60 @@ export async function getRegressionTestRun(
 ): Promise<StrategyRegressionTestRun> {
   return request<StrategyRegressionTestRun>(
     `/api/regression-test-runs/${testRunId}`,
+  );
+}
+
+// M54 — Config Policy Engine
+export async function createDefaultConfigPolicy(
+  strategyId: string,
+): Promise<StrategyConfigPolicy> {
+  return request<StrategyConfigPolicy>(
+    `/api/strategies/${strategyId}/config-policies/default`,
+    { method: "POST" },
+  );
+}
+
+export async function createConfigPolicy(
+  strategyId: string,
+  payload: StrategyConfigPolicyCreate,
+): Promise<StrategyConfigPolicy> {
+  return request<StrategyConfigPolicy>(
+    `/api/strategies/${strategyId}/config-policies`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function getStrategyConfigPolicies(
+  strategyId: string,
+): Promise<StrategyConfigPolicy[]> {
+  return request<StrategyConfigPolicy[]>(
+    `/api/strategies/${strategyId}/config-policies`,
+  );
+}
+
+export async function evaluateConfigPolicy(
+  strategyId: string,
+  policyId: string,
+  payload: ConfigPolicyEvaluationRequest,
+): Promise<ConfigPolicyEvaluation> {
+  return request<ConfigPolicyEvaluation>(
+    `/api/strategies/${strategyId}/config-policies/${policyId}/evaluate`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function getConfigPolicyEvaluations(
+  strategyId: string,
+): Promise<ConfigPolicyEvaluationListResponse> {
+  return request<ConfigPolicyEvaluationListResponse>(
+    `/api/strategies/${strategyId}/config-policy-evaluations`,
+  );
+}
+
+export async function getConfigPolicyEvaluation(
+  evaluationId: string,
+): Promise<ConfigPolicyEvaluation> {
+  return request<ConfigPolicyEvaluation>(
+    `/api/config-policy-evaluations/${evaluationId}`,
   );
 }

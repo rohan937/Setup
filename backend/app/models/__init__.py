@@ -32,6 +32,11 @@ from app.models.regression import (
     StrategyRegressionTestRun,
     StrategyRegressionTestResult,
 )
+from app.models.config_policy import (
+    StrategyConfigPolicy,
+    StrategyConfigPolicyEvaluation,
+    StrategyConfigPolicyResult,
+)
 
 __all__ = [
     "Organization",
@@ -59,4 +64,7 @@ __all__ = [
     "StrategyRegressionTest",
     "StrategyRegressionTestRun",
     "StrategyRegressionTestResult",
+    "StrategyConfigPolicy",
+    "StrategyConfigPolicyEvaluation",
+    "StrategyConfigPolicyResult",
 ]

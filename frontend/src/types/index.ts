@@ -3005,3 +3005,68 @@ export interface StrategyRegressionTestRunListResponse {
   limit: number;
   offset: number;
 }
+
+// ============================================================
+// M54 — Config Policy Engine
+// ============================================================
+
+export interface StrategyConfigPolicy {
+  id: string;
+  strategy_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  policy_json: Record<string, unknown>;
+  rule_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrategyConfigPolicyCreate {
+  name: string;
+  description?: string;
+  is_active?: boolean;
+  policy_json: Record<string, unknown>;
+}
+
+export interface ConfigPolicyEvaluationRequest {
+  config_snapshot_id?: string;
+}
+
+export interface ConfigPolicyResult {
+  id: string;
+  evaluation_id: string;
+  rule_key: string;
+  title: string;
+  status: 'passed' | 'warning' | 'failed' | 'skipped';
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  is_required: boolean;
+  observed_value: string | null;
+  expected_value: string | null;
+  key_path: string | null;
+  evidence_json: Record<string, unknown> | null;
+  suggested_action: string | null;
+  created_at: string;
+}
+
+export interface ConfigPolicyEvaluation {
+  id: string;
+  strategy_id: string;
+  policy_id: string;
+  config_snapshot_id: string | null;
+  overall_status: 'passed' | 'warning' | 'failed' | 'insufficient_evidence';
+  passed_count: number;
+  warning_count: number;
+  failed_count: number;
+  skipped_count: number;
+  critical_failed_count: number;
+  result_json: unknown | null;
+  deterministic_summary: string | null;
+  created_at: string;
+  results: ConfigPolicyResult[];
+}
+
+export interface ConfigPolicyEvaluationListResponse {
+  items: ConfigPolicyEvaluation[];
+  total: number;
+}

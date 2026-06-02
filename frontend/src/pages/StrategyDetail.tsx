@@ -72,6 +72,8 @@ import type {
   StrategyRegressionTestRun,
   RegressionTestStatus,
   RegressionTestOverallStatus,
+  StrategyConfigPolicy,
+  ConfigPolicyEvaluation,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -102,6 +104,10 @@ import {
   createDefaultRegressionTests,
   getStrategyRegressionTests,
   runStrategyRegressionTests,
+  createDefaultConfigPolicy,
+  getStrategyConfigPolicies,
+  evaluateConfigPolicy,
+  getConfigPolicyEvaluations,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -5813,6 +5819,258 @@ function RegressionTestPanel({
   );
 }
 
+// ---------------------------------------------------------------------------
+// M54: Config Policy Engine panel
+// ---------------------------------------------------------------------------
+function ConfigPolicyPanel({
+  strategyId,
+  configPolicies,
+  setConfigPolicies,
+  latestEvaluation,
+  setLatestEvaluation,
+  configPolicyEvaluations,
+  setConfigPolicyEvaluations,
+}: {
+  strategyId: string;
+  configPolicies: StrategyConfigPolicy[];
+  setConfigPolicies: (p: StrategyConfigPolicy[]) => void;
+  latestEvaluation: ConfigPolicyEvaluation | null;
+  setLatestEvaluation: (e: ConfigPolicyEvaluation | null) => void;
+  configPolicyEvaluations: ConfigPolicyEvaluation[];
+  setConfigPolicyEvaluations: (e: ConfigPolicyEvaluation[]) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [evalLoading, setEvalLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPolicyId, setSelectedPolicyId] = useState<string>("");
+
+  const handleCreateDefault = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await createDefaultConfigPolicy(strategyId);
+      const updated = await getStrategyConfigPolicies(strategyId);
+      setConfigPolicies(updated);
+      if (!selectedPolicyId && updated.length > 0) setSelectedPolicyId(updated[0].id);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEvaluate = async () => {
+    const pid = selectedPolicyId || configPolicies[0]?.id;
+    if (!pid) return;
+    setEvalLoading(true);
+    setError(null);
+    try {
+      const result = await evaluateConfigPolicy(strategyId, pid, {});
+      setLatestEvaluation(result);
+      const evals = await getConfigPolicyEvaluations(strategyId);
+      setConfigPolicyEvaluations(evals.items || []);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setEvalLoading(false);
+    }
+  };
+
+  const statusColor = (s: string) => {
+    if (s === "passed") return "text-cyan-400";
+    if (s === "warning") return "text-amber-400";
+    if (s === "failed") return "text-red-400";
+    if (s === "skipped") return "text-gray-500";
+    return "text-gray-400";
+  };
+
+  const severityBadge = (sev: string) => {
+    if (sev === "critical" || sev === "high") return "bg-red-900/40 text-red-300";
+    if (sev === "medium") return "bg-amber-900/40 text-amber-300";
+    if (sev === "low") return "bg-blue-900/40 text-blue-300";
+    return "bg-gray-800 text-gray-400";
+  };
+
+  return (
+    <div className="border border-gray-700 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-mono font-semibold text-gray-200 tracking-wide uppercase">
+          Config Policy Guardrails
+        </h3>
+        <span className="text-xs text-gray-500 font-mono">
+          Evidence gate — not trading approval
+        </span>
+      </div>
+
+      {/* Setup */}
+      {configPolicies.length === 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-400 font-mono">
+            No config policies defined. Create default assumption guardrails to evaluate config snapshots.
+          </p>
+          <button
+            onClick={handleCreateDefault}
+            disabled={loading}
+            className="px-3 py-1.5 text-xs font-mono bg-cyan-900/30 border border-cyan-700 text-cyan-300 rounded hover:bg-cyan-900/50 disabled:opacity-50"
+          >
+            {loading ? "Creating…" : "Create Default Guardrails"}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <div className="flex items-center gap-3 text-xs font-mono text-gray-400">
+            <span>
+              <span className="text-gray-200">{configPolicies.length}</span>{" "}
+              polic{configPolicies.length === 1 ? "y" : "ies"}
+            </span>
+            <span>
+              <span className="text-cyan-400">
+                {configPolicies.filter((p) => p.is_active).length}
+              </span>{" "}
+              active
+            </span>
+            {configPolicies[0] && (
+              <span className="text-gray-500">{configPolicies[0].rule_count} rules</span>
+            )}
+          </div>
+          {/* Policy list */}
+          <div className="space-y-1">
+            {configPolicies.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => setSelectedPolicyId(p.id)}
+                className={
+                  "flex items-center justify-between px-2 py-1 rounded border cursor-pointer text-xs font-mono " +
+                  (selectedPolicyId === p.id
+                    ? "border-cyan-700 bg-cyan-900/20"
+                    : "border-gray-700 hover:border-gray-600")
+                }
+              >
+                <span className="text-gray-200">{p.name}</span>
+                <span className={p.is_active ? "text-cyan-400" : "text-gray-500"}>
+                  {p.is_active ? "active" : "inactive"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Evaluate button */}
+      {configPolicies.length > 0 && (
+        <button
+          onClick={handleEvaluate}
+          disabled={evalLoading}
+          className="px-3 py-1.5 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+        >
+          {evalLoading ? "Evaluating…" : "Evaluate Config Policy"}
+        </button>
+      )}
+
+      {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+
+      {/* Latest evaluation */}
+      {latestEvaluation && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span
+              className={
+                "text-xs font-mono font-semibold " +
+                statusColor(latestEvaluation.overall_status)
+              }
+            >
+              {latestEvaluation.overall_status.toUpperCase().replace(/_/g, " ")}
+            </span>
+            <span className="text-xs text-gray-500 font-mono">
+              {latestEvaluation.passed_count}✓ {latestEvaluation.failed_count}✗{" "}
+              {latestEvaluation.warning_count}⚠ {latestEvaluation.skipped_count}○
+            </span>
+          </div>
+          {latestEvaluation.deterministic_summary && (
+            <p className="text-xs text-gray-400 font-mono">
+              {latestEvaluation.deterministic_summary}
+            </p>
+          )}
+          {/* Results table */}
+          {latestEvaluation.results && latestEvaluation.results.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono border-collapse">
+                <thead>
+                  <tr className="text-gray-500 text-left border-b border-gray-700">
+                    <th className="pb-1 pr-3">Rule</th>
+                    <th className="pb-1 pr-3">Status</th>
+                    <th className="pb-1 pr-3">Sev</th>
+                    <th className="pb-1 pr-3">Req</th>
+                    <th className="pb-1 pr-3">Observed</th>
+                    <th className="pb-1">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {latestEvaluation.results.map((r) => (
+                    <tr key={r.id} className="border-b border-gray-800/50">
+                      <td
+                        className="py-1 pr-3 text-gray-300 max-w-32 truncate"
+                        title={r.title}
+                      >
+                        {r.title}
+                      </td>
+                      <td className={"py-1 pr-3 " + statusColor(r.status)}>
+                        {r.status}
+                      </td>
+                      <td className="py-1 pr-3">
+                        <span className={"px-1 rounded text-xs " + severityBadge(r.severity)}>
+                          {r.severity}
+                        </span>
+                      </td>
+                      <td className="py-1 pr-3 text-gray-500">
+                        {r.is_required ? "✓" : "—"}
+                      </td>
+                      <td
+                        className="py-1 pr-3 text-gray-400 max-w-24 truncate"
+                        title={r.observed_value || ""}
+                      >
+                        {r.observed_value || "—"}
+                      </td>
+                      <td
+                        className="py-1 text-gray-500 max-w-40 truncate"
+                        title={r.suggested_action || ""}
+                      >
+                        {r.suggested_action || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recent evaluations */}
+      {configPolicyEvaluations.length > 1 && (
+        <details className="text-xs font-mono">
+          <summary className="text-gray-500 cursor-pointer hover:text-gray-400">
+            Recent evaluations ({configPolicyEvaluations.length})
+          </summary>
+          <div className="mt-2 space-y-1">
+            {configPolicyEvaluations.slice(0, 5).map((e) => (
+              <div key={e.id} className="flex items-center gap-3 text-gray-400">
+                <span className={statusColor(e.overall_status)}>{e.overall_status}</span>
+                <span>
+                  {e.passed_count}✓ {e.failed_count}✗
+                </span>
+                <span className="text-gray-600">
+                  {new Date(e.created_at).toLocaleDateString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -5913,6 +6171,11 @@ export default function StrategyDetail() {
   const [regressionTests, setRegressionTests] = useState<StrategyRegressionTest[]>([]);
   const [regressionRun, setRegressionRun] = useState<StrategyRegressionTestRun | null>(null);
   const [regressionLoading, setRegressionLoading] = useState(false);
+
+  // M54: config policy engine
+  const [configPolicies, setConfigPolicies] = useState<StrategyConfigPolicy[]>([]);
+  const [configPolicyEvaluations, setConfigPolicyEvaluations] = useState<ConfigPolicyEvaluation[]>([]);
+  const [latestEvaluation, setLatestEvaluation] = useState<ConfigPolicyEvaluation | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -6029,6 +6292,14 @@ export default function StrategyDetail() {
     getStrategyEvidenceGraph(id).then(setEvidenceGraph).catch(() => setEvidenceGraph(null));
     // M53: load regression tests in parallel
     getStrategyRegressionTests(id).then(setRegressionTests).catch(() => {});
+    // M54: load config policies and evaluations in parallel
+    getStrategyConfigPolicies(id).then(setConfigPolicies).catch(() => {});
+    getConfigPolicyEvaluations(id)
+      .then((r) => {
+        setConfigPolicyEvaluations(r.items || []);
+        if (r.items && r.items.length > 0) setLatestEvaluation(r.items[0]);
+      })
+      .catch(() => {});
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -6535,6 +6806,17 @@ export default function StrategyDetail() {
           }}
         />
       )}
+
+      {/* M54: Config Policy Engine */}
+      <ConfigPolicyPanel
+        strategyId={id!}
+        configPolicies={configPolicies}
+        setConfigPolicies={setConfigPolicies}
+        latestEvaluation={latestEvaluation}
+        setLatestEvaluation={setLatestEvaluation}
+        configPolicyEvaluations={configPolicyEvaluations}
+        setConfigPolicyEvaluations={setConfigPolicyEvaluations}
+      />
     </div>
   );
 }
