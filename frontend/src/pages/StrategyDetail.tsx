@@ -58,6 +58,8 @@ import type {
   AssumptionDriftItem,
   StrategyEvidenceFreshnessResponse,
   EvidenceFreshnessItem,
+  StrategyReadinessResponse,
+  StrategyReadinessDimension,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -81,6 +83,7 @@ import {
   getStrategyTimelineAnalytics,
   getStrategyDrift,
   getStrategyEvidenceFreshness,
+  getStrategyReadiness,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -4546,6 +4549,173 @@ function reportScoreColor(score: number | null): string {
   return "text-fidelity-low";
 }
 
+// ---------------------------------------------------------------------------
+// M49: Strategy Readiness Panel
+// ---------------------------------------------------------------------------
+
+function verdictColors(verdict: string): string {
+  switch (verdict) {
+    case "ready_for_paper_trading_consideration":
+      return "text-teal-400 bg-teal-900/25 border-teal-700/40";
+    case "ready_for_backtest_review":
+      return "text-cyan-400 bg-cyan-900/25 border-cyan-700/40";
+    case "requires_review_before_progression":
+      return "text-yellow-400 bg-yellow-900/25 border-yellow-700/40";
+    case "blocked":
+      return "text-red-400 bg-red-900/25 border-red-700/40";
+    default: // under_instrumented and fallback
+      return "text-text-muted bg-bg-700 border-border";
+  }
+}
+
+function dimStatusColor(status: string): string {
+  switch (status) {
+    case "ready": return "text-teal-400";
+    case "watch": return "text-yellow-400";
+    case "review": return "text-orange-400";
+    case "blocked": return "text-red-400";
+    default: return "text-text-muted";
+  }
+}
+
+function readinessScoreColor(score: number | null): string {
+  if (score === null) return "text-text-muted";
+  if (score >= 85) return "text-teal-400";
+  if (score >= 70) return "text-yellow-400";
+  if (score >= 50) return "text-orange-400";
+  return "text-red-400";
+}
+
+function DimensionCard({ dim }: { dim: StrategyReadinessDimension }) {
+  const firstBlocker = dim.blockers[0] ?? null;
+  const firstWarning = dim.warnings[0] ?? null;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700 px-3 py-2.5 space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-text-primary truncate">{dim.title}</p>
+        <span className={`font-mono text-xs font-semibold ${readinessScoreColor(dim.score)}`}>
+          {dim.score !== null ? dim.score.toFixed(0) : "—"}
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className={`font-mono text-2xs font-semibold uppercase tracking-wide ${dimStatusColor(dim.status)}`}>
+          {dim.status}
+        </span>
+      </div>
+      {dim.evidence_summary && (
+        <p className="font-mono text-2xs text-text-muted leading-relaxed">{dim.evidence_summary}</p>
+      )}
+      {firstBlocker && (
+        <p className="font-mono text-2xs text-red-400 truncate">✗ {firstBlocker}</p>
+      )}
+      {!firstBlocker && firstWarning && (
+        <p className="font-mono text-2xs text-yellow-400 truncate">⚠ {firstWarning}</p>
+      )}
+    </div>
+  );
+}
+
+function ReadinessPanel({ readiness }: { readiness: StrategyReadinessResponse }) {
+  const vColors = verdictColors(readiness.readiness_verdict);
+
+  return (
+    <div className="rounded-card border border-border bg-bg-800">
+      <div className="border-b border-border px-4 py-2.5">
+        <p className="caption">Strategy Readiness</p>
+      </div>
+
+      <div className="px-4 py-4 space-y-4">
+        {/* A: Verdict band */}
+        <div className={`rounded-card border px-4 py-3 ${vColors}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm font-bold uppercase tracking-wide">
+                {readiness.verdict_label}
+              </span>
+            </div>
+            <span className={`mono-num text-2xl font-bold ${readinessScoreColor(readiness.readiness_score)}`}>
+              {readiness.readiness_score !== null ? readiness.readiness_score.toFixed(0) : "—"}
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs italic opacity-80">{readiness.verdict_summary}</p>
+          <p className="mt-0.5 font-mono text-2xs opacity-60">{fmtDate(readiness.generated_at)}</p>
+        </div>
+
+        {/* B: Progression path */}
+        <div className="space-y-1.5">
+          <p className="caption">Progression Path</p>
+          <p className="font-mono text-xs text-text-secondary">
+            Stage: <span className="text-text-primary">{readiness.progression_path.current_stage}</span>
+            {" "}&rarr;{" "}
+            Next: <span className="text-text-primary">{readiness.progression_path.next_recommended_stage}</span>
+          </p>
+          {readiness.progression_path.required_before_next_stage.length > 0 && (
+            <ul className="space-y-0.5 mt-1">
+              {readiness.progression_path.required_before_next_stage.map((req, i) => (
+                <li key={i} className="font-mono text-2xs text-text-muted">☐ {req}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* C: Dimension grid */}
+        {readiness.dimension_scorecards.length > 0 && (
+          <div>
+            <p className="caption mb-2">Dimension Scorecards</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {readiness.dimension_scorecards.map((dim) => (
+                <DimensionCard key={dim.dimension_key} dim={dim} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* D: Blockers */}
+        {readiness.blockers.length > 0 && (
+          <div className="rounded-card border-l-2 border-l-red-500 border border-red-700/30 bg-red-900/10 px-3 py-2.5 space-y-1.5">
+            <p className="font-mono text-xs font-semibold text-red-400">Blocking Issues</p>
+            <ul className="space-y-0.5">
+              {readiness.blockers.map((b, i) => (
+                <li key={i} className="font-mono text-2xs text-red-300">✗ {b}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* E: Review items */}
+        {readiness.review_items.length > 0 && (
+          <div className="rounded-card border-l-2 border-l-yellow-500 border border-yellow-700/30 bg-yellow-900/10 px-3 py-2.5 space-y-1.5">
+            <p className="font-mono text-xs font-semibold text-yellow-400">Review Items</p>
+            <ul className="space-y-0.5">
+              {readiness.review_items.map((r, i) => (
+                <li key={i} className="font-mono text-2xs text-yellow-300">⚠ {r}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* F: Suggested next actions */}
+        {readiness.suggested_next_actions.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="caption">Suggested Next Actions</p>
+            <ul className="space-y-0.5">
+              {readiness.suggested_next_actions.map((action, i) => (
+                <li key={i} className="font-mono text-2xs text-text-secondary">☐ {action}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* G: Disclaimer */}
+        <p className="font-mono text-2xs text-text-muted italic">
+          Deterministic readiness assessment. Not a trading recommendation.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -4626,6 +4796,9 @@ export default function StrategyDetail() {
   // M47: drift
   const [driftData, setDriftData] = useState<StrategyDriftResponse | null>(null);
   const [freshness, setFreshness] = useState<StrategyEvidenceFreshnessResponse | null>(null);
+
+  // M49: readiness
+  const [readiness, setReadiness] = useState<StrategyReadinessResponse | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -4732,6 +4905,8 @@ export default function StrategyDetail() {
     getStrategyDrift(id).then(setDriftData).catch(() => setDriftData(null));
     // M48: load evidence freshness in parallel
     getStrategyEvidenceFreshness(id).then(setFreshness).catch(() => setFreshness(null));
+    // M49: load readiness in parallel
+    getStrategyReadiness(id).then(setReadiness).catch(() => setReadiness(null));
   }, [id, refreshKey]);
 
   async function handleComputeReliabilityScore() {
@@ -4841,6 +5016,9 @@ export default function StrategyDetail() {
 
       {/* M27: Strategy Health card */}
       {health && <StrategyHealthCard health={health} />}
+
+      {/* M49: Strategy Readiness panel */}
+      {readiness && <ReadinessPanel readiness={readiness} />}
 
       <RunLogDrawer
         open={runDrawerOpen}

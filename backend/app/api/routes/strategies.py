@@ -238,6 +238,12 @@ from app.services.timeline_analytics import (
     TimelineInactivityGapData,
     StrategyTimelineAnalyticsData,
 )
+from app.schemas.strategy_readiness import (
+    StrategyReadinessDimension,
+    StrategyProgressionPath,
+    StrategyReadinessResponse,
+)
+from app.services.strategy_readiness import compute_strategy_readiness, StrategyReadinessData
 
 router = APIRouter(tags=["strategies"])
 
@@ -3968,4 +3974,65 @@ def get_strategy_freshness(
         freshest_evidence_type=result.freshest_evidence_type,
         suggested_refresh_order=result.suggested_refresh_order,
         deterministic_summary=result.deterministic_summary,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M49: GET /api/strategies/{strategy_id}/readiness
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/readiness",
+    response_model=StrategyReadinessResponse,
+    tags=["strategies"],
+)
+def get_strategy_readiness(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyReadinessResponse:
+    """Return a multi-dimensional readiness scorecard for a strategy.
+
+    Deterministic — no AI, no live market data.
+    Read-only — no AuditTimelineEvent created.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        result = compute_strategy_readiness(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return StrategyReadinessResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        readiness_score=result.readiness_score,
+        readiness_verdict=result.readiness_verdict,
+        verdict_label=result.verdict_label,
+        verdict_summary=result.verdict_summary,
+        deterministic_summary=result.deterministic_summary,
+        dimension_scorecards=[
+            StrategyReadinessDimension(
+                dimension_key=d.dimension_key,
+                title=d.title,
+                score=d.score,
+                status=d.status,
+                evidence_summary=d.evidence_summary,
+                blockers=d.blockers,
+                warnings=d.warnings,
+                suggested_actions=d.suggested_actions,
+            )
+            for d in result.dimension_scorecards
+        ],
+        blockers=result.blockers,
+        review_items=result.review_items,
+        suggested_next_actions=result.suggested_next_actions,
+        progression_path=StrategyProgressionPath(
+            current_stage=result.progression_path.current_stage,
+            next_recommended_stage=result.progression_path.next_recommended_stage,
+            required_before_next_stage=result.progression_path.required_before_next_stage,
+        ),
     )

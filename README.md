@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1311 tests, 1 skipped)
+│   └── tests/              Pytest tests (1333 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,66 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M48: Evidence Freshness Monitor v1
+## Current milestone — M49: Strategy Readiness Scorecard v1
+
+**Status: complete.**
+
+### M49 deliverables
+
+- **New service `backend/app/services/strategy_readiness.py`** — `compute_strategy_readiness(strategy_id, db)` calls 8 existing services (health, coverage, freshness, backtest_trust, assumption_health, drift, alerts, run_evidence) and aggregates their outputs into a single readiness scorecard. No AI, no external APIs. Fully deterministic. Not a trading recommendation.
+
+- **8 readiness dimensions with WEIGHTS**:
+  - `strategy_health`: 15%
+  - `evidence_coverage`: 15%
+  - `backtest_trust`: 20%
+  - `assumption_health`: 15%
+  - `evidence_freshness`: 10%
+  - `drift_stability`: 10%
+  - `alert_state`: 10%
+  - `run_evidence`: 5%
+
+- **Overall readiness score (0–100)**: weighted average of all scored dimensions; null if fewer than 4 dimensions are scored.
+
+- **5 verdicts**:
+  - `ready_for_paper_trading_consideration` — score >= 85, all key dimensions good.
+  - `ready_for_backtest_review` — score >= 75, backtest audit exists, coverage >= 70.
+  - `requires_review_before_progression` — does not meet the above thresholds but no blocking condition.
+  - `under_instrumented` — no runs exist or overall score is null.
+  - `blocked` — critical alert present, backtest trust < 40, severe drift, or weak assumptions.
+
+- **Progression path**: `current_stage` (one of `no_runs` / `research` / `backtest` / `paper` / `live_like`), `next_recommended_stage`, and `required_before_next_stage` list of actionable items.
+
+- **New endpoint** `GET /api/strategies/{id}/readiness`:
+  - Read-only. No `AuditTimelineEvent` created.
+  - 404 for unknown strategy.
+  - Returns `StrategyReadinessResponse`.
+
+- **New schemas `backend/app/schemas/strategy_readiness.py`** — Pydantic request and response models.
+
+- **Frontend — `ReadinessPanel`** in `StrategyDetail.tsx`:
+  - Placed early (after the health card) so it is visible without scrolling.
+  - Verdict band showing overall readiness score and verdict badge.
+  - Progression path section: current stage, next recommended stage, required-before-next list.
+  - 2-column dimension grid: one card per readiness dimension showing score, weight, and status.
+  - Blockers panel — lists any blocking conditions preventing progression.
+  - Review items panel — lower-priority items that require attention.
+  - Suggested actions panel.
+
+- **22 new backend M49 tests** (`tests/test_strategy_readiness_m49.py`). All 22 passed on first run.
+- **Backend total: 1333 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (built in 856ms). One JS chunk (568.03 kB minified / 124.53 kB gzip) + one CSS chunk (33.02 kB / 6.77 kB gzip). One non-fatal chunk size warning (> 500 kB) — not an error.
+- No external APIs. Deterministic. Not a trading recommendation.
+
+### What M49 does NOT build (by design)
+
+- No real trading approval workflow.
+- No broker integration or live execution gating.
+- No user signoff flows or multi-party approval.
+- No notification system (email, Slack, PagerDuty).
+
+---
+
+## Previously completed — M48: Evidence Freshness Monitor v1
 
 **Status: complete.**
 

@@ -83,6 +83,7 @@ import type {
   DemoStatusResponse,
   StrategyDriftResponse,
   StrategyEvidenceFreshnessResponse,
+  StrategyReadinessResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -969,5 +970,17 @@ export async function getStrategyEvidenceFreshness(
 ): Promise<StrategyEvidenceFreshnessResponse> {
   return request<StrategyEvidenceFreshnessResponse>(
     `/api/strategies/${strategyId}/freshness`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M49: Strategy Readiness
+// ---------------------------------------------------------------------------
+
+export async function getStrategyReadiness(
+  strategyId: string,
+): Promise<StrategyReadinessResponse> {
+  return request<StrategyReadinessResponse>(
+    `/api/strategies/${strategyId}/readiness`,
   );
 }

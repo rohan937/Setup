@@ -2664,3 +2664,47 @@ export interface StrategyEvidenceFreshnessResponse {
   freshest_evidence_type: string | null;
   suggested_refresh_order: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M49: Strategy Readiness
+// ---------------------------------------------------------------------------
+
+export type StrategyReadinessVerdict =
+  | "ready_for_backtest_review"
+  | "ready_for_paper_trading_consideration"
+  | "requires_review_before_progression"
+  | "under_instrumented"
+  | "blocked";
+
+export interface StrategyReadinessDimension {
+  dimension_key: string;
+  title: string;
+  status: string;
+  evidence_summary: string;
+  score: number | null;
+  blockers: string[];
+  warnings: string[];
+  suggested_actions: string[];
+}
+
+export interface StrategyProgressionPath {
+  current_stage: string;
+  next_recommended_stage: string;
+  required_before_next_stage: string[];
+}
+
+export interface StrategyReadinessResponse {
+  strategy_id: string;
+  strategy_name: string;
+  readiness_verdict: StrategyReadinessVerdict;
+  verdict_label: string;
+  verdict_summary: string;
+  deterministic_summary: string;
+  generated_at: string;
+  readiness_score: number | null;
+  dimension_scorecards: StrategyReadinessDimension[];
+  blockers: string[];
+  review_items: string[];
+  suggested_next_actions: string[];
+  progression_path: StrategyProgressionPath;
+}
