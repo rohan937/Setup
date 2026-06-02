@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1160 tests, 1 skipped)
+│   └── tests/              Pytest tests (1181 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,77 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M39: Universe Snapshot Coverage Analysis v1
+## Current milestone — M40: Config Snapshot Diff Engine v2
+
+**Status: complete.**
+
+### M40 deliverables
+
+- **New function `compare_config_snapshots_enriched()`** added to
+  `backend/app/services/config_snapshots.py`. Preserves the existing M15 `compare_config_snapshots()`
+  function without modification.
+
+- **Structured diff output** — returns a `ConfigSnapshotComparisonV2` object with four sections:
+  `params_diff`, `assumptions_diff`, `portfolio_diff`, `risk_diff`. Each section is a
+  `ConfigDiffSection` with a `changes` list and `added_count`, `removed_count`, `changed_count`.
+
+- **`ConfigFieldChange`** — per-field diff record with:
+  - `key_path` — dotted path of the changed field.
+  - `old_value` / `new_value` — before and after values.
+  - `change_type` — `added`, `removed`, or `changed`.
+  - `category` — field category (e.g. `cost_assumptions`, `fill_model`, `slippage`, `borrow_cost`,
+    `leverage`, `risk_limits`, `liquidity_filters`, or `general`).
+  - `impact_level` — `positive`, `neutral`, `review`, `weakening`, or `unknown`.
+  - `impact_reason` — deterministic explanation string.
+  - `suggested_check` — actionable check hint.
+
+- **Assumption classification rules** (deterministic, no AI):
+  - **Cost assumptions**: adding → `positive`; removing → `weakening`; decreasing → `review`;
+    increasing → `positive`.
+  - **Fill model**: changing to same-close → `weakening`; changing to next-bar → `positive`.
+  - **Slippage**: adding → `positive`; removing → `weakening`.
+  - **Borrow cost**: adding → `positive`; removing → `weakening`.
+  - **Leverage**: increasing → `review`.
+  - **Risk limits**: removing → `weakening`; adding → `positive`.
+  - **Liquidity filters**: removing → `weakening`; adding → `review`.
+
+- **Impact language**: "may make backtest assumptions less conservative", "requires review".
+  Deterministic — no causal claims, no investment advice.
+
+- **New endpoint** `GET /api/strategies/{id}/config-snapshots/compare-v2?snapshot_a_id=...&snapshot_b_id=...`
+  — returns a `ConfigSnapshotComparisonV2Response` with:
+  - `weakening_changes` — list of changes with `impact_level=weakening`.
+  - `positive_changes` — list of changes with `impact_level=positive`.
+  - `review_changes` — list of changes with `impact_level=review`.
+  - `highlighted_changes` — top changes across all impact levels.
+  - `suggested_checks` — deduplicated list of suggested checks across all changes.
+  - `deterministic_explanation` — rule-based summary string. Ends with "Not an investment recommendation."
+
+- **New schemas** (`backend/app/schemas/config_snapshots.py`):
+  `ConfigFieldChange`, `ConfigDiffSection`, `ConfigSnapshotComparisonV2Response`.
+
+- **Frontend — `ConfigDiffPanel`** in `StrategyDetail.tsx`:
+  - Snapshot A / Snapshot B selectors (dropdowns populated from existing config snapshots).
+  - Collapsible sections for weakening changes, positive changes, review changes,
+    params diff, and assumptions diff.
+  - Suggested checks panel at the bottom.
+  - Impact level badges (weakening / positive / review / neutral / unknown) per row.
+
+- **22 new backend M40 tests** (`tests/test_config_diff_m40.py`). All 22 passed on first run.
+- **Backend total: 1181 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (63 modules, built in ~830ms).
+- No external APIs. Deterministic. Not investment advice.
+
+### What M40 does NOT build (by design)
+
+- No GitHub integration or git-level config diff.
+- No code parsing or AST-level diff.
+- No AI explanations.
+- No config policy engine or automatic repair.
+
+---
+
+## Previously completed — M39: Universe Snapshot Coverage Analysis v1
 
 **Status: complete.**
 

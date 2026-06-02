@@ -2215,3 +2215,47 @@ export interface SignalQualityDrilldownResponse {
   quality_summary: SignalQualitySummary;
   warnings: string[];
 }
+
+// ---------------------------------------------------------------------------
+// M40: Config Snapshot Diff V2
+// ---------------------------------------------------------------------------
+
+export interface ConfigFieldChange {
+  key: string;
+  key_path: string;
+  change_type: string;
+  category: string;
+  impact_level: string;
+  impact_reason: string;
+  old_value: unknown;
+  new_value: unknown;
+  suggested_check: string | null;
+}
+
+export interface ConfigDiffSection {
+  changes: ConfigFieldChange[];
+  unchanged_count: number;
+  added_count: number;
+  removed_count: number;
+  changed_count: number;
+}
+
+export interface ConfigSnapshotComparisonV2Response {
+  snapshot_a_id: string;
+  snapshot_b_id: string;
+  snapshot_a_label: string;
+  snapshot_b_label: string;
+  deterministic_explanation: string;
+  is_same_config: boolean;
+  total_changes: number;
+  params_diff: ConfigDiffSection;
+  assumptions_diff: ConfigDiffSection;
+  portfolio_diff: ConfigDiffSection;
+  risk_diff: ConfigDiffSection;
+  all_changes: ConfigFieldChange[];
+  weakening_changes: ConfigFieldChange[];
+  positive_changes: ConfigFieldChange[];
+  review_changes: ConfigFieldChange[];
+  highlighted_changes: string[];
+  suggested_checks: string[];
+}

@@ -70,7 +70,10 @@ from app.schemas.multi_run_comparison import (
 from app.schemas.strategy import (
     ConfigComparisonResponse,
     ConfigComparisonSectionOut,
+    ConfigDiffSection,
+    ConfigFieldChange,
     ConfigKeyChangeOut,
+    ConfigSnapshotComparisonV2Response,
     DataEvidenceSummary,
     EvidenceCountDelta as _EvidenceCountDelta,
     ReliabilityComponentDelta as _ReliabilityComponentDelta,
@@ -164,6 +167,7 @@ from app.services.strategy_export import (
 )
 from app.services.config_snapshots import (
     compare_config_snapshots,
+    compare_config_snapshots_enriched,
     compute_config_hash,
     count_assumptions,
     count_params,
@@ -2110,6 +2114,89 @@ def compare_strategy_config_snapshots(
         assumptions=_section_out(result.assumptions),
         highlighted_changes=result.highlighted_changes,
         total_changes=result.total_changes,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M40: GET /api/strategies/{strategy_id}/config-snapshots/compare-v2
+# Enriched comparison with assumption classification.
+# Registered BEFORE the list route so the literal "/compare-v2" is matched first.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/strategies/{strategy_id}/config-snapshots/compare-v2",
+    response_model=ConfigSnapshotComparisonV2Response,
+)
+def compare_config_snapshots_v2(
+    strategy_id: uuid.UUID,
+    snapshot_a_id: uuid.UUID = Query(..., description="ID of the baseline config snapshot (A)"),
+    snapshot_b_id: uuid.UUID = Query(..., description="ID of the comparison config snapshot (B)"),
+    db: Session = Depends(get_db),
+) -> ConfigSnapshotComparisonV2Response:
+    """Enriched deterministic comparison of two config snapshots.
+
+    Read-only — no audit event is emitted.
+    Extends M15 comparison with per-field assumption impact classification
+    across params, assumptions, portfolio, and risk/constraints sections.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    snap_a = (
+        db.query(StrategyConfigSnapshot)
+        .filter(
+            StrategyConfigSnapshot.id == snapshot_a_id,
+            StrategyConfigSnapshot.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if snap_a is None:
+        raise HTTPException(status_code=404, detail="Config snapshot A not found")
+
+    snap_b = (
+        db.query(StrategyConfigSnapshot)
+        .filter(
+            StrategyConfigSnapshot.id == snapshot_b_id,
+            StrategyConfigSnapshot.strategy_id == strategy_id,
+        )
+        .first()
+    )
+    if snap_b is None:
+        raise HTTPException(status_code=404, detail="Config snapshot B not found")
+
+    result = compare_config_snapshots_enriched(snap_a, snap_b)
+
+    def _to_field_changes(changes: list[dict]) -> list[ConfigFieldChange]:
+        return [ConfigFieldChange(**c) for c in changes]
+
+    def _to_diff_section(section: dict) -> ConfigDiffSection:
+        return ConfigDiffSection(
+            changes=_to_field_changes(section["changes"]),
+            unchanged_count=section["unchanged_count"],
+            added_count=section["added_count"],
+            removed_count=section["removed_count"],
+            changed_count=section["changed_count"],
+        )
+
+    return ConfigSnapshotComparisonV2Response(
+        snapshot_a_id=snap_a.id,
+        snapshot_b_id=snap_b.id,
+        snapshot_a_label=result["snapshot_a_label"],
+        snapshot_b_label=result["snapshot_b_label"],
+        is_same_config=result["is_same_config"],
+        total_changes=result["total_changes"],
+        params_diff=_to_diff_section(result["params_diff"]),
+        assumptions_diff=_to_diff_section(result["assumptions_diff"]),
+        portfolio_diff=_to_diff_section(result["portfolio_diff"]),
+        risk_diff=_to_diff_section(result["risk_diff"]),
+        all_changes=_to_field_changes(result["all_changes"]),
+        weakening_changes=_to_field_changes(result["weakening_changes"]),
+        positive_changes=_to_field_changes(result["positive_changes"]),
+        review_changes=_to_field_changes(result["review_changes"]),
+        highlighted_changes=result["highlighted_changes"],
+        suggested_checks=result["suggested_checks"],
+        deterministic_explanation=result["deterministic_explanation"],
     )
 
 

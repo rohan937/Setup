@@ -44,6 +44,9 @@ import type {
   SymbolSignalQuality,
   SignalRowQualitySample,
   UniverseCoverageAnalysisResponse,
+  ConfigSnapshotComparisonV2Response,
+  ConfigFieldChange,
+  ConfigDiffSection,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -62,6 +65,7 @@ import {
   runBacktestAudit,
   getSignalSnapshotQualityDrilldown,
   getUniverseSnapshotCoverageAnalysis,
+  compareConfigSnapshotsV2,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -1642,14 +1646,27 @@ function VersionConfigSection({
   configSnapshots,
   onCreateVersion,
   onLogConfig,
+  snapshotA,
+  snapshotB,
+  onSnapshotAChange,
+  onSnapshotBChange,
+  onCompare,
 }: {
   versions: StrategyVersion[];
   configSnapshots: StrategyConfigSnapshotRead[];
   onCreateVersion: () => void;
   onLogConfig: () => void;
+  snapshotA: string;
+  snapshotB: string;
+  onSnapshotAChange: (id: string) => void;
+  onSnapshotBChange: (id: string) => void;
+  onCompare: () => void;
 }) {
   // Unlinked snapshots — those with no strategy_version_id
   const unlinked = configSnapshots.filter((s) => s.strategy_version_id === null);
+
+  const selectCls =
+    "rounded-control border border-border bg-bg-600 px-2 py-1 font-mono text-2xs text-text-primary focus:border-accent-500 focus:outline-none";
 
   return (
     <div className="rounded-card border border-border bg-bg-700">
@@ -1699,6 +1716,47 @@ function VersionConfigSection({
         {versions.length === 0 && unlinked.length === 0 && configSnapshots.length === 0 && (
           <p className="font-mono text-2xs text-text-muted">No version or config evidence yet.</p>
         )}
+
+        {/* M40: Config Diff selector */}
+        <div className="border-t border-border/50 pt-3">
+          <p className="caption mb-2 text-text-muted">Compare Config Snapshots</p>
+          {configSnapshots.length < 2 ? (
+            <p className="font-mono text-2xs text-text-muted/60">
+              Need at least two config snapshots to compare.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={snapshotA}
+                onChange={(e) => onSnapshotAChange(e.target.value)}
+                className={selectCls}
+              >
+                <option value="">— Snapshot A —</option>
+                {configSnapshots.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+              <span className="font-mono text-2xs text-text-muted">→</span>
+              <select
+                value={snapshotB}
+                onChange={(e) => onSnapshotBChange(e.target.value)}
+                className={selectCls}
+              >
+                <option value="">— Snapshot B —</option>
+                {configSnapshots.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={onCompare}
+                disabled={!snapshotA || !snapshotB || snapshotA === snapshotB}
+                className="rounded-control border border-border px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Compare Config
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -3386,6 +3444,213 @@ function UniverseCoveragePanel({ coverage }: { coverage: UniverseCoverageAnalysi
 }
 
 // ---------------------------------------------------------------------------
+// M40: Config Diff Panel
+// ---------------------------------------------------------------------------
+
+function impactColor(impact: string): string {
+  switch (impact) {
+    case "positive": return "text-teal-400";
+    case "review": return "text-yellow-400";
+    case "weakening": return "text-red-400";
+    default: return "text-text-muted";
+  }
+}
+
+function changeTypeLabel(ct: string): string {
+  switch (ct) {
+    case "added": return "Added";
+    case "removed": return "Removed";
+    case "changed": return "Changed";
+    default: return ct;
+  }
+}
+
+function ConfigFieldRow({ change }: { change: ConfigFieldChange }) {
+  return (
+    <div className="py-1.5 flex flex-wrap gap-2 items-start">
+      <span className={`font-mono text-2xs font-semibold shrink-0 ${impactColor(change.impact_level)}`}>
+        [{changeTypeLabel(change.change_type)}]
+      </span>
+      <span className="font-mono text-2xs text-text-secondary break-all">{change.key_path || change.key}</span>
+      {change.impact_reason && (
+        <span className="font-mono text-2xs text-text-muted">— {change.impact_reason}</span>
+      )}
+      {change.suggested_check && (
+        <span className="font-mono text-2xs text-accent-300">↳ {change.suggested_check}</span>
+      )}
+    </div>
+  );
+}
+
+function ConfigDiffTable({ section, title }: { section: ConfigDiffSection; title: string }) {
+  const [open, setOpen] = useState(false);
+  if (section.changes.length === 0) return null;
+  return (
+    <div className="rounded-control border border-border bg-bg-800">
+      <button
+        className="w-full flex items-center justify-between px-3 py-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>{title} <span className="text-text-muted">({section.changes.length} change{section.changes.length !== 1 ? "s" : ""})</span></span>
+        <span className="text-text-muted">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border overflow-x-auto">
+          <table className="w-full text-left font-mono text-2xs">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="px-4 pb-1.5 pt-2.5 text-text-muted font-normal">Key</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">Old Value</th>
+                <th className="px-3 pb-1.5 pt-2.5 text-text-muted font-normal">New Value</th>
+                <th className="px-3 pb-1.5 pt-2.5 pr-4 text-text-muted font-normal">Impact</th>
+              </tr>
+            </thead>
+            <tbody>
+              {section.changes.map((c, i) => (
+                <tr key={i} className="border-b border-border/50 last:border-0">
+                  <td className="px-4 py-1.5 text-text-secondary break-all">{c.key_path || c.key}</td>
+                  <td className="px-3 py-1.5 text-orange-400">{c.old_value !== undefined && c.old_value !== null ? JSON.stringify(c.old_value) : <span className="text-text-muted/50">—</span>}</td>
+                  <td className="px-3 py-1.5 text-teal-400">{c.new_value !== undefined && c.new_value !== null ? JSON.stringify(c.new_value) : <span className="text-text-muted/50">—</span>}</td>
+                  <td className={`px-3 py-1.5 pr-4 ${impactColor(c.impact_level)}`}>{c.impact_level}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfigDiffChangeGroup({
+  changes,
+  title,
+  headerColor,
+}: {
+  changes: ConfigFieldChange[];
+  title: string;
+  headerColor: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (changes.length === 0) return null;
+  return (
+    <div className="rounded-control border border-border bg-bg-800">
+      <button
+        className={`w-full flex items-center justify-between px-3 py-2 font-mono text-2xs ${headerColor} hover:opacity-80`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>{title} <span className="opacity-70">({changes.length})</span></span>
+        <span className="opacity-60">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border px-3 py-2 space-y-0.5">
+          {changes.map((c, i) => <ConfigFieldRow key={i} change={c} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfigDiffPanel({ diff }: { diff: ConfigSnapshotComparisonV2Response }) {
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      {/* Header */}
+      <div className="border-b border-border px-4 py-2.5">
+        <p className="caption">Config Diff</p>
+        <p className="mt-0.5 font-mono text-xs text-text-secondary">
+          {diff.snapshot_a_label} <span className="text-text-muted">→</span> {diff.snapshot_b_label}
+        </p>
+      </div>
+
+      <div className="p-4 space-y-3">
+
+        {/* A. Summary strip */}
+        <div className="flex flex-wrap gap-4 font-mono text-2xs">
+          <span className="text-text-secondary">
+            total changes: <span className="font-semibold text-text-primary">{diff.total_changes}</span>
+          </span>
+          <span className={diff.weakening_changes.length > 0 ? "text-red-400 font-semibold" : "text-text-muted"}>
+            weakening: {diff.weakening_changes.length}
+          </span>
+          <span className={diff.positive_changes.length > 0 ? "text-teal-400 font-semibold" : "text-text-muted"}>
+            positive: {diff.positive_changes.length}
+          </span>
+          <span className={diff.review_changes.length > 0 ? "text-yellow-400 font-semibold" : "text-text-muted"}>
+            review: {diff.review_changes.length}
+          </span>
+          {diff.is_same_config && (
+            <span className="text-fidelity-high">identical configs</span>
+          )}
+        </div>
+
+        {/* B. Deterministic explanation */}
+        {diff.deterministic_explanation && (
+          <p className="font-mono text-2xs text-text-muted italic leading-relaxed">
+            {diff.deterministic_explanation}
+          </p>
+        )}
+
+        {/* C. Highlighted changes */}
+        {diff.highlighted_changes.length > 0 && (
+          <div className="rounded-control border border-border/60 bg-bg-800 px-3 py-2">
+            <p className="font-mono text-2xs text-text-muted mb-1">Highlighted Changes</p>
+            <ul className="space-y-0.5">
+              {diff.highlighted_changes.map((h, i) => (
+                <li key={i} className="font-mono text-2xs text-text-secondary">• {h}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* D. Weakening changes */}
+        <ConfigDiffChangeGroup
+          changes={diff.weakening_changes}
+          title="Weakening Changes"
+          headerColor="text-red-400"
+        />
+
+        {/* E. Positive changes */}
+        <ConfigDiffChangeGroup
+          changes={diff.positive_changes}
+          title="Positive Changes"
+          headerColor="text-teal-400"
+        />
+
+        {/* F. Params diff table */}
+        <ConfigDiffTable section={diff.params_diff} title="Params Diff" />
+
+        {/* G. Assumptions diff table */}
+        <ConfigDiffTable section={diff.assumptions_diff} title="Assumptions Diff" />
+
+        {/* H. Portfolio diff table */}
+        <ConfigDiffTable section={diff.portfolio_diff} title="Portfolio Diff" />
+
+        {/* I. Risk diff table */}
+        <ConfigDiffTable section={diff.risk_diff} title="Risk Diff" />
+
+        {/* J. Suggested checks */}
+        {diff.suggested_checks.length > 0 && (
+          <div className="rounded-control border border-border/60 bg-bg-800 px-3 py-2">
+            <p className="font-mono text-2xs text-text-muted mb-1">Suggested Checks</p>
+            <ul className="space-y-0.5">
+              {diff.suggested_checks.map((c, i) => (
+                <li key={i} className="font-mono text-2xs text-accent-300">↳ {c}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* K. Disclaimer */}
+        <p className="font-mono text-2xs text-text-muted/50">
+          Deterministic config diff. Not investment advice.
+        </p>
+
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -3460,6 +3725,26 @@ export default function StrategyDetail() {
   const [universeCoverage, setUniverseCoverage] = useState<UniverseCoverageAnalysisResponse | null>(null);
   const [universeCoverageId, setUniverseCoverageId] = useState<string | null>(null);
   const [universeCoverageLoading, setUniverseCoverageLoading] = useState(false);
+
+  // M40: config diff
+  const [configDiff, setConfigDiff] = useState<ConfigSnapshotComparisonV2Response | null>(null);
+  const [configDiffLoading, setConfigDiffLoading] = useState(false);
+  const [configDiffSnapshotA, setConfigDiffSnapshotA] = useState<string>("");
+  const [configDiffSnapshotB, setConfigDiffSnapshotB] = useState<string>("");
+
+  async function handleCompareConfig() {
+    if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
+    setConfigDiffLoading(true);
+    setConfigDiff(null);
+    try {
+      const result = await compareConfigSnapshotsV2(id, configDiffSnapshotA, configDiffSnapshotB);
+      setConfigDiff(result);
+    } catch {
+      // silently fail — could add error state later
+    } finally {
+      setConfigDiffLoading(false);
+    }
+  }
 
   async function handleGenerateReport() {
     if (!id) return;
@@ -3808,6 +4093,11 @@ export default function StrategyDetail() {
         configSnapshots={strategy.config_snapshots}
         onCreateVersion={() => setVersionDrawerOpen(true)}
         onLogConfig={() => setConfigSnapshotDrawerOpen(true)}
+        snapshotA={configDiffSnapshotA}
+        snapshotB={configDiffSnapshotB}
+        onSnapshotAChange={setConfigDiffSnapshotA}
+        onSnapshotBChange={setConfigDiffSnapshotB}
+        onCompare={handleCompareConfig}
       />
 
       {/* Run evidence */}
@@ -3962,6 +4252,12 @@ export default function StrategyDetail() {
       )}
       {universeCoverageLoading && (
         <p className="font-mono text-2xs text-text-muted">Loading universe coverage…</p>
+      )}
+
+      {/* M40: Config Diff */}
+      {configDiff && <ConfigDiffPanel diff={configDiff} />}
+      {configDiffLoading && (
+        <p className="font-mono text-2xs text-text-muted">Comparing configs…</p>
       )}
     </div>
   );

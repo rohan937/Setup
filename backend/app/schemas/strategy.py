@@ -357,6 +357,52 @@ class ConfigComparisonResponse(BaseModel):
     total_changes: int
 
 
+# ---------------------------------------------------------------------------
+# M40: Enriched config diff schemas
+# ---------------------------------------------------------------------------
+
+class ConfigFieldChange(BaseModel):
+    key: str
+    key_path: str
+    old_value: Any = None
+    new_value: Any = None
+    change_type: str  # "added" | "removed" | "changed"
+    category: str
+    impact_level: str  # "positive" | "neutral" | "review" | "weakening" | "unknown"
+    impact_reason: str
+    suggested_check: str | None = None
+
+
+class ConfigDiffSection(BaseModel):
+    changes: list[ConfigFieldChange] = []
+    unchanged_count: int = 0
+    added_count: int = 0
+    removed_count: int = 0
+    changed_count: int = 0
+
+
+class ConfigSnapshotComparisonV2Response(BaseModel):
+    snapshot_a_id: uuid.UUID
+    snapshot_b_id: uuid.UUID
+    snapshot_a_label: str
+    snapshot_b_label: str
+    is_same_config: bool
+    total_changes: int
+    params_diff: ConfigDiffSection
+    assumptions_diff: ConfigDiffSection
+    portfolio_diff: ConfigDiffSection
+    risk_diff: ConfigDiffSection
+    all_changes: list[ConfigFieldChange] = []
+    weakening_changes: list[ConfigFieldChange] = []
+    positive_changes: list[ConfigFieldChange] = []
+    review_changes: list[ConfigFieldChange] = []
+    highlighted_changes: list[str] = []
+    suggested_checks: list[str] = []
+    deterministic_explanation: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class StrategyRunOut(BaseModel):
     """Strategy run response — built manually in route handlers (not from_attributes).
 
