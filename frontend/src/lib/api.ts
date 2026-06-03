@@ -1480,3 +1480,54 @@ export async function getDeploymentReadiness(): Promise<import("@/types").Deploy
     "/api/admin/deployment-readiness",
   );
 }
+
+// M67 - Workspace Settings + Members Foundation
+export async function getWorkspaceSummary(): Promise<import("@/types").WorkspaceSummary> {
+  return request<import("@/types").WorkspaceSummary>("/api/workspace/settings");
+}
+
+export async function updateWorkspaceSettings(
+  payload: import("@/types").WorkspaceSettingsUpdate,
+): Promise<import("@/types").WorkspaceSummary> {
+  return request<import("@/types").WorkspaceSummary>("/api/workspace/settings", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getWorkspaceMembers(params?: {
+  status?: string;
+}): Promise<import("@/types").WorkspaceMemberListResponse> {
+  const qs = params?.status ? `?status=${params.status}` : "";
+  return request<import("@/types").WorkspaceMemberListResponse>(
+    `/api/workspace/members${qs}`,
+  );
+}
+
+export async function createWorkspaceMember(
+  payload: import("@/types").WorkspaceMemberCreate,
+): Promise<import("@/types").WorkspaceMember> {
+  return request<import("@/types").WorkspaceMember>("/api/workspace/members", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateWorkspaceMember(
+  memberId: string,
+  payload: import("@/types").WorkspaceMemberUpdate,
+): Promise<import("@/types").WorkspaceMember> {
+  return request<import("@/types").WorkspaceMember>(
+    `/api/workspace/members/${memberId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function removeWorkspaceMember(memberId: string): Promise<void> {
+  await request<void>(`/api/workspace/members/${memberId}`, {
+    method: "DELETE",
+  });
+}

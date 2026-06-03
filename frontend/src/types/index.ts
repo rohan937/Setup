@@ -3881,3 +3881,70 @@ export interface DeploymentReadinessResponse {
   suggested_next_steps: string[];
   deterministic_summary: string;
 }
+
+// M67 - Workspace Settings + Members Foundation
+export interface WorkspaceProjectSummary {
+  project_id: string;
+  name: string;
+  strategy_count: number;
+  created_at: string;
+}
+
+export interface WorkspaceSummary {
+  workspace_id: string | null;
+  workspace_name: string;
+  display_name: string | null;
+  description: string | null;
+  website: string | null;
+  project_count: number;
+  strategy_count: number;
+  member_count: number;
+  active_member_count: number;
+  api_key_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+  projects: WorkspaceProjectSummary[];
+  readiness_note: string;
+}
+
+export interface WorkspaceSettingsUpdate {
+  display_name?: string;
+  description?: string;
+  website?: string;
+}
+
+export interface WorkspaceMember {
+  id: string;
+  organization_id: string;
+  display_name: string;
+  email: string;
+  role: "owner" | "admin" | "member" | "viewer";
+  status: "active" | "invited" | "disabled";
+  title: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceMemberCreate {
+  display_name: string;
+  email: string;
+  role?: string;
+  status?: string;
+  title?: string;
+  notes?: string;
+}
+
+export interface WorkspaceMemberUpdate {
+  display_name?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+  title?: string;
+  notes?: string;
+}
+
+export interface WorkspaceMemberListResponse {
+  items: WorkspaceMember[];
+  total: number;
+}

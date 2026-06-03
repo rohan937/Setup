@@ -41,6 +41,7 @@ from app.models.review_case import ResearchReviewCase, ResearchReviewCaseEvent
 from app.models.evidence_sla import EvidenceSLAPolicy, EvidenceSLAEvaluation, EvidenceSLAResult
 from app.models.experiment import StrategyExperiment, StrategyExperimentRun, StrategyExperimentAnalysis
 from app.models.reliability_snapshot import StrategyReliabilitySnapshot
+from app.models.workspace_member import WorkspaceMember
 
 __all__ = [
     "Organization",
@@ -80,4 +81,5 @@ __all__ = [
     "StrategyExperimentRun",
     "StrategyExperimentAnalysis",
     "StrategyReliabilitySnapshot",
+    "WorkspaceMember",
 ]

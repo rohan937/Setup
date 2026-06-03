@@ -29,7 +29,7 @@ QuantFidelity/
 │   │   ├── schemas/        Pydantic response models
 │   │   ├── services/       Domain services (seed, run_comparison, data_quality, alerts, dataset_comparison, reports, universe_snapshots, strategy_reliability)
 │   │   └── db/             SQLAlchemy engine, session, declarative base
-│   └── tests/              Pytest tests (1572 tests, 1 skipped)
+│   └── tests/              Pytest tests (1758 tests, 1 skipped)
 ├── frontend/               React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── components/     App shell, sidebar, topbar, cards
@@ -161,7 +161,50 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M66: Navigation IA + Product Shell
+## Current milestone — M67: Workspace Settings + Members Foundation
+
+**Status:** complete — *M67 adds workspace membership metadata, settings persistence, and wires the WorkspaceSettings and Members frontend pages to real API data.*
+
+### What was built
+
+**Backend**
+- `backend/migrations/versions/0024_m67_workspace_members.py` — new migration adding the `workspace_members` table and any missing org-level fields.
+- `backend/app/models/workspace_member.py` — `WorkspaceMember` ORM model (id, workspace_id, user_id, role, invited_at, joined_at, status).
+- `backend/app/services/workspaces.py` — 7 service functions: `get_workspace`, `update_workspace`, `list_members`, `add_member`, `update_member`, `remove_member`, `get_member`.
+- `backend/app/schemas/workspace.py` — 8 Pydantic schemas: `WorkspaceRead`, `WorkspaceUpdate`, `WorkspaceMemberRead`, `WorkspaceMemberCreate`, `WorkspaceMemberUpdate`, `WorkspaceMemberRole`, `WorkspaceMemberStatus`, `WorkspaceMembersListRead`.
+- `backend/app/routers/workspace.py` — 6 REST endpoints (see table below).
+- 4 new `EventType` values: `workspace_updated`, `member_added`, `member_updated`, `member_removed`.
+
+**Frontend**
+- `WorkspaceSettings` page wired to real API data — reads/writes workspace name, description, and settings via `GET /api/workspace` + `PATCH /api/workspace`.
+- `Members` page wired to real API data — lists, invites, updates role, and removes members via the members endpoints.
+- 6 new API client functions in `frontend/src/lib/api.ts`.
+- New TypeScript types for `WorkspaceRead`, `WorkspaceMemberRead`, and related schemas in `frontend/src/types/`.
+
+### API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/workspace` | Get current workspace settings |
+| `PATCH` | `/api/workspace` | Update workspace name / description / settings |
+| `GET` | `/api/workspace/members` | List all members |
+| `POST` | `/api/workspace/members` | Add (invite) a member |
+| `PATCH` | `/api/workspace/members/{member_id}` | Update a member's role or status |
+| `DELETE` | `/api/workspace/members/{member_id}` | Remove a member |
+
+### Auth / RBAC note
+Members are stored as local metadata only. Authentication (who is calling) comes in M68; RBAC enforcement (what each role may do) comes in M69. M67 endpoints accept any authenticated request without role checks.
+
+### Next milestones
+- M68: Auth + User Accounts
+- M69: RBAC
+- M70: Backend Deployment Prep
+
+**Tests:** 18 new M67 backend tests, all 18 passed on first run. No fixes needed. Backend total 1758 passed, 1 skipped. Zero TypeScript errors, clean production build (78 modules, dist/, 968ms).
+
+---
+
+## Previously completed — M66: Navigation IA + Product Shell
 
 **Status:** complete — *M66 reorganizes QuantFidelity into a coherent product shell with 5 navigation sections.*
 

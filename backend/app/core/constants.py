@@ -87,6 +87,10 @@ class EventType(StrEnum):
     strategy_experiment_analyzed = "strategy_experiment_analyzed"
     strategy_sweep_analyzed = "strategy_sweep_analyzed"
     reliability_snapshot_refreshed = "reliability_snapshot_refreshed"
+    workspace_settings_updated = "workspace_settings_updated"
+    workspace_member_added = "workspace_member_added"
+    workspace_member_updated = "workspace_member_updated"
+    workspace_member_removed = "workspace_member_removed"
 
 
 class ReliabilityScoreStatus(StrEnum):
