@@ -161,7 +161,68 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M62: Strategy Progression Freeze Recommendations
+## Current milestone — M63: Quant Research Audit Trail v2
+
+**Status:** complete
+
+### What was built
+- Service `services/research_audit_trail.py` — read-only service, no new DB tables. Queries existing milestone tables and enriches raw `AuditTimelineEvent` rows into structured `ResearchAuditTrailEvent` objects with importance scoring, research phase classification, and downstream change-impact context via M57.
+- Schemas `schemas/research_audit_trail.py` — 5 Pydantic schemas: `ResearchAuditTrailEvent`, `ResearchAuditTrailResponse`, `EventCategory`, `ResearchPhase`, and `ImportanceLevel`.
+- Endpoint `GET /api/strategies/{id}/research-audit-trail` added to `routes/strategies.py` router.
+- **24+ event category mappings** covering: parameter change, backtest run, shadow run, evidence ingestion, assumption update, policy check, drift snapshot, universe snapshot, signal snapshot, config snapshot, review case, promotion gate, robustness score, regression run, SLA check, evidence export, strategy version, run replay, experiment registry, parameter sweep, change impact, progression freeze, evidence dependency, and audit access.
+- **Importance scoring** — each event is assigned a numeric importance score (0–100) based on category weight, outcome severity, and proximity to phase transitions.
+- **Research phase mapping** — events are classified into one of seven research phases:
+  1. `setup` — initial strategy configuration and bootstrapping
+  2. `evidence_logging` — ingestion of backtest, signal, and dataset evidence
+  3. `backtest_review` — backtest run analysis and reality checks
+  4. `quality_review` — parameter sweep, robustness, and regression validation
+  5. `progression_review` — promotion gate and freeze recommendation evaluation
+  6. `governance_review` — policy compliance, SLA, assumption, and drift auditing
+  7. `reporting` — export, comparison reports, and audit trail access
+- **Status transition extraction** — events that represent state changes (e.g. review case status, promotion gate outcome) surface the before/after transition for traceability.
+- **Downstream context** — events linked to strategy changes are enriched with M57 change-impact context showing affected subsystems and risk level.
+- Frontend `ResearchAuditTrailPanel` component in `StrategyDetail.tsx` — displays the full chronological evidence ledger with phase grouping, importance indicators, category badges, and status transitions.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | /api/strategies/{id}/research-audit-trail | Return the enriched research audit trail (evidence ledger) for a strategy |
+
+### Event categories (24+)
+`parameter_change`, `backtest_run`, `shadow_run`, `evidence_ingestion`, `assumption_update`, `policy_check`, `drift_snapshot`, `universe_snapshot`, `signal_snapshot`, `config_snapshot`, `review_case`, `promotion_gate`, `robustness_score`, `regression_run`, `sla_check`, `evidence_export`, `strategy_version`, `run_replay`, `experiment_registry`, `parameter_sweep`, `change_impact`, `progression_freeze`, `evidence_dependency`, `audit_access`
+
+### Research phases
+| Phase | Meaning |
+|-------|---------|
+| `setup` | Initial strategy configuration and bootstrapping |
+| `evidence_logging` | Ingestion of backtest, signal, and dataset evidence |
+| `backtest_review` | Backtest run analysis and reality checks |
+| `quality_review` | Parameter sweep, robustness, and regression validation |
+| `progression_review` | Promotion gate and freeze recommendation evaluation |
+| `governance_review` | Policy compliance, SLA, assumption, and drift auditing |
+| `reporting` | Export, comparison reports, and audit trail access |
+
+### IMPORTANT: scope and language
+**M63 is a research audit trail — an evidence ledger.** It records what happened during quant research: which parameters changed, which runs were logged, which gates were evaluated, and when. Language: "research audit trail," "evidence ledger," "research phase," "event category." Never: "incident," "breach," "security log," "compliance violation."
+
+### Deployment note
+Deployment readiness is intentionally deferred to M65. M63 is an advanced product/platform feature.
+
+### What M63 does not build
+- New database tables or migrations (reads existing milestone tables only)
+- Write endpoints — the trail is strictly read-only
+- Alerting or notification pipelines
+- Automated remediation workflows
+- Broker or execution integration of any kind
+
+- **26 new backend M63 tests** (`tests/test_research_audit_trail_m63.py`). All 26 passed on first run. No fixes needed.
+- **Backend total: 1673 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (Vite built in 886ms, 64 modules, 672.31 kB). One non-blocking chunk-size advisory warning (pre-existing).
+- No external APIs. Deterministic. Not investment advice.
+
+---
+
+## Previously completed — M62: Strategy Progression Freeze Recommendations
 
 **Status:** complete
 

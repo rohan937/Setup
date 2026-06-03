@@ -3642,3 +3642,70 @@ export interface StrategyProgressionFreezeResponse {
   stage_context: ProgressionStageContext;
   note: string;
 }
+
+// M63 - Quant Research Audit Trail
+export type ResearchAuditCategory = "evidence" | "run" | "data" | "signal" | "universe" | "config" | "backtest" | "reliability" | "readiness" | "robustness" | "promotion" | "freeze" | "regression" | "policy" | "sla" | "review_case" | "alert" | "report" | "experiment" | "replay" | "ingestion" | "system" | "other";
+export type ResearchAuditImportance = "low" | "medium" | "high" | "critical";
+
+export interface ResearchAuditLinkedObject {
+  object_type: string;
+  object_id: string;
+  label: string;
+  route_hint: string | null;
+}
+
+export interface ResearchAuditStatusTransition {
+  previous_status: string | null;
+  new_status: string | null;
+  status_type: string | null;
+  transition_label: string | null;
+}
+
+export interface ResearchAuditDownstreamContext {
+  impacted_artifact_count: number;
+  recommended_rechecks: string[];
+  affected_readiness: boolean;
+  affected_promotion_gates: boolean;
+  affected_review_cases: boolean;
+  affected_freeze_recommendation: boolean;
+}
+
+export interface ResearchAuditEvent {
+  event_id: string;
+  event_time: string;
+  event_type: string;
+  title: string;
+  description: string | null;
+  severity: string;
+  source_type: string | null;
+  source_id: string | null;
+  category: string;
+  importance: ResearchAuditImportance;
+  research_phase: string;
+  linked_object: ResearchAuditLinkedObject | null;
+  downstream_context: ResearchAuditDownstreamContext | null;
+  status_transition: ResearchAuditStatusTransition | null;
+  evidence_summary_json: Record<string, unknown>;
+  suggested_action: string | null;
+}
+
+export interface ResearchAuditTrailResponse {
+  strategy_id: string;
+  strategy_name: string;
+  generated_at: string;
+  total_events: number;
+  returned_count: number;
+  category_counts: Record<string, number>;
+  importance_counts: Record<string, number>;
+  phase_counts: Record<string, number>;
+  high_importance_count: number;
+  latest_event_at: string | null;
+  latest_governance_event_at: string | null;
+  latest_evidence_event_at: string | null;
+  unresolved_review_case_count: number;
+  open_alert_count: number;
+  latest_freeze_recommendation: string | null;
+  deterministic_summary: string;
+  suggested_checks: string[];
+  events: ResearchAuditEvent[];
+}

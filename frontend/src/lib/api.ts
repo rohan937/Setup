@@ -1413,3 +1413,26 @@ export async function getStrategyProgressionFreeze(
     `/api/strategies/${strategyId}/progression-freeze${qs}`,
   );
 }
+
+// M63 - Quant Research Audit Trail
+export async function getStrategyResearchAuditTrail(
+  strategyId: string,
+  params?: {
+    limit?: number;
+    offset?: number;
+    category?: string;
+    severity?: string;
+    include_context?: boolean;
+  },
+): Promise<import("@/types").ResearchAuditTrailResponse> {
+  const sp = new URLSearchParams();
+  if (params?.limit) sp.set("limit", String(params.limit));
+  if (params?.offset) sp.set("offset", String(params.offset));
+  if (params?.category) sp.set("category", params.category);
+  if (params?.severity) sp.set("severity", params.severity);
+  if (params?.include_context === false) sp.set("include_context", "false");
+  const qs = sp.toString();
+  return request<import("@/types").ResearchAuditTrailResponse>(
+    `/api/strategies/${strategyId}/research-audit-trail${qs ? "?" + qs : ""}`,
+  );
+}

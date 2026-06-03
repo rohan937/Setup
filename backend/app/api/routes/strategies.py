@@ -4653,3 +4653,130 @@ def get_strategy_robustness(
         evidence_gaps=result.evidence_gaps,
         robustness_vs_readiness_note=result.robustness_vs_readiness_note,
     )
+
+
+# ---------------------------------------------------------------------------
+# M63: GET /api/strategies/{strategy_id}/research-audit-trail
+# ---------------------------------------------------------------------------
+
+from app.schemas.research_audit_trail import (  # noqa: E402
+    ResearchAuditDownstreamContext,
+    ResearchAuditEvent,
+    ResearchAuditLinkedObject,
+    ResearchAuditStatusTransition,
+    ResearchAuditTrailResponse,
+)
+from app.services.research_audit_trail import (  # noqa: E402
+    get_strategy_research_audit_trail,
+)
+
+
+@router.get(
+    "/strategies/{strategy_id}/research-audit-trail",
+    response_model=ResearchAuditTrailResponse,
+    tags=["strategies"],
+)
+def get_strategy_research_audit_trail_endpoint(
+    strategy_id: uuid.UUID,
+    limit: int = Query(default=100, ge=1, le=300),
+    offset: int = Query(default=0, ge=0),
+    category: str | None = Query(default=None),
+    severity: str | None = Query(default=None),
+    include_context: bool = Query(default=True),
+    db: Session = Depends(get_db),
+) -> ResearchAuditTrailResponse:
+    """Return a richly-enriched research audit trail for a strategy.
+
+    Deterministic — no AI, no live market data.
+    Read-only — no AuditTimelineEvent created.
+    Not investment advice.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        result = get_strategy_research_audit_trail(
+            db,
+            strategy_id,
+            limit=limit,
+            offset=offset,
+            category=category,
+            severity=severity,
+            include_context=include_context,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    def _linked(obj) -> ResearchAuditLinkedObject | None:
+        if obj is None:
+            return None
+        return ResearchAuditLinkedObject(
+            object_type=obj.object_type,
+            object_id=obj.object_id,
+            label=obj.label,
+            route_hint=obj.route_hint,
+        )
+
+    def _transition(obj) -> ResearchAuditStatusTransition | None:
+        if obj is None:
+            return None
+        return ResearchAuditStatusTransition(
+            previous_status=obj.previous_status,
+            new_status=obj.new_status,
+            status_type=obj.status_type,
+            transition_label=obj.transition_label,
+        )
+
+    def _downstream(obj) -> ResearchAuditDownstreamContext | None:
+        if obj is None:
+            return None
+        return ResearchAuditDownstreamContext(
+            impacted_artifact_count=obj.impacted_artifact_count,
+            recommended_rechecks=list(obj.recommended_rechecks),
+            affected_readiness=obj.affected_readiness,
+            affected_promotion_gates=obj.affected_promotion_gates,
+            affected_review_cases=obj.affected_review_cases,
+            affected_freeze_recommendation=obj.affected_freeze_recommendation,
+        )
+
+    return ResearchAuditTrailResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        total_events=result.total_events,
+        returned_count=result.returned_count,
+        category_counts=result.category_counts,
+        importance_counts=result.importance_counts,
+        phase_counts=result.phase_counts,
+        high_importance_count=result.high_importance_count,
+        latest_event_at=result.latest_event_at,
+        latest_governance_event_at=result.latest_governance_event_at,
+        latest_evidence_event_at=result.latest_evidence_event_at,
+        unresolved_review_case_count=result.unresolved_review_case_count,
+        open_alert_count=result.open_alert_count,
+        latest_freeze_recommendation=result.latest_freeze_recommendation,
+        deterministic_summary=result.deterministic_summary,
+        suggested_checks=list(result.suggested_checks),
+        events=[
+            ResearchAuditEvent(
+                event_id=e.event_id,
+                event_time=e.event_time,
+                event_type=e.event_type,
+                title=e.title,
+                description=e.description,
+                severity=e.severity,
+                source_type=e.source_type,
+                source_id=e.source_id,
+                category=e.category,
+                importance=e.importance,
+                research_phase=e.research_phase,
+                linked_object=_linked(e.linked_object),
+                downstream_context=_downstream(e.downstream_context),
+                status_transition=_transition(e.status_transition),
+                evidence_summary_json=e.evidence_summary_json,
+                suggested_action=e.suggested_action,
+            )
+            for e in result.events
+        ],
+    )

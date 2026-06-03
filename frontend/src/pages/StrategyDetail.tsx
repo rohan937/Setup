@@ -88,6 +88,8 @@ import type {
   ParameterSweepAnalysisResponse,
   StrategyRobustnessResponse,
   StrategyProgressionFreezeResponse,
+  ResearchAuditTrailResponse,
+  ResearchAuditImportance,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -141,6 +143,7 @@ import {
   analyzeParameterSweep,
   getStrategyRobustness,
   getStrategyProgressionFreeze,
+  getStrategyResearchAuditTrail,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -8131,6 +8134,212 @@ function ProgressionFreezePanel({ strategyId }: { strategyId: string }) {
   );
 }
 
+// M63 - Quant Research Audit Trail
+function ResearchAuditTrailPanel({ strategyId }: { strategyId: string }) {
+  const [trailData, setTrailData] = useState<ResearchAuditTrailResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [includeContext, setIncludeContext] = useState(false);
+
+  const CATEGORIES = [
+    "", "run", "data", "signal", "universe", "config", "backtest",
+    "reliability", "regression", "policy", "sla", "review_case",
+    "alert", "experiment", "ingestion", "system", "other",
+  ];
+
+  const handleLoad = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setTrailData(
+        await getStrategyResearchAuditTrail(strategyId, {
+          limit: 50,
+          category: categoryFilter || undefined,
+          include_context: includeContext,
+        }),
+      );
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const importanceColor = (imp: ResearchAuditImportance) => {
+    if (imp === "critical") return "text-red-400";
+    if (imp === "high") return "text-orange-400";
+    if (imp === "medium") return "text-amber-400";
+    return "text-gray-500";
+  };
+
+  const categoryColor = (cat: string) => {
+    if (["regression", "policy", "sla", "review_case", "freeze"].includes(cat))
+      return "text-amber-400";
+    if (["alert"].includes(cat)) return "text-red-400";
+    if (
+      ["run", "data", "signal", "universe", "config", "backtest", "reliability"].includes(cat)
+    )
+      return "text-cyan-400";
+    return "text-gray-500";
+  };
+
+  return (
+    <div className="border border-gray-700 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-mono font-semibold text-gray-200 tracking-wide uppercase">
+          Research Audit Trail
+        </h3>
+        <span className="text-xs text-gray-500 font-mono">Evidence Ledger</span>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="px-2 py-1 text-xs font-mono bg-gray-900 border border-gray-700 text-gray-200 rounded"
+        >
+          <option value="">All categories</option>
+          {CATEGORIES.filter(Boolean).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-xs font-mono text-gray-400 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeContext}
+            onChange={(e) => setIncludeContext(e.target.checked)}
+            className="accent-cyan-500"
+          />
+          Include downstream context
+        </label>
+        <button
+          onClick={handleLoad}
+          disabled={loading}
+          className="px-3 py-1.5 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+        >
+          {loading ? "Loading..." : "Load Audit Trail"}
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+
+      {!trailData && !loading && (
+        <p className="text-xs text-gray-500 font-mono">
+          Click "Load Audit Trail" to view this strategy's research evidence ledger.
+        </p>
+      )}
+
+      {trailData && (
+        <div className="space-y-3">
+          {/* Summary strip */}
+          <div className="flex gap-4 flex-wrap text-xs font-mono">
+            <span className="text-gray-400">{trailData.total_events} events</span>
+            {trailData.high_importance_count > 0 && (
+              <span className="text-orange-400">
+                {trailData.high_importance_count} high-importance
+              </span>
+            )}
+            {trailData.unresolved_review_case_count > 0 && (
+              <span className="text-amber-400">
+                {trailData.unresolved_review_case_count} open review cases
+              </span>
+            )}
+            {trailData.open_alert_count > 0 && (
+              <span className="text-red-400">{trailData.open_alert_count} open alerts</span>
+            )}
+          </div>
+
+          {trailData.deterministic_summary && (
+            <p className="text-xs text-gray-400 font-mono leading-relaxed">
+              {trailData.deterministic_summary}
+            </p>
+          )}
+
+          {/* Event list */}
+          <div className="space-y-1">
+            {trailData.events.slice(0, 30).map((ev) => (
+              <div key={ev.event_id} className="border border-gray-800 rounded p-2 space-y-1">
+                <div className="flex items-start gap-2 flex-wrap">
+                  <span className="text-gray-600 font-mono text-xs shrink-0">
+                    {new Date(ev.event_time).toLocaleDateString()}
+                  </span>
+                  <span
+                    className={
+                      "text-xs font-mono px-1 rounded bg-gray-800/60 " + categoryColor(ev.category)
+                    }
+                  >
+                    {ev.category}
+                  </span>
+                  <span className={"text-xs font-mono " + importanceColor(ev.importance)}>
+                    {ev.importance}
+                  </span>
+                  <span className="text-xs font-mono text-gray-300 flex-1">{ev.title}</span>
+                </div>
+                {ev.status_transition?.new_status && (
+                  <div className="text-xs font-mono text-gray-500">
+                    Status:{" "}
+                    {ev.status_transition.previous_status
+                      ? ev.status_transition.previous_status + " → "
+                      : ""}
+                    <span
+                      className={
+                        ev.status_transition.new_status === "failed" ||
+                        ev.status_transition.new_status === "violated"
+                          ? "text-red-400"
+                          : ev.status_transition.new_status === "passed"
+                            ? "text-cyan-400"
+                            : "text-amber-400"
+                      }
+                    >
+                      {ev.status_transition.new_status}
+                    </span>
+                  </div>
+                )}
+                {ev.suggested_action && (
+                  <div className="text-xs font-mono text-gray-500 flex gap-1">
+                    <span className="text-cyan-600">›</span>
+                    <span>{ev.suggested_action}</span>
+                  </div>
+                )}
+                {ev.downstream_context &&
+                  ev.downstream_context.impacted_artifact_count > 0 && (
+                    <div className="text-xs font-mono text-gray-600">
+                      {ev.downstream_context.impacted_artifact_count} downstream artifacts ·{" "}
+                      {ev.downstream_context.recommended_rechecks.length} rechecks recommended
+                    </div>
+                  )}
+              </div>
+            ))}
+            {trailData.events.length === 0 && (
+              <p className="text-xs text-gray-500 font-mono">
+                No audit trail events found for selected filters.
+              </p>
+            )}
+          </div>
+
+          {/* Suggested checks */}
+          {trailData.suggested_checks.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-gray-500 text-xs font-mono uppercase tracking-wide">
+                Suggested Checks
+              </p>
+              {trailData.suggested_checks.slice(0, 4).map((c, i) => (
+                <div key={i} className="flex gap-1.5 text-xs font-mono text-gray-400">
+                  <span className="text-cyan-600">›</span>
+                  <span>{c}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -8946,6 +9155,9 @@ export default function StrategyDetail() {
 
       {/* M62: Progression Freeze Recommendations */}
       <ProgressionFreezePanel strategyId={strategy.id} />
+
+      {/* M63: Research Audit Trail */}
+      <ResearchAuditTrailPanel strategyId={strategy.id} />
     </div>
   );
 }
