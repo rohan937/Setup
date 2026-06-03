@@ -13,6 +13,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.rbac import (
+    require_can_manage_members,
+    require_workspace_admin,
+    require_workspace_read_access,
+)
 from app.db.session import get_db
 from app.schemas.workspace import (
     WorkspaceMemberCreate,
@@ -33,8 +38,14 @@ router = APIRouter(tags=["workspace"])
 # ---------------------------------------------------------------------------
 
 @router.get("/workspace/settings", response_model=WorkspaceSummaryRead)
-def get_workspace_settings(db: Session = Depends(get_db)) -> WorkspaceSummaryRead:
-    """Return the workspace summary including counts and project list."""
+def get_workspace_settings(
+    db: Session = Depends(get_db),
+    _member=Depends(require_workspace_read_access),
+) -> WorkspaceSummaryRead:
+    """Return the workspace summary including counts and project list.
+
+    RBAC: any workspace member (viewer and above) may read.
+    """
     summary = svc.get_workspace_summary(db)
     return WorkspaceSummaryRead(**summary)
 
@@ -43,8 +54,9 @@ def get_workspace_settings(db: Session = Depends(get_db)) -> WorkspaceSummaryRea
 def update_workspace_settings(
     body: WorkspaceSettingsUpdate,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_admin),
 ) -> WorkspaceSettingsRead:
-    """Update top-level workspace settings (display_name, description, website)."""
+    """Update workspace settings. RBAC: Owner/Admin only."""
     org = svc.get_workspace_settings(db)
     if org is None:
         raise HTTPException(status_code=404, detail="No organization found")
@@ -82,8 +94,13 @@ def update_workspace_settings(
 def list_workspace_members(
     status: str | None = Query(default=None),
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_read_access),
 ) -> WorkspaceMemberListResponse:
-    """List workspace members with optional status filter."""
+    """List workspace members with optional status filter.
+
+    RBAC: any workspace member may read the member list (SaaS transparency);
+    mutating actions require Owner/Admin.
+    """
     org = svc.get_workspace_settings(db)
     if org is None:
         raise HTTPException(status_code=404, detail="No organization found")
@@ -99,8 +116,9 @@ def list_workspace_members(
 def create_workspace_member(
     body: WorkspaceMemberCreate,
     db: Session = Depends(get_db),
+    _member=Depends(require_can_manage_members),
 ) -> WorkspaceMemberRead:
-    """Add a new member to the workspace."""
+    """Add a new member to the workspace. RBAC: Owner/Admin only."""
     org = svc.get_workspace_settings(db)
     if org is None:
         raise HTTPException(status_code=404, detail="No organization found")
@@ -125,8 +143,9 @@ def update_workspace_member(
     member_id: str,
     body: WorkspaceMemberUpdate,
     db: Session = Depends(get_db),
+    _member=Depends(require_can_manage_members),
 ) -> WorkspaceMemberRead:
-    """Update a workspace member's fields."""
+    """Update a workspace member's fields. RBAC: Owner/Admin only."""
     try:
         member = svc.update_workspace_member(
             db, member_id, body.model_dump(exclude_none=True)
@@ -146,8 +165,9 @@ def update_workspace_member(
 def remove_workspace_member(
     member_id: str,
     db: Session = Depends(get_db),
+    _member=Depends(require_can_manage_members),
 ) -> dict:
-    """Soft-delete a workspace member by setting status to 'disabled'."""
+    """Soft-delete a workspace member. RBAC: Owner/Admin only."""
     try:
         svc.remove_workspace_member(db, member_id)
     except ValueError as exc:

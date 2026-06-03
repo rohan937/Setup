@@ -10,6 +10,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.rbac import (
+    require_can_seed_demo,
+    require_workspace_admin,
+    require_workspace_read_access,
+)
 from app.db.session import get_db
 from app.schemas.system_health import (
     SystemApiKeyHealth,
@@ -32,10 +37,13 @@ router = APIRouter(tags=["admin"])
 
 
 @router.get("/admin/system-health", response_model=SystemHealthResponse)
-def get_system_health_endpoint(db: Session = Depends(get_db)) -> SystemHealthResponse:
+def get_system_health_endpoint(
+    db: Session = Depends(get_db),
+    _member=Depends(require_workspace_admin),
+) -> SystemHealthResponse:
     """Return a comprehensive system health snapshot.
 
-    Read-only — no database writes occur.
+    Read-only — no database writes occur. RBAC: Owner/Admin only.
     """
     from app.services.system_health import get_system_health
 
@@ -144,8 +152,9 @@ def get_system_health_endpoint(db: Session = Depends(get_db)) -> SystemHealthRes
 def seed_demo_endpoint(
     payload: DemoSeedRequest,
     db: Session = Depends(get_db),
+    _member=Depends(require_can_seed_demo),
 ) -> DemoSeedResponse:
-    """Seed (or reset) the demo dataset.
+    """Seed (or reset) the demo dataset. RBAC: Owner/Admin only.
 
     POST with mode="extend" (default) to create missing records.
     POST with mode="reset_demo_only" and confirm_reset=true to wipe and reseed.
@@ -172,8 +181,11 @@ def seed_demo_endpoint(
 
 
 @router.get("/admin/demo-status", response_model=DemoStatusResponse)
-def demo_status_endpoint(db: Session = Depends(get_db)) -> DemoStatusResponse:
-    """Return the current state of the demo dataset (read-only)."""
+def demo_status_endpoint(
+    db: Session = Depends(get_db),
+    _member=Depends(require_workspace_read_access),
+) -> DemoStatusResponse:
+    """Return the current state of the demo dataset (read-only). RBAC: any member."""
     from app.services.demo_seed import get_demo_status
 
     result = get_demo_status(db)
@@ -188,8 +200,9 @@ def demo_status_endpoint(db: Session = Depends(get_db)) -> DemoStatusResponse:
 @router.get("/admin/deployment-readiness", response_model=DeploymentReadinessResponse)
 def deployment_readiness_endpoint(
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_admin),
 ) -> DeploymentReadinessResponse:
-    """Return a structured deployment readiness checklist.
+    """Return a structured deployment readiness checklist. RBAC: Owner/Admin only.
 
     Read-only — no database writes occur. Inspects repository structure,
     configuration files, and service availability to produce a scored

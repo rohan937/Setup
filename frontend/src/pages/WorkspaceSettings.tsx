@@ -5,6 +5,8 @@ import {
   updateWorkspaceSettings,
 } from "@/lib/api";
 import type { WorkspaceSummary, WorkspaceProjectSummary } from "@/types";
+import { useAuth } from "@/context/AuthContext";
+import { canManageWorkspace, roleBadgeClasses } from "@/lib/permissions";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,6 +30,8 @@ function formatDate(iso: string | null): string {
 // ---------------------------------------------------------------------------
 
 export default function WorkspaceSettings() {
+  const auth = useAuth();
+  const canEdit = canManageWorkspace(auth);
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -216,7 +220,7 @@ export default function WorkspaceSettings() {
           <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-400">
             Editable Settings
           </h2>
-          {!editMode && (
+          {!editMode && canEdit && (
             <button
               onClick={handleEditToggle}
               className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-semibold text-gray-300 transition hover:border-cyan-600 hover:text-cyan-300"
@@ -225,6 +229,12 @@ export default function WorkspaceSettings() {
             </button>
           )}
         </div>
+
+        {!canEdit && (
+          <div className="mb-4 rounded border border-gray-700 bg-gray-950/60 px-4 py-3 font-mono text-xs text-gray-400">
+            Read-only access. Only owners/admins can edit workspace settings.
+          </div>
+        )}
 
         {!editMode ? (
           <div className="space-y-3">
@@ -363,12 +373,21 @@ export default function WorkspaceSettings() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Section D: Auth Roadmap Notice                                       */}
+      {/* Section D: RBAC status                                               */}
       {/* ------------------------------------------------------------------ */}
-      <div className="rounded-lg border border-amber-800/30 bg-amber-900/10 px-5 py-4 text-sm text-amber-400/80">
-        Members are local workspace metadata until{" "}
-        <strong className="text-amber-300">M68 Auth + User Accounts</strong>. RBAC enforcement
-        arrives in <strong className="text-amber-300">M69</strong>.
+      <div className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-900 px-5 py-4 text-sm text-gray-400">
+        <span>
+          Role-based access (RBAC foundation): workspace settings are{" "}
+          <strong className="text-gray-200">Owner/Admin only</strong>.
+        </span>
+        {auth.isAuthenticated && (
+          <span className="flex items-center gap-2 font-mono text-xs">
+            <span className="uppercase tracking-wider text-gray-500">Your role</span>
+            <span className={`rounded border px-1.5 py-0.5 font-semibold ${roleBadgeClasses(auth.role)}`}>
+              {auth.role ?? "—"}
+            </span>
+          </span>
+        )}
       </div>
     </div>
   );

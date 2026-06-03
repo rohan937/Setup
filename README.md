@@ -161,7 +161,69 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M68: Auth + User Accounts
+## Current milestone — M69: RBAC + Workspace/Project Access Control
+
+**Status:** complete — *M69 adds a role-based access-control foundation on top of the M67 workspace members and M68 users/auth. Workspace, member, API-key, and admin endpoints are role-gated, a representative set of research-write endpoints requires member-or-above, and the frontend hides/disables actions the signed-in role cannot perform.*
+
+### Role matrix
+
+Role order: `viewer < member < admin < owner`.
+
+| Capability | owner | admin | member | viewer |
+|------------|:-----:|:-----:|:------:|:------:|
+| Read workspace research data | ✓ | ✓ | ✓ | ✓ |
+| Read workspace settings / member list | ✓ | ✓ | ✓ | ✓ |
+| Create / edit research data (strategies, runs, scores) | ✓ | ✓ | ✓ | — |
+| Update workspace settings | ✓ | ✓ | — | — |
+| Manage members (add/update/remove) | ✓ | ✓ | — | — |
+| Create / revoke API keys | ✓ | ✓ | — | — |
+| Seed / reset demo data | ✓ | ✓ | — | — |
+| Admin: system health, deployment readiness | ✓ | ✓ | — | — |
+
+### What was built
+
+**Backend**
+- `backend/app/core/rbac.py` — RBAC core: role ordering, `MemberContext`, permission predicates (`can_read_workspace`, `can_write_research`, `can_manage_workspace`, `can_manage_members`, `can_manage_api_keys`, `can_seed_demo`), member resolution (`get_current_workspace_member`), FastAPI dependencies (`require_workspace_read_access`, `require_workspace_write_access`, `require_workspace_admin`, `require_can_manage_members`, `require_can_manage_api_keys`, `require_can_seed_demo`, `require_workspace_role`), and project/strategy scope helpers (`require_project_access`, `require_strategy_access`, `assert_*_access`).
+- `backend/app/core/config.py` + `.env.example` — new `QF_RBAC_ENABLED` flag (default `true`).
+- `backend/app/schemas/auth.py` — new `PermissionSet`; `CurrentUserResponse` extended with `role`, `organization_id`, `permissions`.
+- `backend/app/api/routes/auth.py` — `/auth/me` now returns the primary-membership role + resolved permissions.
+- Route gating applied to `workspace.py`, `api_keys.py`, `admin.py`, and representative writes in `strategies.py`.
+
+**Frontend**
+- `frontend/src/lib/permissions.ts` — `canManageWorkspace`, `canManageMembers`, `canManageApiKeys`, `canSeedDemo`, `canWriteResearch`, `isViewer`, plus role-badge styling.
+- `frontend/src/context/AuthContext.tsx` + `frontend/src/types/index.ts` — expose `role`, `organizationId`, `permissions`.
+- `frontend/src/components/RequirePermission.tsx` + `AccessRequired.tsx` — route-level RBAC guard + "Admin access required" panel.
+- `WorkspaceSettings`, `Members`, `Settings` (API Keys) pages hide/disable mutating actions and show monospaced role/permission notes; Admin pages are wrapped in `RequirePermission`.
+
+### Protected endpoint categories
+
+| Category | Read | Write / manage |
+|----------|------|----------------|
+| Workspace settings (`/api/workspace/settings`) | any member | Owner/Admin |
+| Workspace members (`/api/workspace/members`) | any member | Owner/Admin |
+| API keys (`/api/api-keys`) | Owner/Admin | Owner/Admin |
+| Admin system health / deployment readiness | Owner/Admin | — |
+| Admin demo seed/reset (`/api/admin/seed-demo`) | — | Owner/Admin |
+| Research writes (`POST /api/strategies`, `/strategies/{id}/runs`, `/strategies/{id}/reliability-score`) | any member | Owner/Admin/Member |
+
+### Auth / RBAC foundation note (limitation)
+
+RBAC enforcement is **permissive for unauthenticated callers** so the large existing test/local-dev surface keeps working:
+
+- `QF_RBAC_ENABLED=false` → enforcement skipped entirely.
+- `QF_RBAC_ENABLED=true` (default) **and no bearer token** → the caller is treated as a local-dev pseudo-owner.
+- `QF_RBAC_ENABLED=true` **with a valid bearer token** → the caller's real workspace role is resolved and enforced; a signed-in user with no linked membership gets `403`.
+
+Research-route protection is **representative, not global** — workspace/admin/API-key endpoints are fully gated, plus the key research-write endpoints above. Most read endpoints and many older research-write endpoints remain permissive and are deferred to a later hardening pass (M70+). This is an RBAC foundation, not full tenant isolation.
+
+### Next milestones
+- M70: Backend Deployment Prep / Render + PostgreSQL readiness
+
+**Tests:** new `tests/test_rbac_m69.py` covers role enforcement across settings, members, API keys, admin, research writes, the no-membership 403 path, `/auth/me` permissions, the no-token permissive path, and the `QF_RBAC_ENABLED=false` bypass. Frontend: zero TypeScript errors, clean production build.
+
+---
+
+## Previously completed — M68: Auth + User Accounts
 
 **Status:** complete — *M68 adds full user registration and JWT-based login, wires workspace membership to real user records, and delivers AuthContext + Login/Register pages on the frontend.*
 

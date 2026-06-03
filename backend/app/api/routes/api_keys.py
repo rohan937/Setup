@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import EventType, Severity
+from app.core.rbac import require_can_manage_api_keys
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.audit_timeline_event import AuditTimelineEvent
@@ -51,6 +52,7 @@ def _get_org(db: Session, organization_id: uuid.UUID | None) -> Organization:
 def create_api_key(
     body: ApiKeyCreateRequest,
     db: Session = Depends(get_db),
+    _member=Depends(require_can_manage_api_keys),
 ) -> ApiKeyCreateResponse:
     """Create a new API key.
 
@@ -127,8 +129,9 @@ def list_api_keys(
     limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db),
+    _member=Depends(require_can_manage_api_keys),
 ) -> ApiKeyListResponse:
-    """List API keys (never returns the raw key or key hash)."""
+    """List API keys (never returns the raw key or key hash). RBAC: Owner/Admin only."""
     q = db.query(ApiKey)
     if organization_id is not None:
         q = q.filter(ApiKey.organization_id == organization_id)
@@ -150,8 +153,9 @@ def list_api_keys(
 def revoke_api_key(
     api_key_id: uuid.UUID,
     db: Session = Depends(get_db),
+    _member=Depends(require_can_manage_api_keys),
 ) -> ApiKeyRevokeResponse:
-    """Revoke an API key.  Revoked keys are rejected by the auth dependency."""
+    """Revoke an API key. RBAC: Owner/Admin only. Revoked keys are rejected by the auth dependency."""
     key = db.query(ApiKey).filter(ApiKey.id == api_key_id).first()
     if key is None:
         raise HTTPException(status_code=404, detail="API key not found")

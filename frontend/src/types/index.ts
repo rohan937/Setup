@@ -3987,9 +3987,23 @@ export interface CurrentUserWorkspaceMembership {
   linked: boolean;
 }
 
+// M69 - RBAC permission set resolved from the user's primary membership.
+export interface PermissionSet {
+  can_read_research: boolean;
+  can_write_research: boolean;
+  can_manage_workspace: boolean;
+  can_manage_members: boolean;
+  can_manage_api_keys: boolean;
+  can_seed_demo: boolean;
+}
+
 export interface CurrentUserResponse {
   user: User;
   workspace_memberships: CurrentUserWorkspaceMembership[];
+  // M69 — role + permissions for permission-aware UI.
+  role: string | null;
+  organization_id: string | null;
+  permissions: PermissionSet;
 }
 
 export interface AuthStatusResponse {

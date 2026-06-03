@@ -46,6 +46,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.constants import AssetClass, EventType, ReliabilityScoreStatus, RunStatus, RunType, Severity, StrategyStatus
+from app.core.rbac import require_workspace_write_access
 from app.core.utils import slugify
 from app.db.session import get_db
 from app.models.audit_timeline_event import AuditTimelineEvent
@@ -426,7 +427,12 @@ def _build_run_out(run: StrategyRun) -> StrategyRunOut:
 # ---------------------------------------------------------------------------
 
 @router.post("/strategies", response_model=StrategyListItemOut, status_code=201)
-def create_strategy(body: StrategyCreate, db: Session = Depends(get_db)) -> StrategyListItemOut:
+def create_strategy(
+    body: StrategyCreate,
+    db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
+) -> StrategyListItemOut:
+    """Create a strategy. RBAC: Owner/Admin/Member (viewers read-only)."""
     try:
         AssetClass(body.asset_class)
     except ValueError:
@@ -1466,8 +1472,11 @@ def get_strategy_reliability_score(
 def compute_strategy_reliability_score(
     strategy_id: uuid.UUID,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> StrategyReliabilityScoreRead:
     """Compute and persist a reliability score for a strategy.
+
+    RBAC: Owner/Admin/Member (viewers read-only).
 
     Deterministic — scores all available evidence (runs, snapshots, audits,
     alerts, reports) and returns a structured score.
@@ -1524,7 +1533,9 @@ def create_strategy_run(
     strategy_id: uuid.UUID,
     body: StrategyRunCreate,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> StrategyRunOut:
+    """Log a strategy run. RBAC: Owner/Admin/Member (viewers read-only)."""
     # Validate run_type
     try:
         RunType(body.run_type)

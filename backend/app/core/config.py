@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     QF_JWT_ALGORITHM: str = "HS256"
     QF_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
+    # M69: RBAC + Workspace/Project Access Control
+    # When True, workspace role is enforced for authenticated callers.
+    # When False, enforcement is skipped (permissive local dev).
+    # Note: even when True, requests with no bearer token are treated as a
+    # local-dev pseudo-owner so existing unauthenticated flows keep working.
+    QF_RBAC_ENABLED: bool = True
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

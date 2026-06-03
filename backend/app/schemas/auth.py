@@ -47,9 +47,27 @@ class CurrentUserWorkspaceMembership(BaseModel):
     linked: bool
 
 
+class PermissionSet(BaseModel):
+    """M69: resolved workspace permissions for the current user.
+
+    Lets the frontend hide/disable actions the user is not allowed to perform.
+    """
+
+    can_read_research: bool = False
+    can_write_research: bool = False
+    can_manage_workspace: bool = False
+    can_manage_members: bool = False
+    can_manage_api_keys: bool = False
+    can_seed_demo: bool = False
+
+
 class CurrentUserResponse(BaseModel):
     user: UserRead
     workspace_memberships: list[CurrentUserWorkspaceMembership] = []
+    # M69: primary-membership role + permissions for permission-aware UI.
+    role: str | None = None
+    organization_id: str | None = None
+    permissions: PermissionSet = PermissionSet()
 
 
 class AuthTokenResponse(BaseModel):

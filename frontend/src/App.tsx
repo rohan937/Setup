@@ -33,6 +33,7 @@ import DemoControls from "@/pages/DemoControls";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import { AuthProvider } from "@/context/AuthContext";
+import RequirePermission from "@/components/RequirePermission";
 
 export default function App() {
   return (
@@ -66,9 +67,30 @@ export default function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="workspace/settings" element={<WorkspaceSettings />} />
         <Route path="workspace/members" element={<Members />} />
-        <Route path="admin/system-health" element={<AdminSystemHealth />} />
-        <Route path="admin/demo-controls" element={<DemoControls />} />
-        <Route path="admin/deployment-readiness" element={<DeploymentReadiness />} />
+        <Route
+          path="admin/system-health"
+          element={
+            <RequirePermission perm="manage_workspace" title="System Health">
+              <AdminSystemHealth />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="admin/demo-controls"
+          element={
+            <RequirePermission perm="seed_demo" title="Demo Controls">
+              <DemoControls />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="admin/deployment-readiness"
+          element={
+            <RequirePermission perm="manage_workspace" title="Deployment Readiness">
+              <DeploymentReadiness />
+            </RequirePermission>
+          }
+        />
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="/login" element={<Login />} />

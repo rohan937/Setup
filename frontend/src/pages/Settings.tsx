@@ -3,6 +3,8 @@ import PageHeader from "@/components/PageHeader";
 import Card from "@/components/Card";
 import { createApiKey, getApiKeys, revokeApiKey } from "@/lib/api";
 import type { ApiKey, ApiKeyCreateResponse } from "@/types";
+import { useAuth } from "@/context/AuthContext";
+import { canManageApiKeys, roleBadgeClasses } from "@/lib/permissions";
 
 function fmt(iso: string | null): string {
   if (!iso) return "—";
@@ -37,6 +39,8 @@ function projectScopeLabel(k: ApiKey): string {
 }
 
 export default function Settings() {
+  const auth = useAuth();
+  const canManageKeys = canManageApiKeys(auth);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -112,7 +116,20 @@ export default function Settings() {
           API keys are local QuantFidelity keys. They are not third-party market data keys.
         </p>
 
-        {/* Create Key */}
+        {/* RBAC note */}
+        <div className="flex items-center justify-between rounded border border-border bg-bg-800 px-3 py-2">
+          <p className="font-mono text-2xs text-text-muted">
+            Creating and revoking API keys is <span className="text-text-secondary">Owner/Admin only</span> (RBAC foundation).
+          </p>
+          {auth.isAuthenticated && (
+            <span className={`rounded border px-1.5 py-0.5 font-mono text-2xs font-semibold ${roleBadgeClasses(auth.role)}`}>
+              {auth.role ?? "—"}
+            </span>
+          )}
+        </div>
+
+        {/* Create Key (Owner/Admin only) */}
+        {canManageKeys && (
         <Card label="Create API Key">
           <div className="flex items-center gap-2">
             <input
@@ -178,6 +195,7 @@ client = QuantFidelityClient(
             </div>
           )}
         </Card>
+        )}
 
         {/* Active Keys list */}
         <Card label="Active Keys">
@@ -231,7 +249,7 @@ client = QuantFidelityClient(
                           )}
                         </td>
                         <td className="py-1">
-                          {k.status === "active" && (
+                          {k.status === "active" && canManageKeys && (
                             <button
                               onClick={() => void handleRevoke(k.id)}
                               disabled={revokingId === k.id}

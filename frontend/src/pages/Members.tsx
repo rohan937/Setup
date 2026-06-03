@@ -11,6 +11,8 @@ import type {
   WorkspaceMemberCreate,
   WorkspaceMemberUpdate,
 } from "@/types";
+import { useAuth } from "@/context/AuthContext";
+import { canManageMembers, roleBadgeClasses } from "@/lib/permissions";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,6 +74,8 @@ const EMPTY_ADD: WorkspaceMemberCreate = {
 };
 
 export default function Members() {
+  const auth = useAuth();
+  const canManage = canManageMembers(auth);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -287,8 +291,9 @@ export default function Members() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Section B: Add Member Form                                           */}
+      {/* Section B: Add Member Form (Owner/Admin only)                        */}
       {/* ------------------------------------------------------------------ */}
+      {canManage ? (
       <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-cyan-400">
@@ -418,6 +423,11 @@ export default function Members() {
           </form>
         )}
       </div>
+      ) : (
+        <div className="mb-6 rounded-lg border border-gray-700 bg-gray-950/60 px-5 py-4 font-mono text-xs text-gray-400">
+          Read-only access. Only owners/admins can add, edit, or remove members.
+        </div>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Section C: Members Table                                             */}
@@ -533,7 +543,7 @@ export default function Members() {
                               </button>
                             </div>
                           </div>
-                        ) : (
+                        ) : canManage ? (
                           <div className="flex gap-2">
                             <button
                               onClick={() => startEdit(member)}
@@ -550,6 +560,8 @@ export default function Members() {
                               </button>
                             )}
                           </div>
+                        ) : (
+                          <span className="font-mono text-xs text-gray-600">read-only</span>
                         )}
                       </td>
                     </tr>
@@ -596,8 +608,19 @@ export default function Members() {
             </div>
           ))}
         </div>
-        <div className="mt-4 rounded border border-amber-800/30 bg-amber-900/10 px-4 py-3 text-xs text-amber-400/80">
-          Role enforcement arrives in <strong className="text-amber-300">M69</strong>. Currently all members have local access.
+        <div className="mt-4 flex items-center justify-between rounded border border-gray-800 bg-gray-950 px-4 py-3 text-xs text-gray-400">
+          <span>
+            Role-based access (RBAC foundation) is active. Member management is{" "}
+            <strong className="text-gray-200">Owner/Admin only</strong>.
+          </span>
+          {auth.isAuthenticated && (
+            <span className="flex items-center gap-2 font-mono">
+              <span className="uppercase tracking-wider text-gray-500">Your role</span>
+              <span className={`rounded border px-1.5 py-0.5 font-semibold ${roleBadgeClasses(auth.role)}`}>
+                {auth.role ?? "—"}
+              </span>
+            </span>
+          )}
         </div>
       </div>
     </div>

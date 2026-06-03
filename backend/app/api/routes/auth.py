@@ -19,6 +19,7 @@ from app.schemas.auth import (
     AuthTokenResponse,
     CurrentUserResponse,
     CurrentUserWorkspaceMembership,
+    PermissionSet,
     UserLoginRequest,
     UserRead,
     UserRegisterRequest,
@@ -104,9 +105,33 @@ def get_me(
         )
         for m in memberships
     ]
+
+    # M69: derive role + permissions from the primary (earliest, active-preferred)
+    # membership so the frontend can hide/disable unauthorized actions.
+    from app.core.rbac import MemberContext, permission_set
+
+    primary = None
+    if memberships:
+        active = [m for m in memberships if m.status == "active"]
+        pool = active if active else memberships
+        primary = sorted(pool, key=lambda m: m.created_at)[0]
+
+    if primary is not None:
+        ctx = MemberContext.from_member(primary)
+        role = primary.role
+        organization_id = str(primary.organization_id)
+        perms = PermissionSet(**permission_set(ctx))
+    else:
+        role = None
+        organization_id = None
+        perms = PermissionSet()
+
     return CurrentUserResponse(
         user=UserRead.model_validate(current_user),
         workspace_memberships=membership_list,
+        role=role,
+        organization_id=organization_id,
+        permissions=perms,
     )
 
 
