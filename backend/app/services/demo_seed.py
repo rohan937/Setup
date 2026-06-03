@@ -1,1058 +1,768 @@
-"""Demo seed service — M46.
-
-Populates (or resets) the demo dataset used to showcase QuantFidelity
-capabilities.  All operations are idempotent: existing records are found by
-slug/label and reused.
+"""Demo seed service — M46 + Clean Realistic Demo (v2).
 
 Entry points:
   seed_demo_data(db, ...)   — create / extend demo data
   get_demo_status(db)       — describe current demo state (read-only)
+
+Modes
+-----
+extend               — idempotent; creates missing records, leaves existing.
+reset_demo_only      — deletes the demo org and re-seeds (legacy).
+clean_realistic_demo — wipes ALL junk data from every table (strategies,
+                       runs, snapshots, audits, alerts, timeline events, …)
+                       then creates a small, high-quality demo workspace that
+                       tells a clear product story.  workspace_members and
+                       auth_users are preserved so logged-in sessions survive
+                       the reset.
 """
 
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text as _text
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
-    AssetClass,
     EventType,
     RunStatus,
     RunType,
     Severity,
-    StrategyStatus,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # ---------------------------------------------------------------------------
 # Demo constants — stable identifiers
 # ---------------------------------------------------------------------------
 
-DEMO_ORG_NAME = "QuantFidelity Demo Org"
-DEMO_PROJECT_NAME = "Quant Research Demo"
-DEMO_PROJECT_SLUG = "quant-research-demo"
+DEMO_ORG_NAME = "Alpha Reliability Lab"
+DEMO_ORG_SLUG = "alpha-reliability-lab"
+DEMO_PROJECT_NAME = "Strategy Reliability Demo Portfolio"
+DEMO_PROJECT_SLUG = "strategy-reliability-demo"
 
 DEMO_STRATEGIES = [
     {
-        "name": "AAPL Mean Reversion Demo",
-        "slug": "aapl-mean-reversion-demo",
+        "name": "AAPL Mean Reversion v1",
+        "slug": "aapl-mean-reversion-v1",
         "asset_class": "equity",
         "status": "active",
+        "story": "healthy",
     },
     {
-        "name": "FX Carry Strategy Demo",
-        "slug": "fx-carry-demo",
+        "name": "FX Carry Strategy Q1",
+        "slug": "fx-carry-strategy-q1",
         "asset_class": "fx",
         "status": "active",
+        "story": "review",
     },
     {
-        "name": "Crypto Momentum Demo",
-        "slug": "crypto-momentum-demo",
+        "name": "Crypto Momentum Intraday",
+        "slug": "crypto-momentum-intraday",
         "asset_class": "crypto",
         "status": "active",
+        "story": "weak",
     },
 ]
 
 # ---------------------------------------------------------------------------
-# Small demo datasets
+# Fixed dates for deterministic output
 # ---------------------------------------------------------------------------
 
-AAPL_OHLCV = [
-    {"symbol": sym, "timestamp": ts, "open": o, "high": h, "low": l, "close": c, "volume": v}
-    for sym, ts, o, h, l, c, v in [
-        ("AAPL", "2024-01-02", 185.55, 188.91, 184.81, 185.64, 72043900),
-        ("MSFT", "2024-01-02", 374.19, 375.66, 369.27, 374.02, 20481300),
-        ("AAPL", "2024-01-03", 184.21, 185.88, 183.43, 184.25, 58862900),
-        ("MSFT", "2024-01-03", 372.50, 374.10, 370.83, 373.24, 18329800),
-        ("AAPL", "2024-01-04", 181.99, 183.09, 180.94, 182.68, 71878000),
-        ("MSFT", "2024-01-04", 371.73, 373.57, 370.12, 372.89, 16543200),
-        ("AAPL", "2024-01-05", 183.17, 184.67, 181.89, 184.40, 62549400),
-        ("NVDA", "2024-01-02", 495.22, 505.48, 492.60, 495.72, 44872200),
-        ("NVDA", "2024-01-03", 490.37, 495.60, 487.08, 493.55, 38124700),
-        ("GOOGL", "2024-01-02", 140.93, 142.38, 139.59, 140.52, 24397600),
-    ]
+_BASE_DATE = datetime(2026, 6, 1, 9, 0, 0, tzinfo=timezone.utc)
+
+def _dt(offset_days: float = 0, offset_hours: float = 0) -> datetime:
+    return _BASE_DATE + timedelta(days=offset_days, hours=offset_hours)
+
+def _date_str(offset_days: int = 0) -> str:
+    d = (_BASE_DATE + timedelta(days=offset_days)).date()
+    return d.isoformat()
+
+# ---------------------------------------------------------------------------
+# Demo data tables: realistic OHLCV / signal rows
+# ---------------------------------------------------------------------------
+
+# AAPL: clean, realistic equity OHLCV across 5 symbols, 5 dates each
+_AAPL_OHLCV = []
+_aapl_prices = {
+    "AAPL":  [(189.5, 191.8, 188.3, 190.2, 68_200_000), (190.2, 192.1, 189.4, 191.8, 61_400_000),
+              (191.8, 193.5, 190.7, 192.4, 55_800_000), (192.4, 194.0, 191.2, 193.1, 58_100_000),
+              (193.1, 194.8, 192.0, 194.3, 63_700_000)],
+    "MSFT":  [(415.2, 417.6, 413.8, 416.4, 19_300_000), (416.4, 418.5, 415.1, 417.8, 17_800_000),
+              (417.8, 420.0, 416.5, 419.2, 20_100_000), (419.2, 421.3, 418.0, 420.5, 18_600_000),
+              (420.5, 422.8, 419.1, 421.7, 21_200_000)],
+    "NVDA":  [(875.3, 885.0, 872.1, 881.4, 42_100_000), (881.4, 891.2, 878.5, 888.6, 38_700_000),
+              (888.6, 895.4, 884.2, 893.1, 44_300_000), (893.1, 899.8, 889.7, 897.2, 40_500_000),
+              (897.2, 905.0, 894.1, 902.8, 46_800_000)],
+    "GOOGL": [(175.4, 177.2, 174.6, 176.3, 22_400_000), (176.3, 178.1, 175.4, 177.5, 20_800_000),
+              (177.5, 179.3, 176.7, 178.8, 23_100_000), (178.8, 180.5, 177.9, 179.7, 21_600_000),
+              (179.7, 181.4, 178.8, 180.9, 24_300_000)],
+    "AMZN":  [(184.2, 186.5, 183.4, 185.6, 31_500_000), (185.6, 187.8, 184.7, 186.9, 29_200_000),
+              (186.9, 189.1, 185.8, 188.2, 33_800_000), (188.2, 190.4, 187.1, 189.5, 30_700_000),
+              (189.5, 191.7, 188.4, 190.8, 35_100_000)],
+}
+for sym, rows in _aapl_prices.items():
+    for i, (o, h, l, c, v) in enumerate(rows):
+        _AAPL_OHLCV.append({"symbol": sym, "timestamp": _date_str(i), "open": o, "high": h, "low": l, "close": c, "volume": v})
+
+# AAPL signals: z-scores, realistic range, full coverage
+_AAPL_SIGNALS = [
+    {"symbol": "AAPL",  "timestamp": _date_str(4), "signal":  1.53},
+    {"symbol": "MSFT",  "timestamp": _date_str(4), "signal": -0.42},
+    {"symbol": "NVDA",  "timestamp": _date_str(4), "signal":  0.87},
+    {"symbol": "GOOGL", "timestamp": _date_str(4), "signal": -1.15},
+    {"symbol": "AMZN",  "timestamp": _date_str(4), "signal":  0.31},
+    {"symbol": "AAPL",  "timestamp": _date_str(3), "signal":  1.28},
+    {"symbol": "MSFT",  "timestamp": _date_str(3), "signal": -0.67},
+    {"symbol": "NVDA",  "timestamp": _date_str(3), "signal":  1.04},
+    {"symbol": "GOOGL", "timestamp": _date_str(3), "signal": -0.93},
+    {"symbol": "AMZN",  "timestamp": _date_str(3), "signal":  0.55},
+    {"symbol": "AAPL",  "timestamp": _date_str(2), "signal":  1.71},
+    {"symbol": "MSFT",  "timestamp": _date_str(2), "signal": -0.18},
+    {"symbol": "NVDA",  "timestamp": _date_str(2), "signal":  0.73},
+    {"symbol": "GOOGL", "timestamp": _date_str(2), "signal": -1.34},
+    {"symbol": "AMZN",  "timestamp": _date_str(2), "signal":  0.92},
 ]
 
-AAPL_SIGNALS = [
-    {"symbol": "AAPL", "timestamp": "2024-01-02", "signal": 1.53},
-    {"symbol": "MSFT", "timestamp": "2024-01-02", "signal": -0.42},
-    {"symbol": "NVDA", "timestamp": "2024-01-02", "signal": 2.11},
-    {"symbol": "GOOGL", "timestamp": "2024-01-02", "signal": -1.07},
-    {"symbol": "AMZN", "timestamp": "2024-01-02", "signal": 0.35},
+# FX: 5 symbols, 3 dates; note AUDUSD vol is None on one row (quality issue)
+_FX_OHLCV = [
+    {"symbol": "EURUSD", "timestamp": _date_str(-30), "open": 1.0824, "high": 1.0857, "low": 1.0805, "close": 1.0841, "volume": 52_000},
+    {"symbol": "GBPUSD", "timestamp": _date_str(-30), "open": 1.2694, "high": 1.2731, "low": 1.2672, "close": 1.2717, "volume": 41_000},
+    {"symbol": "USDJPY", "timestamp": _date_str(-30), "open": 157.43, "high": 158.12, "low": 157.21, "close": 157.88, "volume": 38_000},
+    {"symbol": "AUDUSD", "timestamp": _date_str(-30), "open": 0.6621, "high": 0.6648, "low": 0.6608, "close": 0.6638, "volume": None},  # intentional null
+    {"symbol": "USDCAD", "timestamp": _date_str(-30), "open": 1.3612, "high": 1.3645, "low": 1.3597, "close": 1.3628, "volume": 29_000},
+    {"symbol": "EURUSD", "timestamp": _date_str(-29), "open": 1.0841, "high": 1.0874, "low": 1.0823, "close": 1.0859, "volume": 49_000},
+    {"symbol": "GBPUSD", "timestamp": _date_str(-29), "open": 1.2717, "high": 1.2748, "low": 1.2698, "close": 1.2733, "volume": 38_500},
+    {"symbol": "USDJPY", "timestamp": _date_str(-29), "open": 157.88, "high": 158.45, "low": 157.61, "close": 158.21, "volume": 36_200},
+    {"symbol": "AUDUSD", "timestamp": _date_str(-29), "open": 0.6638, "high": 0.6662, "low": 0.6621, "close": 0.6651, "volume": 21_800},
+    {"symbol": "USDCAD", "timestamp": _date_str(-29), "open": 1.3628, "high": 1.3658, "low": 1.3612, "close": 1.3641, "volume": 27_300},
 ]
 
-FX_OHLCV = [
-    {"symbol": "EURUSD", "timestamp": "2024-01-02", "open": 1.0950, "high": 1.0980, "low": 1.0932, "close": 1.0961, "volume": 50000},
-    {"symbol": "GBPUSD", "timestamp": "2024-01-02", "open": 1.2710, "high": 1.2748, "low": 1.2695, "close": 1.2738, "volume": 42000},
-    {"symbol": "USDJPY", "timestamp": "2024-01-02", "open": 141.50, "high": 142.10, "low": 141.20, "close": 141.87, "volume": 38000},
-    {"symbol": "AUDUSD", "timestamp": "2024-01-02", "open": 0.6823, "high": 0.6854, "low": 0.6808, "close": 0.6842, "volume": None},  # intentional null
-    {"symbol": "EURUSD", "timestamp": "2024-01-03", "open": 1.0961, "high": 1.0991, "low": 1.0945, "close": 1.0975, "volume": 48000},
-    {"symbol": "GBPUSD", "timestamp": "2024-01-03", "open": 1.2738, "high": 1.2755, "low": 1.2712, "close": 1.2742, "volume": 39000},
-    {"symbol": "USDJPY", "timestamp": "2024-invalid-date", "open": 141.87, "high": 142.25, "low": 141.65, "close": 142.08, "volume": 36000},  # intentional bad timestamp
-    {"symbol": "EURUSD", "timestamp": "2024-01-03", "open": 1.0975, "high": 1.1005, "low": 1.0958, "close": 1.0989, "volume": 51000},  # intentional duplicate
+# FX signals: carry signal (interest-rate differential proxy); one missing
+_FX_SIGNALS = [
+    {"symbol": "EURUSD", "timestamp": _date_str(-30), "signal":  0.42},
+    {"symbol": "GBPUSD", "timestamp": _date_str(-30), "signal":  None},   # missing
+    {"symbol": "USDJPY", "timestamp": _date_str(-30), "signal": -1.15},
+    {"symbol": "AUDUSD", "timestamp": _date_str(-30), "signal":  0.78},
+    {"symbol": "USDCAD", "timestamp": _date_str(-30), "signal": -0.33},
+    {"symbol": "EURUSD", "timestamp": _date_str(-29), "signal":  0.48},
+    {"symbol": "GBPUSD", "timestamp": _date_str(-29), "signal":  0.61},
+    {"symbol": "USDJPY", "timestamp": _date_str(-29), "signal": -1.08},
 ]
 
-FX_SIGNALS = [
-    {"symbol": "EURUSD", "timestamp": "2024-01-02", "signal": 0.85},
-    {"symbol": "GBPUSD", "timestamp": "2024-01-02", "signal": None},  # missing signal
-    {"symbol": "USDJPY", "timestamp": "2024-01-02", "signal": -1.20},
-    {"symbol": "AUDUSD", "timestamp": "2024-01-02", "signal": 15.7},  # outlier
-    {"symbol": "EURUSD", "timestamp": "2024-01-03", "signal": 0.92},
+# Crypto: sparse rows, suspicious price spike to trigger quality flag
+_CRYPTO_OHLCV = [
+    {"symbol": "BTCUSD", "timestamp": _date_str(-5), "open": 68_400.0, "high": 69_850.0, "low": 67_900.0, "close": 69_120.0, "volume": 28_400},
+    {"symbol": "ETHUSD", "timestamp": _date_str(-5), "open":  3_580.0, "high":  3_645.0, "low":  3_520.0, "close":  3_612.0, "volume": 15_200},
+    {"symbol": "SOLUSD", "timestamp": _date_str(-5), "open":   172.4,  "high":   178.1,  "low":   170.8,  "close":   176.2,  "volume":  8_600},
+    {"symbol": "BTCUSD", "timestamp": _date_str(-4), "open": 69_120.0, "high": 85_000.0, "low": 68_800.0, "close": 84_500.0, "volume": 41_800},  # suspicious spike
+    {"symbol": "ETHUSD", "timestamp": _date_str(-4), "open":  3_612.0, "high":  3_680.0, "low":  3_590.0, "close":  3_655.0, "volume": 14_900},
+    {"symbol": "SOLUSD", "timestamp": _date_str(-4), "open":   176.2,  "high":   182.5,  "low":   174.1,  "close":   180.3,  "volume":  9_100},
 ]
 
-CRYPTO_ROWS = [
-    {"symbol": "BTC", "timestamp": "2024-01-02", "close": 42800.0, "volume": 28000},
-    {"symbol": "ETH", "timestamp": "2024-01-02", "close": 2250.0, "volume": 15000},
+# Crypto signals: very few, low quality
+_CRYPTO_SIGNALS = [
+    {"symbol": "BTCUSD", "timestamp": _date_str(-5), "signal": 0.0},
+    {"symbol": "ETHUSD", "timestamp": _date_str(-5), "signal": 0.0},
+    {"symbol": "SOLUSD", "timestamp": _date_str(-5), "signal": None},
 ]
 
 
 # ---------------------------------------------------------------------------
-# Helper: _utcnow
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# ---------------------------------------------------------------------------
-# Helper: get-or-create strategy
-# ---------------------------------------------------------------------------
-
-def _get_or_create_strategy(
-    db: Session,
-    project_id,
-    name: str,
-    slug: str,
-    asset_class: str,
-    status: str,
-):
-    """Return (strategy, created_bool).
-
-    Checks by project_id + slug. Creates + flushes if absent and emits a
-    strategy_created timeline event.
-    """
+def _get_or_create_strategy(db, project_id, name, slug, asset_class, status):
     from app.models.strategy import Strategy
-    from app.models.audit_timeline_event import AuditTimelineEvent
-
-    existing = (
-        db.query(Strategy).filter_by(project_id=project_id, slug=slug).first()
-    )
-    if existing is not None:
+    existing = db.query(Strategy).filter_by(project_id=project_id, slug=slug).first()
+    if existing:
         return existing, False
-
-    strategy = Strategy(
-        project_id=project_id,
-        name=name,
-        slug=slug,
-        asset_class=asset_class,
-        status=status,
-    )
-    db.add(strategy)
+    s = Strategy(project_id=project_id, name=name, slug=slug, asset_class=asset_class, status=status)
+    db.add(s)
     db.flush()
-
-    # We need org/project ids for the timeline event — look them up from project
-    from app.models.project import Project as ProjectModel
-    proj = db.get(ProjectModel, project_id)
-    if proj is not None:
-        event = AuditTimelineEvent(
-            organization_id=proj.organization_id,
-            project_id=proj.id,
-            strategy_id=strategy.id,
-            event_type=EventType.strategy_created,
-            title=f"Strategy created: {name}",
-            description=f"Demo strategy {name} created during demo seed.",
-            source_type="strategy",
-            source_id=str(strategy.id),
-            severity=Severity.info,
-            event_time=_utcnow(),
-        )
-        db.add(event)
-        db.flush()
-
-    return strategy, True
+    return s, True
 
 
-# ---------------------------------------------------------------------------
-# AAPL strategy seeder (fully instrumented)
-# ---------------------------------------------------------------------------
-
-def _seed_aapl_strategy(
-    db: Session,
-    strategy,
-    org,
-    project,
-    include_audits: bool,
-    include_reports: bool,
-) -> list[str]:
-    """Create all evidence artifacts for the AAPL demo strategy.
-
-    Returns a list of artifact labels created.
-    """
-    artifacts: list[str] = []
-
-    # ---- 1. StrategyVersion v1.0 ----
+def _make_version(db, strategy_id, version_label, git_commit, branch, code_path, signal_name):
     from app.models.strategy_version import StrategyVersion
-
-    version1 = (
-        db.query(StrategyVersion)
-        .filter_by(strategy_id=strategy.id, version_label="v1.0")
-        .first()
+    v = db.query(StrategyVersion).filter_by(strategy_id=strategy_id, version_label=version_label).first()
+    if v:
+        return v, False
+    v = StrategyVersion(
+        strategy_id=strategy_id, version_label=version_label,
+        git_commit=git_commit, branch_name=branch, code_path=code_path, signal_name=signal_name,
     )
-    if version1 is None:
-        version1 = StrategyVersion(
-            strategy_id=strategy.id,
-            version_label="v1.0",
-            git_commit="abc123",
-            branch_name="main",
-            code_path="strategies/aapl_mean_reversion.py",
-            signal_name="z_score_mean_reversion",
-            signal_description="Mean reversion signal using z-score of recent returns.",
-        )
-        db.add(version1)
-        db.flush()
-        artifacts.append("strategy_version:v1.0")
+    db.add(v)
+    db.flush()
+    return v, True
 
-    # ---- 2. StrategyVersion v2.0 ----
-    version2 = (
-        db.query(StrategyVersion)
-        .filter_by(strategy_id=strategy.id, version_label="v2.0")
-        .first()
-    )
-    if version2 is None:
-        version2 = StrategyVersion(
-            strategy_id=strategy.id,
-            version_label="v2.0",
-            git_commit="def456",
-            branch_name="main",
-            code_path="strategies/aapl_mean_reversion_v2.py",
-            signal_name="z_score_mean_reversion_v2",
-        )
-        db.add(version2)
-        db.flush()
-        artifacts.append("strategy_version:v2.0")
 
-    # ---- 3. Config snapshot v1 ----
+def _make_config(db, strategy_id, version_id, label, config_json):
     try:
         from app.models.strategy_config_snapshot import StrategyConfigSnapshot
         from app.services.config_snapshots import compute_config_hash, count_params, count_assumptions
-
-        config1_json = {
-            "params": {"lookback": 20, "entry_z": 2.0},
-            "assumptions": {
-                "transaction_cost_bps": 5,
-                "slippage_bps": 5,
-                "fill_model": "next_bar_open",
-            },
-        }
-        cfg1_hash = compute_config_hash(config1_json)
-        existing_cfg1 = (
-            db.query(StrategyConfigSnapshot)
-            .filter_by(strategy_id=strategy.id, config_hash=cfg1_hash)
-            .first()
+        h = compute_config_hash(config_json)
+        c = db.query(StrategyConfigSnapshot).filter_by(strategy_id=strategy_id, config_hash=h).first()
+        if c:
+            return c
+        c = StrategyConfigSnapshot(
+            strategy_id=strategy_id, strategy_version_id=version_id, label=label,
+            source_type="manual_json", config_json=config_json, config_hash=h,
+            param_count=count_params(config_json), assumption_count=count_assumptions(config_json),
         )
-        if existing_cfg1 is None:
-            cfg1 = StrategyConfigSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                label="AAPL v1.0 config",
-                source_type="manual_json",
-                config_json=config1_json,
-                config_hash=cfg1_hash,
-                param_count=count_params(config1_json),
-                assumption_count=count_assumptions(config1_json),
-            )
-            db.add(cfg1)
-            db.flush()
-            artifacts.append("config_snapshot:v1.0")
-        else:
-            cfg1 = existing_cfg1
+        db.add(c)
+        db.flush()
+        return c
     except Exception as exc:
-        cfg1 = None
-        print(f"[demo_seed] AAPL config v1 skipped: {exc}", file=sys.stderr)
+        print(f"[demo_seed] config snapshot {label} skipped: {exc}", file=sys.stderr)
+        return None
 
-    # ---- 4. Config snapshot v2 ----
-    try:
-        config2_json = {
-            "params": {"lookback": 15, "entry_z": 1.8},
-            "assumptions": {
-                "transaction_cost_bps": 7,
-                "slippage_bps": 7,
-                "fill_model": "next_bar_open",
-                "max_position_weight": 0.1,
-            },
-        }
-        cfg2_hash = compute_config_hash(config2_json)
-        existing_cfg2 = (
-            db.query(StrategyConfigSnapshot)
-            .filter_by(strategy_id=strategy.id, config_hash=cfg2_hash)
-            .first()
-        )
-        if existing_cfg2 is None:
-            cfg2 = StrategyConfigSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version2.id,
-                label="AAPL v2.0 config",
-                source_type="manual_json",
-                config_json=config2_json,
-                config_hash=cfg2_hash,
-                param_count=count_params(config2_json),
-                assumption_count=count_assumptions(config2_json),
-            )
-            db.add(cfg2)
-            db.flush()
-            artifacts.append("config_snapshot:v2.0")
-    except Exception as exc:
-        print(f"[demo_seed] AAPL config v2 skipped: {exc}", file=sys.stderr)
 
-    # ---- 5. Universe snapshot v1 ----
-    universe_snap = None
+def _make_universe(db, strategy_id, version_id, label, symbols, meta=None):
     try:
         from app.models.universe_snapshot import UniverseSnapshot
         from app.services.universe_snapshots import normalize_symbols, compute_universe_hash
-
-        raw_symbols = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"]
-        norm_symbols = normalize_symbols(raw_symbols)
-        universe_meta = {
-            "universe_type": "US_LARGE_CAP",
-            "symbols": {
-                "AAPL": {"sector": "Technology", "country": "US", "exchange": "NASDAQ"},
-                "MSFT": {"sector": "Technology", "country": "US", "exchange": "NASDAQ"},
-            },
-        }
-        u_hash = compute_universe_hash(norm_symbols, universe_meta)
-        existing_u = (
-            db.query(UniverseSnapshot)
-            .filter_by(strategy_id=strategy.id, universe_hash=u_hash)
-            .first()
+        norm = normalize_symbols(symbols)
+        h = compute_universe_hash(norm, meta or {})
+        u = db.query(UniverseSnapshot).filter_by(strategy_id=strategy_id, universe_hash=h).first()
+        if u:
+            return u
+        u = UniverseSnapshot(
+            strategy_id=strategy_id, strategy_version_id=version_id, label=label,
+            source_type="manual_json", symbols_json=norm, symbol_count=len(norm),
+            metadata_json=meta or {}, universe_hash=h,
         )
-        if existing_u is None:
-            universe_snap = UniverseSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                label="AAPL US Large Cap Universe v1",
-                source_type="manual_json",
-                symbols_json=norm_symbols,
-                symbol_count=len(norm_symbols),
-                metadata_json=universe_meta,
-                universe_hash=u_hash,
-            )
-            db.add(universe_snap)
-            db.flush()
-            artifacts.append("universe_snapshot:v1.0")
-        else:
-            universe_snap = existing_u
-    except Exception as exc:
-        print(f"[demo_seed] AAPL universe snapshot skipped: {exc}", file=sys.stderr)
-
-    # ---- 6. Signal snapshot ----
-    signal_snap = None
-    try:
-        from app.models.signal_snapshot import SignalSnapshot
-        from app.services.signal_snapshots import (
-            summarize_signal_snapshot,
-            compute_signal_hash,
-        )
-
-        sig_hash = compute_signal_hash(AAPL_SIGNALS)
-        existing_sig = (
-            db.query(SignalSnapshot)
-            .filter_by(strategy_id=strategy.id, signal_hash=sig_hash)
-            .first()
-        )
-        if existing_sig is None:
-            summary = summarize_signal_snapshot(AAPL_SIGNALS)
-            signal_snap = SignalSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                universe_snapshot_id=universe_snap.id if universe_snap else None,
-                label="AAPL Signal 2024-01-02",
-                signal_name="z_score_mean_reversion",
-                source_type="manual_json",
-                rows_json=AAPL_SIGNALS,
-                row_count=summary.row_count,
-                symbol_count=summary.symbol_count,
-                symbols_json=summary.symbols,
-                min_timestamp=summary.min_timestamp,
-                max_timestamp=summary.max_timestamp,
-                signal_value_count=summary.signal_value_count,
-                missing_signal_count=summary.missing_signal_count,
-                mean_value=summary.mean_value,
-                min_value=summary.min_value,
-                max_value=summary.max_value,
-                stddev_value=summary.stddev_value,
-                signal_hash=sig_hash,
-                quality_score=summary.quality_score,
-            )
-            db.add(signal_snap)
-            db.flush()
-            artifacts.append("signal_snapshot:aapl_2024-01-02")
-        else:
-            signal_snap = existing_sig
-    except Exception as exc:
-        print(f"[demo_seed] AAPL signal snapshot skipped: {exc}", file=sys.stderr)
-
-    # ---- 7. Dataset + DatasetSnapshot ----
-    dataset_snap = None
-    try:
-        from app.models.dataset import Dataset
-        from app.models.dataset_snapshot import DatasetSnapshot
-        from app.services.data_quality import analyze_snapshot
-
-        dataset = (
-            db.query(Dataset)
-            .filter_by(project_id=project.id, name="AAPL OHLCV 2024")
-            .first()
-        )
-        if dataset is None:
-            dataset = Dataset(
-                project_id=project.id,
-                name="AAPL OHLCV 2024",
-                description="AAPL equity OHLCV demo dataset for 2024.",
-                dataset_type="ohlcv",
-                source_type="manual",
-            )
-            db.add(dataset)
-            db.flush()
-            artifacts.append("dataset:aapl_ohlcv_2024")
-
-        existing_ds = (
-            db.query(DatasetSnapshot)
-            .filter_by(dataset_id=dataset.id, version_label="v1")
-            .first()
-        )
-        if existing_ds is None:
-            snap_summary = analyze_snapshot(AAPL_OHLCV)
-            dataset_snap = DatasetSnapshot(
-                dataset_id=dataset.id,
-                version_label="v1",
-                row_count=len(AAPL_OHLCV),
-                health_score=snap_summary.health_score,
-                rows_json=AAPL_OHLCV,
-            )
-            db.add(dataset_snap)
-            db.flush()
-            artifacts.append("dataset_snapshot:aapl_v1")
-        else:
-            dataset_snap = existing_ds
-    except Exception as exc:
-        print(f"[demo_seed] AAPL dataset snapshot skipped: {exc}", file=sys.stderr)
-
-    # ---- 8. StrategyRun v1 ----
-    run1 = None
-    try:
-        from app.models.strategy_run import StrategyRun
-
-        run1 = (
-            db.query(StrategyRun)
-            .filter_by(strategy_id=strategy.id, run_name="AAPL Backtest v1")
-            .first()
-        )
-        if run1 is None:
-            run1 = StrategyRun(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                dataset_snapshot_id=dataset_snap.id if dataset_snap else None,
-                universe_snapshot_id=universe_snap.id if universe_snap else None,
-                signal_snapshot_id=signal_snap.id if signal_snap else None,
-                run_name="AAPL Backtest v1",
-                run_type=RunType.backtest,
-                status=RunStatus.completed,
-                started_at=_utcnow(),
-                completed_at=_utcnow(),
-                params_json={"lookback_days": 20, "zscore_entry": 2.0},
-                assumptions_json={
-                    "transaction_cost_bps": 5,
-                    "slippage_bps": 5,
-                    "fill_model": "next_bar_open",
-                },
-                metrics_json={
-                    "sharpe": 1.62,
-                    "annual_return": 0.184,
-                    "max_drawdown": -0.109,
-                    "trade_count": 142,
-                    "win_rate": 0.54,
-                },
-                universe_name="US_LARGE_CAP",
-                notes="Demo baseline backtest run for AAPL mean reversion.",
-            )
-            db.add(run1)
-            db.flush()
-            artifacts.append("strategy_run:aapl_backtest_v1")
-    except Exception as exc:
-        print(f"[demo_seed] AAPL run v1 skipped: {exc}", file=sys.stderr)
-
-    # ---- 9. StrategyRun v2 ----
-    try:
-        run2 = (
-            db.query(StrategyRun)
-            .filter_by(strategy_id=strategy.id, run_name="AAPL Backtest v2")
-            .first()
-        )
-        if run2 is None:
-            run2 = StrategyRun(
-                strategy_id=strategy.id,
-                strategy_version_id=version2.id,
-                run_name="AAPL Backtest v2",
-                run_type=RunType.backtest,
-                status=RunStatus.completed,
-                started_at=_utcnow(),
-                completed_at=_utcnow(),
-                params_json={"lookback_days": 15, "zscore_entry": 1.8},
-                assumptions_json={
-                    "transaction_cost_bps": 7,
-                    "slippage_bps": 7,
-                    "fill_model": "next_bar_open",
-                },
-                metrics_json={
-                    "sharpe": 1.78,
-                    "annual_return": 0.195,
-                    "max_drawdown": -0.095,
-                    "trade_count": 168,
-                },
-                universe_name="US_LARGE_CAP",
-                notes="Demo improved backtest run for AAPL mean reversion v2.",
-            )
-            db.add(run2)
-            db.flush()
-            artifacts.append("strategy_run:aapl_backtest_v2")
-    except Exception as exc:
-        print(f"[demo_seed] AAPL run v2 skipped: {exc}", file=sys.stderr)
-
-    # ---- 10. Backtest audit for run1 ----
-    if include_audits and run1 is not None:
-        try:
-            from app.models.backtest_audit import BacktestAudit
-            from app.models.backtest_issue import BacktestIssue
-            from app.services.backtest_reality import run_backtest_audit
-
-            existing_audit = (
-                db.query(BacktestAudit)
-                .filter_by(strategy_run_id=run1.id)
-                .first()
-            )
-            if existing_audit is None:
-                audit_result = run_backtest_audit(run1, data_evidence=None)
-                audit = BacktestAudit(
-                    strategy_run_id=run1.id,
-                    trust_score=audit_result.trust_score,
-                    lookahead_risk_score=audit_result.lookahead_risk_score,
-                    cost_realism_score=audit_result.cost_realism_score,
-                    fill_realism_score=audit_result.fill_realism_score,
-                    liquidity_realism_score=audit_result.liquidity_realism_score,
-                    borrow_realism_score=audit_result.borrow_realism_score,
-                    data_quality_score=audit_result.data_quality_score,
-                    overall_status=audit_result.overall_status,
-                    summary=audit_result.summary,
-                    cost_sensitivity_json=audit_result.cost_sensitivity_json,
-                    fill_realism_json=audit_result.fill_realism_json,
-                    fragility_summary_json=audit_result.fragility_summary_json,
-                    cost_sensitivity_sweep_json=audit_result.cost_sensitivity_sweep_json,
-                    fill_sensitivity_json=audit_result.fill_sensitivity_json,
-                    penalty_attribution_json=audit_result.penalty_attribution_json,
-                    improvement_checks_json=audit_result.improvement_checks_json,
-                )
-                db.add(audit)
-                db.flush()
-                for iss in audit_result.issues:
-                    bi = BacktestIssue(
-                        backtest_audit_id=audit.id,
-                        issue_type=iss.issue_type,
-                        severity=iss.severity,
-                        title=iss.title,
-                        description=iss.description,
-                        evidence_json=iss.evidence_json,
-                        suggested_check=iss.suggested_check,
-                    )
-                    db.add(bi)
-                db.flush()
-                artifacts.append("backtest_audit:aapl_run_v1")
-        except Exception as exc:
-            print(f"[demo_seed] AAPL backtest audit skipped: {exc}", file=sys.stderr)
-
-    # ---- 11. Reliability score ----
-    try:
-        from app.models.strategy_reliability_score import StrategyReliabilityScore
-        from app.services.strategy_reliability import compute_reliability_score
-
-        score_dict = compute_reliability_score(str(strategy.id), db)
-        _EXCLUDE_KEYS = {"strategy_id", "generated_at"}
-        score = StrategyReliabilityScore(
-            strategy_id=strategy.id,
-            generated_at=score_dict.get("generated_at") or _utcnow(),
-            **{k: v for k, v in score_dict.items() if k not in _EXCLUDE_KEYS},
-        )
-        db.add(score)
+        db.add(u)
         db.flush()
-        artifacts.append("reliability_score:aapl")
+        return u
     except Exception as exc:
-        print(f"[demo_seed] AAPL reliability score skipped: {exc}", file=sys.stderr)
-
-    # ---- 12. Report ----
-    if include_reports:
-        try:
-            from app.services.reports import generate_strategy_reliability_report, persist_report
-
-            report_result = generate_strategy_reliability_report(strategy.id, db)
-            persist_report(report_result, db)
-            artifacts.append("report:strategy_reliability:aapl")
-        except Exception as exc:
-            print(f"[demo_seed] AAPL report skipped: {exc}", file=sys.stderr)
-
-    return artifacts
+        print(f"[demo_seed] universe snapshot {label} skipped: {exc}", file=sys.stderr)
+        return None
 
 
-# ---------------------------------------------------------------------------
-# FX strategy seeder (review / partial)
-# ---------------------------------------------------------------------------
-
-def _seed_fx_strategy(
-    db: Session,
-    strategy,
-    org,
-    project,
-    include_audits: bool,
-    include_reports: bool,
-) -> list[str]:
-    """Create evidence artifacts for the FX carry demo strategy."""
-    artifacts: list[str] = []
-
-    # ---- 1. StrategyVersion v1.0 ----
-    from app.models.strategy_version import StrategyVersion
-
-    version1 = (
-        db.query(StrategyVersion)
-        .filter_by(strategy_id=strategy.id, version_label="v1.0")
-        .first()
-    )
-    if version1 is None:
-        version1 = StrategyVersion(
-            strategy_id=strategy.id,
-            version_label="v1.0",
-            git_commit=None,
-            branch_name="main",
-            code_path="strategies/fx_carry.py",
-            signal_name="fx_carry_signal",
-        )
-        db.add(version1)
-        db.flush()
-        artifacts.append("strategy_version:v1.0")
-
-    # ---- 2. StrategyVersion v2.0 ----
-    version2 = (
-        db.query(StrategyVersion)
-        .filter_by(strategy_id=strategy.id, version_label="v2.0")
-        .first()
-    )
-    if version2 is None:
-        version2 = StrategyVersion(
-            strategy_id=strategy.id,
-            version_label="v2.0",
-            git_commit=None,
-            branch_name="main",
-            signal_name="fx_carry_signal_v2",
-        )
-        db.add(version2)
-        db.flush()
-        artifacts.append("strategy_version:v2.0")
-
-    # ---- 3 & 4. Config snapshots ----
-    try:
-        from app.models.strategy_config_snapshot import StrategyConfigSnapshot
-        from app.services.config_snapshots import compute_config_hash, count_params, count_assumptions
-
-        config1_json = {
-            "params": {"carry_lookback": 90},
-            "assumptions": {
-                "fill_model": "close",
-                "slippage_bps": 2,
-                "transaction_cost_bps": 3,
-            },
-        }
-        cfg1_hash = compute_config_hash(config1_json)
-        if not db.query(StrategyConfigSnapshot).filter_by(strategy_id=strategy.id, config_hash=cfg1_hash).first():
-            db.add(StrategyConfigSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                label="FX v1.0 config",
-                source_type="manual_json",
-                config_json=config1_json,
-                config_hash=cfg1_hash,
-                param_count=count_params(config1_json),
-                assumption_count=count_assumptions(config1_json),
-            ))
-            db.flush()
-            artifacts.append("config_snapshot:v1.0")
-
-        config2_json = {
-            "params": {"carry_lookback": 60},
-            "assumptions": {
-                "fill_model": "same_close",
-                "slippage_bps": 1,
-                "transaction_cost_bps": 3,
-            },
-        }
-        cfg2_hash = compute_config_hash(config2_json)
-        if not db.query(StrategyConfigSnapshot).filter_by(strategy_id=strategy.id, config_hash=cfg2_hash).first():
-            db.add(StrategyConfigSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version2.id,
-                label="FX v2.0 config",
-                source_type="manual_json",
-                config_json=config2_json,
-                config_hash=cfg2_hash,
-                param_count=count_params(config2_json),
-                assumption_count=count_assumptions(config2_json),
-            ))
-            db.flush()
-            artifacts.append("config_snapshot:v2.0")
-    except Exception as exc:
-        print(f"[demo_seed] FX config snapshots skipped: {exc}", file=sys.stderr)
-
-    # ---- 5. Universe snapshot ----
-    try:
-        from app.models.universe_snapshot import UniverseSnapshot
-        from app.services.universe_snapshots import normalize_symbols, compute_universe_hash
-
-        fx_symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"]
-        norm_fx = normalize_symbols(fx_symbols)
-        fx_u_meta = {"universe_type": "G10_FX"}
-        fx_u_hash = compute_universe_hash(norm_fx, fx_u_meta)
-        if not db.query(UniverseSnapshot).filter_by(strategy_id=strategy.id, universe_hash=fx_u_hash).first():
-            db.add(UniverseSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                label="FX G10 Universe v1",
-                source_type="manual_json",
-                symbols_json=norm_fx,
-                symbol_count=len(norm_fx),
-                metadata_json=fx_u_meta,
-                universe_hash=fx_u_hash,
-            ))
-            db.flush()
-            artifacts.append("universe_snapshot:fx_v1")
-    except Exception as exc:
-        print(f"[demo_seed] FX universe snapshot skipped: {exc}", file=sys.stderr)
-
-    # ---- 6. Signal snapshot (has missing / outliers) ----
+def _make_signal(db, strategy_id, version_id, universe_id, label, signal_name, rows):
     try:
         from app.models.signal_snapshot import SignalSnapshot
         from app.services.signal_snapshots import summarize_signal_snapshot, compute_signal_hash
-
-        fx_sig_hash = compute_signal_hash(FX_SIGNALS)
-        if not db.query(SignalSnapshot).filter_by(strategy_id=strategy.id, signal_hash=fx_sig_hash).first():
-            summary = summarize_signal_snapshot(FX_SIGNALS)
-            db.add(SignalSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                label="FX Carry Signal 2024-01-02",
-                signal_name="fx_carry_signal",
-                source_type="manual_json",
-                rows_json=FX_SIGNALS,
-                row_count=summary.row_count,
-                symbol_count=summary.symbol_count,
-                symbols_json=summary.symbols,
-                min_timestamp=summary.min_timestamp,
-                max_timestamp=summary.max_timestamp,
-                signal_value_count=summary.signal_value_count,
-                missing_signal_count=summary.missing_signal_count,
-                mean_value=summary.mean_value,
-                min_value=summary.min_value,
-                max_value=summary.max_value,
-                stddev_value=summary.stddev_value,
-                signal_hash=fx_sig_hash,
-                quality_score=summary.quality_score,
-            ))
-            db.flush()
-            artifacts.append("signal_snapshot:fx_2024-01-02")
+        h = compute_signal_hash(rows)
+        ss = db.query(SignalSnapshot).filter_by(strategy_id=strategy_id, signal_hash=h).first()
+        if ss:
+            return ss
+        s = summarize_signal_snapshot(rows)
+        ss = SignalSnapshot(
+            strategy_id=strategy_id, strategy_version_id=version_id,
+            universe_snapshot_id=universe_id,
+            label=label, signal_name=signal_name, source_type="manual_json",
+            rows_json=rows, row_count=s.row_count, symbol_count=s.symbol_count,
+            symbols_json=s.symbols, min_timestamp=s.min_timestamp, max_timestamp=s.max_timestamp,
+            signal_value_count=s.signal_value_count, missing_signal_count=s.missing_signal_count,
+            mean_value=s.mean_value, min_value=s.min_value, max_value=s.max_value,
+            stddev_value=s.stddev_value, signal_hash=h, quality_score=s.quality_score,
+        )
+        db.add(ss)
+        db.flush()
+        return ss
     except Exception as exc:
-        print(f"[demo_seed] FX signal snapshot skipped: {exc}", file=sys.stderr)
+        print(f"[demo_seed] signal snapshot {label} skipped: {exc}", file=sys.stderr)
+        return None
 
-    # ---- 7. Dataset + DatasetSnapshot ----
-    run1 = None
+
+def _make_dataset_snapshot(db, project_id, dataset_name, dataset_desc, rows, version_label="v1"):
     try:
         from app.models.dataset import Dataset
         from app.models.dataset_snapshot import DatasetSnapshot
         from app.services.data_quality import analyze_snapshot
-        from app.models.strategy_run import StrategyRun
-
-        dataset = (
-            db.query(Dataset).filter_by(project_id=project.id, name="FX OHLCV 2024").first()
-        )
-        if dataset is None:
-            dataset = Dataset(
-                project_id=project.id,
-                name="FX OHLCV 2024",
-                description="FX OHLCV demo dataset with deliberate quality issues.",
-                dataset_type="ohlcv",
-                source_type="manual",
-            )
-            db.add(dataset)
+        ds = db.query(Dataset).filter_by(project_id=project_id, name=dataset_name).first()
+        if not ds:
+            ds = Dataset(project_id=project_id, name=dataset_name, description=dataset_desc,
+                         dataset_type="ohlcv", source_type="manual")
+            db.add(ds)
             db.flush()
-            artifacts.append("dataset:fx_ohlcv_2024")
-
-        fx_ds = (
-            db.query(DatasetSnapshot).filter_by(dataset_id=dataset.id, version_label="v1").first()
-        )
-        if fx_ds is None:
-            snap_summary = analyze_snapshot(FX_OHLCV)
-            fx_ds = DatasetSnapshot(
-                dataset_id=dataset.id,
-                version_label="v1",
-                row_count=len(FX_OHLCV),
-                health_score=snap_summary.health_score,
-                rows_json=FX_OHLCV,
-            )
-            db.add(fx_ds)
+        snap = db.query(DatasetSnapshot).filter_by(dataset_id=ds.id, version_label=version_label).first()
+        if not snap:
+            summary = analyze_snapshot(rows)
+            snap = DatasetSnapshot(dataset_id=ds.id, version_label=version_label,
+                                   row_count=len(rows), health_score=summary.health_score,
+                                   rows_json=rows)
+            db.add(snap)
             db.flush()
-            artifacts.append("dataset_snapshot:fx_v1")
-
-        # ---- 8. StrategyRun — no dataset link (missing evidence) ----
-        run1 = (
-            db.query(StrategyRun).filter_by(strategy_id=strategy.id, run_name="FX Carry Backtest v1").first()
-        )
-        if run1 is None:
-            run1 = StrategyRun(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                run_name="FX Carry Backtest v1",
-                run_type=RunType.backtest,
-                status=RunStatus.completed,
-                started_at=_utcnow(),
-                completed_at=_utcnow(),
-                params_json={"carry_lookback": 90},
-                assumptions_json={
-                    "fill_model": "close",
-                    "slippage_bps": 1,
-                    "transaction_cost_bps": 3,
-                },
-                metrics_json={
-                    "sharpe": 0.8,
-                    "annual_return": 0.08,
-                    "max_drawdown": -0.22,
-                },
-                universe_name="G10_FX",
-                notes="FX carry demo run — missing dataset evidence link.",
-            )
-            db.add(run1)
-            db.flush()
-            artifacts.append("strategy_run:fx_backtest_v1")
+        return snap
     except Exception as exc:
-        print(f"[demo_seed] FX dataset/run skipped: {exc}", file=sys.stderr)
-
-    # ---- 9. Backtest audit ----
-    if include_audits and run1 is not None:
-        try:
-            from app.models.backtest_audit import BacktestAudit
-            from app.models.backtest_issue import BacktestIssue
-            from app.services.backtest_reality import run_backtest_audit
-
-            if not db.query(BacktestAudit).filter_by(strategy_run_id=run1.id).first():
-                audit_result = run_backtest_audit(run1, data_evidence=None)
-                audit = BacktestAudit(
-                    strategy_run_id=run1.id,
-                    trust_score=audit_result.trust_score,
-                    lookahead_risk_score=audit_result.lookahead_risk_score,
-                    cost_realism_score=audit_result.cost_realism_score,
-                    fill_realism_score=audit_result.fill_realism_score,
-                    liquidity_realism_score=audit_result.liquidity_realism_score,
-                    borrow_realism_score=audit_result.borrow_realism_score,
-                    data_quality_score=audit_result.data_quality_score,
-                    overall_status=audit_result.overall_status,
-                    summary=audit_result.summary,
-                    cost_sensitivity_json=audit_result.cost_sensitivity_json,
-                    fill_realism_json=audit_result.fill_realism_json,
-                    fragility_summary_json=audit_result.fragility_summary_json,
-                    cost_sensitivity_sweep_json=audit_result.cost_sensitivity_sweep_json,
-                    fill_sensitivity_json=audit_result.fill_sensitivity_json,
-                    penalty_attribution_json=audit_result.penalty_attribution_json,
-                    improvement_checks_json=audit_result.improvement_checks_json,
-                )
-                db.add(audit)
-                db.flush()
-                for iss in audit_result.issues:
-                    db.add(BacktestIssue(
-                        backtest_audit_id=audit.id,
-                        issue_type=iss.issue_type,
-                        severity=iss.severity,
-                        title=iss.title,
-                        description=iss.description,
-                        evidence_json=iss.evidence_json,
-                        suggested_check=iss.suggested_check,
-                    ))
-                db.flush()
-                artifacts.append("backtest_audit:fx_run_v1")
-        except Exception as exc:
-            print(f"[demo_seed] FX backtest audit skipped: {exc}", file=sys.stderr)
-
-    # ---- 10. Reliability score ----
-    try:
-        from app.models.strategy_reliability_score import StrategyReliabilityScore
-        from app.services.strategy_reliability import compute_reliability_score
-
-        score_dict = compute_reliability_score(str(strategy.id), db)
-        _EXCL = {"strategy_id", "generated_at"}
-        db.add(StrategyReliabilityScore(
-            strategy_id=strategy.id,
-            generated_at=score_dict.get("generated_at") or _utcnow(),
-            **{k: v for k, v in score_dict.items() if k not in _EXCL},
-        ))
-        db.flush()
-        artifacts.append("reliability_score:fx")
-    except Exception as exc:
-        print(f"[demo_seed] FX reliability score skipped: {exc}", file=sys.stderr)
-
-    return artifacts
+        print(f"[demo_seed] dataset {dataset_name} skipped: {exc}", file=sys.stderr)
+        return None
 
 
-# ---------------------------------------------------------------------------
-# Crypto strategy seeder (under-instrumented)
-# ---------------------------------------------------------------------------
-
-def _seed_crypto_strategy(
-    db: Session,
-    strategy,
-    org,
-    project,
-    include_audits: bool,
-    include_reports: bool,
-) -> list[str]:
-    """Create minimal evidence artifacts for the crypto momentum demo strategy."""
-    artifacts: list[str] = []
-
-    # ---- 1. StrategyVersion v1.0 ----
-    from app.models.strategy_version import StrategyVersion
-
-    version1 = (
-        db.query(StrategyVersion)
-        .filter_by(strategy_id=strategy.id, version_label="v1.0")
-        .first()
+def _make_run(db, strategy_id, version_id, snap_id, univ_id, sig_id, name, run_type,
+              params, assumptions, metrics, notes, run_at):
+    from app.models.strategy_run import StrategyRun
+    r = db.query(StrategyRun).filter_by(strategy_id=strategy_id, run_name=name).first()
+    if r:
+        return r
+    r = StrategyRun(
+        strategy_id=strategy_id, strategy_version_id=version_id,
+        dataset_snapshot_id=snap_id, universe_snapshot_id=univ_id,
+        signal_snapshot_id=sig_id, run_name=name, run_type=run_type,
+        status=RunStatus.completed, started_at=run_at, completed_at=run_at,
+        params_json=params, assumptions_json=assumptions, metrics_json=metrics, notes=notes,
     )
-    if version1 is None:
-        version1 = StrategyVersion(
-            strategy_id=strategy.id,
-            version_label="v1.0",
-            git_commit=None,
-            branch_name="main",
-            signal_name="crypto_momentum_signal",
+    db.add(r)
+    db.flush()
+    return r
+
+
+def _make_audit(db, run, include_audits: bool):
+    if not include_audits or run is None:
+        return None
+    try:
+        from app.models.backtest_audit import BacktestAudit
+        from app.models.backtest_issue import BacktestIssue
+        from app.services.backtest_reality import run_backtest_audit
+        if db.query(BacktestAudit).filter_by(strategy_run_id=run.id).first():
+            return None
+        res = run_backtest_audit(run, data_evidence=None)
+        audit = BacktestAudit(
+            strategy_run_id=run.id, trust_score=res.trust_score,
+            lookahead_risk_score=res.lookahead_risk_score,
+            cost_realism_score=res.cost_realism_score,
+            fill_realism_score=res.fill_realism_score,
+            liquidity_realism_score=res.liquidity_realism_score,
+            borrow_realism_score=res.borrow_realism_score,
+            data_quality_score=res.data_quality_score,
+            overall_status=res.overall_status, summary=res.summary,
+            cost_sensitivity_json=res.cost_sensitivity_json,
+            fill_realism_json=res.fill_realism_json,
+            fragility_summary_json=res.fragility_summary_json,
+            cost_sensitivity_sweep_json=res.cost_sensitivity_sweep_json,
+            fill_sensitivity_json=res.fill_sensitivity_json,
+            penalty_attribution_json=res.penalty_attribution_json,
+            improvement_checks_json=res.improvement_checks_json,
         )
-        db.add(version1)
+        db.add(audit)
         db.flush()
-        artifacts.append("strategy_version:v1.0")
-
-    # ---- 2. Config snapshot (minimal) ----
-    try:
-        from app.models.strategy_config_snapshot import StrategyConfigSnapshot
-        from app.services.config_snapshots import compute_config_hash, count_params, count_assumptions
-
-        crypto_config = {"params": {"momentum_window": 14}}
-        cfg_hash = compute_config_hash(crypto_config)
-        if not db.query(StrategyConfigSnapshot).filter_by(strategy_id=strategy.id, config_hash=cfg_hash).first():
-            db.add(StrategyConfigSnapshot(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                label="Crypto v1.0 config",
-                source_type="manual_json",
-                config_json=crypto_config,
-                config_hash=cfg_hash,
-                param_count=count_params(crypto_config),
-                assumption_count=count_assumptions(crypto_config),
+        for iss in res.issues:
+            db.add(BacktestIssue(
+                backtest_audit_id=audit.id, issue_type=iss.issue_type,
+                severity=iss.severity, title=iss.title, description=iss.description,
+                evidence_json=iss.evidence_json, suggested_check=iss.suggested_check,
             ))
-            db.flush()
-            artifacts.append("config_snapshot:crypto_v1")
+        db.flush()
+        return audit
     except Exception as exc:
-        print(f"[demo_seed] Crypto config snapshot skipped: {exc}", file=sys.stderr)
+        print(f"[demo_seed] backtest audit skipped: {exc}", file=sys.stderr)
+        return None
 
-    # No universe snapshot, no signal snapshot (deliberate)
 
-    # ---- 5. Dataset + DatasetSnapshot (sparse) ----
-    try:
-        from app.models.dataset import Dataset
-        from app.models.dataset_snapshot import DatasetSnapshot
-        from app.services.data_quality import analyze_snapshot
-
-        dataset = (
-            db.query(Dataset).filter_by(project_id=project.id, name="Crypto OHLCV").first()
-        )
-        if dataset is None:
-            dataset = Dataset(
-                project_id=project.id,
-                name="Crypto OHLCV",
-                description="Sparse crypto OHLCV demo dataset.",
-                dataset_type="ohlcv",
-                source_type="manual",
-            )
-            db.add(dataset)
-            db.flush()
-            artifacts.append("dataset:crypto_ohlcv")
-
-        if not db.query(DatasetSnapshot).filter_by(dataset_id=dataset.id, version_label="v1").first():
-            snap_summary = analyze_snapshot(CRYPTO_ROWS)
-            db.add(DatasetSnapshot(
-                dataset_id=dataset.id,
-                version_label="v1",
-                row_count=len(CRYPTO_ROWS),
-                health_score=snap_summary.health_score,
-                rows_json=CRYPTO_ROWS,
-            ))
-            db.flush()
-            artifacts.append("dataset_snapshot:crypto_v1")
-    except Exception as exc:
-        print(f"[demo_seed] Crypto dataset snapshot skipped: {exc}", file=sys.stderr)
-
-    # ---- 6. StrategyRun — sparse, no assumptions, no dataset link ----
-    run1 = None
-    try:
-        from app.models.strategy_run import StrategyRun
-
-        run1 = (
-            db.query(StrategyRun).filter_by(strategy_id=strategy.id, run_name="Crypto Momentum Backtest v1").first()
-        )
-        if run1 is None:
-            run1 = StrategyRun(
-                strategy_id=strategy.id,
-                strategy_version_id=version1.id,
-                run_name="Crypto Momentum Backtest v1",
-                run_type=RunType.backtest,
-                status=RunStatus.completed,
-                started_at=_utcnow(),
-                completed_at=_utcnow(),
-                params_json={"momentum_window": 14},
-                assumptions_json=None,
-                metrics_json={"sharpe": None, "annual_return": 0.15},
-                notes="Sparse crypto demo run — minimal evidence.",
-            )
-            db.add(run1)
-            db.flush()
-            artifacts.append("strategy_run:crypto_backtest_v1")
-    except Exception as exc:
-        print(f"[demo_seed] Crypto run skipped: {exc}", file=sys.stderr)
-
-    # No backtest audit (deliberate)
-
-    # ---- 8. Reliability score (likely insufficient_evidence) ----
+def _make_reliability_score(db, strategy_id):
     try:
         from app.models.strategy_reliability_score import StrategyReliabilityScore
         from app.services.strategy_reliability import compute_reliability_score
-
-        score_dict = compute_reliability_score(str(strategy.id), db)
-        _EXCL2 = {"strategy_id", "generated_at"}
-        db.add(StrategyReliabilityScore(
-            strategy_id=strategy.id,
-            generated_at=score_dict.get("generated_at") or _utcnow(),
-            **{k: v for k, v in score_dict.items() if k not in _EXCL2},
-        ))
+        d = compute_reliability_score(str(strategy_id), db)
+        excl = {"strategy_id", "generated_at"}
+        score = StrategyReliabilityScore(
+            strategy_id=strategy_id,
+            generated_at=d.get("generated_at") or _utcnow(),
+            **{k: v for k, v in d.items() if k not in excl},
+        )
+        db.add(score)
         db.flush()
-        artifacts.append("reliability_score:crypto")
+        return score
     except Exception as exc:
-        print(f"[demo_seed] Crypto reliability score skipped: {exc}", file=sys.stderr)
+        print(f"[demo_seed] reliability score skipped: {exc}", file=sys.stderr)
+        return None
 
-    return artifacts
+
+def _make_report(db, strategy, include_reports: bool):
+    if not include_reports:
+        return
+    try:
+        from app.services.reports import generate_strategy_reliability_report, persist_report
+        persist_report(generate_strategy_reliability_report(strategy.id, db), db)
+    except Exception as exc:
+        print(f"[demo_seed] report skipped: {exc}", file=sys.stderr)
+
+
+def _make_review_case(db, strategy_id, title, case_key, severity, category, summary):
+    """Create a review case. strategy_id must match the stored format of strategies.id.
+
+    ResearchReviewCase.strategy_id is String(36); strategies.id is stored as 32-char hex
+    by SQLAlchemy 2.0 on SQLite (same UUID format issue as workspace_members.organization_id).
+    Use strategy_id.hex to pass the correct stored format.
+    """
+    try:
+        import uuid as _uuid
+        from app.models.review_case import ResearchReviewCase
+        # Convert uuid.UUID → 32-char hex to match strategies.id stored format
+        sid_str = strategy_id.hex if isinstance(strategy_id, _uuid.UUID) else str(strategy_id)
+        existing = db.query(ResearchReviewCase).filter_by(
+            strategy_id=sid_str, case_key=case_key
+        ).first()
+        if existing:
+            return existing
+        rc = ResearchReviewCase(
+            strategy_id=sid_str, title=title, case_key=case_key,
+            status="open", severity=severity, category=category,
+            summary=summary, opened_at=_utcnow(),
+        )
+        db.add(rc)
+        db.flush()
+        return rc
+    except Exception as exc:
+        print(f"[demo_seed] review case {case_key} skipped: {exc}", file=sys.stderr)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Strategy seeders
+# ---------------------------------------------------------------------------
+
+def _seed_aapl(db, strategy, org, project, include_audits, include_reports):
+    arts = []
+
+    v1, _ = _make_version(db, strategy.id, "v1.0", "a1b2c3d", "main",
+                          "strategies/aapl_mean_reversion.py", "mean_reversion_zscore")
+    v2, _ = _make_version(db, strategy.id, "v2.0", "e4f5g6h", "main",
+                          "strategies/aapl_mean_reversion_v2.py", "mean_reversion_zscore_v2")
+    arts.extend(["version:v1.0", "version:v2.0"])
+
+    cfg1 = _make_config(db, strategy.id, v1.id, "AAPL Mean Reversion v1.0 Config", {
+        "params": {"lookback": 20, "zscore_threshold": 1.5},
+        "assumptions": {
+            "transaction_cost_bps": 5,
+            "slippage_bps": 2,
+            "fill_model": "next_bar_open",
+            "max_leverage": 1.0,
+            "max_position_weight": 0.10,
+            "liquidity_filter": "adv_1m_gt_10m",
+        },
+    })
+    cfg2 = _make_config(db, strategy.id, v2.id, "AAPL Mean Reversion v2.0 Config", {
+        "params": {"lookback": 15, "zscore_threshold": 1.8},
+        "assumptions": {
+            "transaction_cost_bps": 7,
+            "slippage_bps": 3,
+            "fill_model": "next_bar_open",
+            "max_leverage": 1.0,
+            "max_position_weight": 0.10,
+            "liquidity_filter": "adv_1m_gt_10m",
+        },
+    })
+    if cfg1: arts.append("config:v1.0")
+    if cfg2: arts.append("config:v2.0")
+
+    uni = _make_universe(db, strategy.id, v1.id,
+                         "AAPL US Large-Cap Equity Universe",
+                         ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"],
+                         {"universe_type": "US_LARGE_CAP",
+                          "description": "Top-5 US large-cap tech equities."})
+    if uni: arts.append("universe:v1")
+
+    sig = _make_signal(db, strategy.id, v1.id, uni.id if uni else None,
+                       f"AAPL Z-Score Signal {_date_str(4)}",
+                       "mean_reversion_zscore", _AAPL_SIGNALS)
+    if sig: arts.append("signal:aapl_zscore")
+
+    dsnap = _make_dataset_snapshot(db, project.id, "AAPL Equity OHLCV Daily",
+                                   "Clean daily OHLCV for AAPL universe (2026-06).",
+                                   _AAPL_OHLCV)
+    if dsnap: arts.append("dataset_snapshot:aapl_ohlcv")
+
+    # Research run
+    r_research = _make_run(
+        db, strategy.id, v1.id,
+        dsnap.id if dsnap else None, uni.id if uni else None, sig.id if sig else None,
+        "AAPL Mean Reversion — Research",
+        RunType.research,
+        {"lookback": 20, "zscore_threshold": 1.5},
+        {"transaction_cost_bps": 5, "slippage_bps": 2, "fill_model": "next_bar_open",
+         "max_leverage": 1.0},
+        {"sharpe": 1.38, "annual_return": 0.151, "volatility": 0.109,
+         "max_drawdown": -0.112, "turnover": 1.72, "trade_count": 132, "win_rate": 0.54},
+        "Initial research run to validate z-score signal quality.",
+        _dt(-4),
+    )
+    arts.append("run:research_v1")
+
+    # Backtest run (v1)
+    r_bt1 = _make_run(
+        db, strategy.id, v1.id,
+        dsnap.id if dsnap else None, uni.id if uni else None, sig.id if sig else None,
+        "AAPL Mean Reversion — Backtest v1",
+        RunType.backtest,
+        {"lookback": 20, "zscore_threshold": 1.5},
+        {"transaction_cost_bps": 5, "slippage_bps": 2, "fill_model": "next_bar_open",
+         "max_leverage": 1.0, "max_position_weight": 0.10},
+        {"sharpe": 1.43, "annual_return": 0.162, "volatility": 0.113,
+         "max_drawdown": -0.108, "turnover": 1.68, "trade_count": 147, "win_rate": 0.56},
+        "Backtest v1 with realistic cost assumptions and full evidence chain.",
+        _dt(-3),
+    )
+    arts.append("run:backtest_v1")
+    _make_audit(db, r_bt1, include_audits)
+
+    # Backtest run (v2 — improved)
+    cfg2_snap = _make_config(db, strategy.id, v2.id, "AAPL Mean Reversion v2.0 Config", {
+        "params": {"lookback": 15, "zscore_threshold": 1.8},
+        "assumptions": {
+            "transaction_cost_bps": 7, "slippage_bps": 3,
+            "fill_model": "next_bar_open", "max_leverage": 1.0,
+            "max_position_weight": 0.10, "liquidity_filter": "adv_1m_gt_10m",
+        },
+    })
+    r_bt2 = _make_run(
+        db, strategy.id, v2.id,
+        dsnap.id if dsnap else None, uni.id if uni else None, sig.id if sig else None,
+        "AAPL Mean Reversion — Backtest v2",
+        RunType.backtest,
+        {"lookback": 15, "zscore_threshold": 1.8},
+        {"transaction_cost_bps": 7, "slippage_bps": 3, "fill_model": "next_bar_open",
+         "max_leverage": 1.0, "max_position_weight": 0.10},
+        {"sharpe": 1.52, "annual_return": 0.178, "volatility": 0.117,
+         "max_drawdown": -0.101, "turnover": 1.85, "trade_count": 163, "win_rate": 0.57},
+        "Tighter entry threshold improves Sharpe; cost model fully documented.",
+        _dt(-1),
+    )
+    arts.append("run:backtest_v2")
+    _make_audit(db, r_bt2, include_audits)
+
+    _make_reliability_score(db, strategy.id)
+    arts.append("reliability_score")
+    _make_report(db, strategy, include_reports)
+
+    return arts
+
+
+def _seed_fx(db, strategy, org, project, include_audits, include_reports):
+    arts = []
+
+    v1, _ = _make_version(db, strategy.id, "v1.0", None, "main",
+                          "strategies/fx_carry.py", "interest_rate_differential_carry")
+    arts.append("version:v1.0")
+
+    cfg = _make_config(db, strategy.id, v1.id, "FX Carry Strategy Q1 Config", {
+        "params": {
+            "rebalance_frequency": "weekly",
+            "carry_lookback_days": 90,
+        },
+        "assumptions": {
+            "transaction_cost_bps": 8,
+            "slippage_bps": 3,
+            "fill_model": "next_bar_open",
+            "max_leverage": 2.0,
+            "max_position_weight": 0.20,
+            "liquidity_filter": "major_pairs_only",
+        },
+    })
+    if cfg: arts.append("config:v1.0")
+
+    uni = _make_universe(db, strategy.id, v1.id,
+                         "FX Carry G10 Universe",
+                         ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD"],
+                         {"universe_type": "G10_FX"})
+    if uni: arts.append("universe:fx_g10")
+
+    # Signal is stale (30 days old) — triggers evidence freshness alert
+    sig = _make_signal(db, strategy.id, v1.id, uni.id if uni else None,
+                       f"FX Carry Signal {_date_str(-30)} (Stale)",
+                       "interest_rate_differential_carry", _FX_SIGNALS)
+    if sig: arts.append("signal:fx_carry_stale")
+
+    dsnap = _make_dataset_snapshot(db, project.id, "FX Rates Daily",
+                                   "FX daily close rates; AUDUSD has one missing volume.",
+                                   _FX_OHLCV)
+    if dsnap: arts.append("dataset_snapshot:fx_ohlcv")
+
+    # Backtest run (v1 — review)
+    r_bt1 = _make_run(
+        db, strategy.id, v1.id,
+        dsnap.id if dsnap else None, uni.id if uni else None, sig.id if sig else None,
+        "FX Carry Strategy — Backtest v1",
+        RunType.backtest,
+        {"rebalance_frequency": "weekly", "carry_lookback_days": 90},
+        {"transaction_cost_bps": 8, "slippage_bps": 3, "fill_model": "next_bar_open",
+         "max_leverage": 2.0, "max_position_weight": 0.20},
+        {"sharpe": 0.91, "annual_return": 0.094, "volatility": 0.103,
+         "max_drawdown": -0.161, "turnover": 2.84, "trade_count": 104, "win_rate": 0.51},
+        "FX carry backtest; leverage 2x amplifies drawdown risk. Signal evidence aging.",
+        _dt(-28),
+    )
+    arts.append("run:backtest_v1")
+    _make_audit(db, r_bt1, include_audits)
+
+    # Second backtest with worse metrics (evidence of deterioration)
+    r_bt2 = _make_run(
+        db, strategy.id, v1.id, None, uni.id if uni else None, None,
+        "FX Carry Strategy — Backtest v2 (Re-eval)",
+        RunType.backtest,
+        {"rebalance_frequency": "weekly", "carry_lookback_days": 60},
+        {"transaction_cost_bps": 8, "slippage_bps": 3, "fill_model": "next_bar_open",
+         "max_leverage": 2.0},
+        {"sharpe": 0.73, "annual_return": 0.072, "volatility": 0.099,
+         "max_drawdown": -0.178, "turnover": 3.12, "trade_count": 118, "win_rate": 0.49},
+        "Re-evaluation with shorter lookback shows deterioration; no signal evidence linked.",
+        _dt(-10),
+    )
+    arts.append("run:backtest_v2")
+    _make_audit(db, r_bt2, include_audits)
+
+    _make_reliability_score(db, strategy.id)
+    arts.append("reliability_score")
+
+    # Review case: evidence freshness issue
+    _make_review_case(
+        db, strategy.id,
+        "FX Carry Evidence Freshness Review",
+        "fx_carry_evidence_freshness_review",
+        "medium", "evidence_quality",
+        "Signal snapshot is 30+ days stale. Carry signal should be refreshed "
+        "before progression to paper trading. Dataset also missing AUDUSD volume on one date.",
+    )
+    arts.append("review_case:fx_freshness")
+
+    return arts
+
+
+def _seed_crypto(db, strategy, org, project, include_audits, include_reports):
+    arts = []
+
+    v1, _ = _make_version(db, strategy.id, "v1.0", None, "feature/crypto-momentum",
+                          None, "crypto_momentum_signal")
+    arts.append("version:v1.0")
+
+    cfg = _make_config(db, strategy.id, v1.id, "Crypto Momentum Intraday Config", {
+        "params": {
+            "lookback_hours": 24,
+            "momentum_threshold": 0.03,
+        },
+        "assumptions": {
+            "transaction_cost_bps": 0,   # missing — triggers audit issue
+            "fill_model": "same_close",  # unrealistic — triggers audit issue
+            "max_leverage": 3.0,
+            "max_position_weight": 0.35,
+        },
+    })
+    if cfg: arts.append("config:crypto_v1")
+
+    uni = _make_universe(db, strategy.id, v1.id,
+                         "Crypto Momentum Universe",
+                         ["BTCUSD", "ETHUSD", "SOLUSD"],
+                         {"universe_type": "CRYPTO_TOP3"})
+    if uni: arts.append("universe:crypto_top3")
+
+    # Very low-quality signal (few rows, missing values)
+    sig = _make_signal(db, strategy.id, v1.id, uni.id if uni else None,
+                       "Crypto Momentum Signal (Sparse)",
+                       "crypto_momentum_signal", _CRYPTO_SIGNALS)
+    if sig: arts.append("signal:crypto_sparse")
+
+    dsnap = _make_dataset_snapshot(db, project.id, "Crypto Intraday OHLCV",
+                                   "Sparse crypto OHLCV; suspicious BTC price spike on row 4.",
+                                   _CRYPTO_OHLCV)
+    if dsnap: arts.append("dataset_snapshot:crypto_ohlcv")
+
+    # Single backtest run — inflated metrics from unrealistic assumptions
+    r_bt1 = _make_run(
+        db, strategy.id, v1.id,
+        dsnap.id if dsnap else None, uni.id if uni else None, sig.id if sig else None,
+        "Crypto Momentum — Backtest v1",
+        RunType.backtest,
+        {"lookback_hours": 24, "momentum_threshold": 0.03},
+        {"transaction_cost_bps": 0, "fill_model": "same_close",
+         "max_leverage": 3.0, "max_position_weight": 0.35},
+        {"sharpe": 2.84, "annual_return": 0.523, "volatility": 0.423,
+         "max_drawdown": -0.371, "turnover": 15.4, "trade_count": 1_247, "win_rate": 0.52},
+        "Attractive headline numbers; same-close fill, zero costs, thin signal evidence.",
+        _dt(-2),
+    )
+    arts.append("run:backtest_v1")
+    _make_audit(db, r_bt1, include_audits)
+
+    _make_reliability_score(db, strategy.id)
+    arts.append("reliability_score")
+
+    # Review case: backtest reliability degradation
+    _make_review_case(
+        db, strategy.id,
+        "Crypto Momentum Backtest Reliability Degradation",
+        "crypto_momentum_backtest_reliability_degradation",
+        "high", "backtest_audit",
+        "Backtest uses same-close fill model and zero transaction costs. "
+        "High turnover (15×) with no borrow/slippage assumptions makes results unreliable. "
+        "Signal evidence is sparse (3 rows, 1 missing). Dataset has suspicious price spike. "
+        "Do not advance until assumptions are corrected and evidence is refreshed.",
+    )
+    arts.append("review_case:crypto_reliability")
+
+    return arts
+
+
+# ---------------------------------------------------------------------------
+# Clean Realistic Demo: nuke all junk data, rebuild
+# ---------------------------------------------------------------------------
+
+_TABLES_TO_WIPE = [
+    # Most-specific first (child tables), then parents.
+    # workspace_members and auth_users are deliberately NOT wiped so that
+    # logged-in sessions survive the reset.
+    # organizations are NOT wiped — they are updated in-place — so that
+    # workspace_members.organization_id FKs remain valid and RBAC keeps working.
+    "backtest_issues",
+    "backtest_audits",
+    "data_quality_issues",
+    "strategy_regression_test_results",
+    "strategy_regression_test_runs",
+    "strategy_regression_tests",
+    "strategy_config_policy_results",
+    "strategy_config_policy_evaluations",
+    "strategy_config_policies",
+    "evidence_sla_results",
+    "evidence_sla_evaluations",
+    "evidence_sla_policies",
+    "strategy_experiment_analyses",
+    "strategy_experiment_runs",
+    "strategy_experiments",
+    "strategy_reliability_snapshots",
+    "strategy_reliability_scores",
+    "strategy_config_snapshots",
+    "universe_snapshots",
+    "signal_snapshots",
+    "dataset_snapshots",
+    "strategy_runs",
+    "strategy_versions",
+    "research_review_case_events",
+    "research_review_cases",
+    "report_sections",
+    "reports",
+    "alert_rules",
+    "alerts",
+    "strategies",
+    "datasets",
+    "audit_timeline_events",
+    "sdk_ingestion_batches",
+    "api_keys",
+    "projects",
+]
+
+
+def _wipe_all_demo_data(db: Session) -> dict:
+    """Delete all demo content except workspace_members, auth_users, and organizations.
+
+    Organizations are preserved in-place so that workspace_members.organization_id
+    FKs remain valid — authenticated users can still use the session after the wipe.
+    The caller is responsible for updating the org name/slug if needed.
+    """
+    counts: dict = {}
+    for table in _TABLES_TO_WIPE:
+        try:
+            n = db.execute(_text(f"DELETE FROM {table}")).rowcount
+            if n:
+                counts[table] = n
+        except Exception as exc:
+            print(f"[demo_seed] wipe {table}: {exc}", file=sys.stderr)
+    db.flush()
+    return counts
 
 
 # ---------------------------------------------------------------------------
@@ -1068,77 +778,145 @@ def seed_demo_data(
     include_alerts: bool = True,
     include_backtest_audits: bool = True,
 ) -> dict:
-    """Create / extend the demo dataset.
+    """Create / extend / reset the demo dataset.
 
-    Parameters
-    ----------
-    mode:
-        "extend"         — create missing records, leave existing alone.
-        "reset_demo_only" — delete the demo org and re-seed from scratch
-                            (requires confirm_reset=True).
-    confirm_reset:
-        Must be True when mode="reset_demo_only".
-    include_reports:
-        Generate strategy reliability reports (slow).
-    include_alerts:
-        Run alert generation after seeding.
-    include_backtest_audits:
-        Compute backtest reality checks.
-
-    Returns
-    -------
-    dict suitable for DemoSeedResponse.
+    Modes
+    -----
+    extend               — idempotent; creates missing records.
+    reset_demo_only      — deletes the demo org by name and re-seeds (legacy).
+    clean_realistic_demo — wipes ALL strategy/evidence/alert junk from every
+                           table, then re-creates a small clean demo workspace.
+                           workspace_members and auth_users are preserved.
+                           Requires confirm_reset=True.
     """
     from app.models.organization import Organization
     from app.models.project import Project
     from app.models.audit_timeline_event import AuditTimelineEvent
 
-    # ---- Step 1: handle reset ----
+    # ── clean_realistic_demo ─────────────────────────────────────────────────
+    if mode == "clean_realistic_demo":
+        if not confirm_reset:
+            raise ValueError("confirm_reset must be True for clean_realistic_demo mode.")
+
+        wipe_counts = _wipe_all_demo_data(db)
+        db.flush()
+
+        # Find or create the demo org.  We keep the existing org row in-place
+        # so that workspace_members.organization_id FKs remain valid (users can
+        # still log in after the reset). We only update name/slug if they differ.
+        demo_org = db.query(Organization).first()  # first org in DB
+        if demo_org is None:
+            demo_org = Organization(name=DEMO_ORG_NAME, slug=DEMO_ORG_SLUG)
+            db.add(demo_org)
+            db.flush()
+        else:
+            # Update to desired demo name/slug in-place
+            demo_org.name = DEMO_ORG_NAME
+            demo_org.slug = DEMO_ORG_SLUG
+            db.flush()
+
+        db.commit()
+
+        demo_project = Project(
+            organization_id=demo_org.id,
+            name=DEMO_PROJECT_NAME,
+            slug=DEMO_PROJECT_SLUG,
+            description="Clean realistic demo portfolio for QuantFidelity product walkthroughs.",
+        )
+        db.add(demo_project)
+        db.flush()
+
+        # Seed all 3 strategies
+        all_arts: list[str] = []
+        strategy_ids: list[str] = []
+        warnings: list[str] = []
+
+        for s_def, seeder in [
+            (DEMO_STRATEGIES[0], _seed_aapl),
+            (DEMO_STRATEGIES[1], _seed_fx),
+            (DEMO_STRATEGIES[2], _seed_crypto),
+        ]:
+            try:
+                strat, _ = _get_or_create_strategy(
+                    db, demo_project.id, s_def["name"], s_def["slug"],
+                    s_def["asset_class"], s_def["status"],
+                )
+                strategy_ids.append(str(strat.id))
+                arts = seeder(db, strat, demo_org, demo_project, include_backtest_audits, include_reports)
+                all_arts.extend([f"{s_def['slug']}:{a}" for a in arts])
+            except Exception as exc:
+                warnings.append(f"{s_def['name']} seed failed: {str(exc)[:200]}")
+                print(f"[demo_seed] {s_def['name']}: {exc}", file=sys.stderr)
+
+        # Alerts
+        if include_alerts:
+            try:
+                from app.services.alerts import generate_alerts
+                generate_alerts(db, demo_org.id.hex)
+            except Exception as exc:
+                warnings.append(f"Alert generation skipped: {str(exc)[:100]}")
+
+        # Seed event
+        db.add(AuditTimelineEvent(
+            organization_id=demo_org.id,
+            project_id=demo_project.id,
+            event_type="demo_seeded",
+            title="Clean realistic demo seeded",
+            description="Junk data wiped; 3 realistic demo strategies created.",
+            source_type="admin",
+            source_id=str(demo_org.id),
+            severity=Severity.info,
+            event_time=_utcnow(),
+            metadata_json={"mode": mode},
+        ))
+        db.commit()
+
+        return {
+            "mode": mode,
+            "summary": (
+                f"Clean realistic demo seeded: {DEMO_ORG_NAME} / {DEMO_PROJECT_NAME}. "
+                f"{len(strategy_ids)} strategies, {len(all_arts)} artifacts. "
+                f"Wiped: {sum(wipe_counts.values())} old rows."
+            ),
+            "organization_id": str(demo_org.id),
+            "project_id": str(demo_project.id),
+            "strategy_ids": strategy_ids,
+            "created_counts": {"strategies": 3, "artifacts": len(all_arts)},
+            "reused_counts": {},
+            "reset_counts": wipe_counts,
+            "generated_artifacts": all_arts,
+            "warnings": warnings,
+        }
+
+    # ── reset_demo_only (legacy) ──────────────────────────────────────────────
     if mode == "reset_demo_only":
         if not confirm_reset:
             raise ValueError("confirm_reset must be True to reset demo data.")
-        # Use raw SQL DELETE to avoid SQLAlchemy ORM cascade nullifying non-null FKs.
-        # The DB-level ondelete="CASCADE" handles child rows.
-        from sqlalchemy import text as _text
-
-        demo_org_row = db.query(Organization).filter(Organization.name == DEMO_ORG_NAME).first()
-        found_org = demo_org_row is not None
-        if found_org:
-            org_name_for_delete = demo_org_row.name
-            # Expire ORM identity map so it doesn't interfere with raw delete
+        org = db.query(Organization).filter(Organization.name == DEMO_ORG_NAME).first()
+        found = org is not None
+        if found:
+            name = org.name
             db.expunge_all()
-            # Use name-based delete to avoid SQLite UUID format mismatch
-            db.execute(
-                _text("DELETE FROM organizations WHERE name = :name"),
-                {"name": org_name_for_delete},
-            )
+            db.execute(_text("DELETE FROM organizations WHERE name = :n"), {"n": name})
             db.commit()
         return {
             "mode": mode,
-            "summary": "Demo data reset.",
-            "organization_id": None,
-            "project_id": None,
-            "strategy_ids": [],
-            "created_counts": {},
-            "reused_counts": {},
-            "reset_counts": {"organizations": 1 if found_org else 0},
-            "generated_artifacts": [],
-            "warnings": [],
+            "summary": "Demo data reset (legacy mode).",
+            "organization_id": None, "project_id": None, "strategy_ids": [],
+            "created_counts": {}, "reused_counts": {},
+            "reset_counts": {"organizations": 1 if found else 0},
+            "generated_artifacts": [], "warnings": [],
         }
 
-    # ---- Step 2: get or create demo org ----
+    # ── extend (default / idempotent) ─────────────────────────────────────────
     demo_org = db.query(Organization).filter(Organization.name == DEMO_ORG_NAME).first()
     created_org = False
     if demo_org is None:
-        # Need a unique slug — use a stable one derived from the name
-        import re
-        slug_candidate = re.sub(r"[^a-z0-9]+", "-", DEMO_ORG_NAME.lower()).strip("-")
-        demo_org = Organization(name=DEMO_ORG_NAME, slug=slug_candidate)
+        demo_org = Organization(name=DEMO_ORG_NAME, slug=DEMO_ORG_SLUG)
         db.add(demo_org)
         db.flush()
         created_org = True
 
-    # ---- Step 3: get or create demo project ----
     demo_project = (
         db.query(Project)
         .filter(Project.organization_id == demo_org.id, Project.slug == DEMO_PROJECT_SLUG)
@@ -1147,158 +925,67 @@ def seed_demo_data(
     created_project = False
     if demo_project is None:
         demo_project = Project(
-            organization_id=demo_org.id,
-            name=DEMO_PROJECT_NAME,
+            organization_id=demo_org.id, name=DEMO_PROJECT_NAME,
             slug=DEMO_PROJECT_SLUG,
-            description="Demo project for QuantFidelity showcase.",
+            description="Clean realistic demo portfolio for QuantFidelity product walkthroughs.",
         )
         db.add(demo_project)
         db.flush()
         created_project = True
 
-    # ---- Step 4: create the 3 demo strategies ----
-    strategy_ids: list[str] = []
-    all_artifacts: list[str] = []
-    created_strategies: list[str] = []
-    reused_strategies: list[str] = []
-    warnings: list[str] = []
+    all_arts, strategy_ids, warnings = [], [], []
+    created_s, reused_s = 0, 0
 
-    # AAPL — index 0
-    try:
-        aapl_def = DEMO_STRATEGIES[0]
-        aapl_strategy, aapl_created = _get_or_create_strategy(
-            db,
-            demo_project.id,
-            aapl_def["name"],
-            aapl_def["slug"],
-            aapl_def["asset_class"],
-            aapl_def["status"],
-        )
-        strategy_ids.append(str(aapl_strategy.id))
-        if aapl_created:
-            created_strategies.append(aapl_def["name"])
-        else:
-            reused_strategies.append(aapl_def["name"])
-        aapl_artifacts = _seed_aapl_strategy(
-            db,
-            aapl_strategy,
-            demo_org,
-            demo_project,
-            include_backtest_audits,
-            include_reports,
-        )
-        all_artifacts.extend(aapl_artifacts)
-    except Exception as exc:
-        warnings.append(f"AAPL strategy seed failed: {str(exc)[:200]}")
-        print(f"[demo_seed] AAPL strategy seed failed: {exc}", file=sys.stderr)
+    for s_def, seeder in [
+        (DEMO_STRATEGIES[0], _seed_aapl),
+        (DEMO_STRATEGIES[1], _seed_fx),
+        (DEMO_STRATEGIES[2], _seed_crypto),
+    ]:
+        try:
+            strat, s_created = _get_or_create_strategy(
+                db, demo_project.id, s_def["name"], s_def["slug"],
+                s_def["asset_class"], s_def["status"],
+            )
+            strategy_ids.append(str(strat.id))
+            if s_created: created_s += 1
+            else: reused_s += 1
+            arts = seeder(db, strat, demo_org, demo_project, include_backtest_audits, include_reports)
+            all_arts.extend([f"{s_def['slug']}:{a}" for a in arts])
+        except Exception as exc:
+            warnings.append(f"{s_def['name']} seed failed: {str(exc)[:200]}")
 
-    # FX — index 1
-    try:
-        fx_def = DEMO_STRATEGIES[1]
-        fx_strategy, fx_created = _get_or_create_strategy(
-            db,
-            demo_project.id,
-            fx_def["name"],
-            fx_def["slug"],
-            fx_def["asset_class"],
-            fx_def["status"],
-        )
-        strategy_ids.append(str(fx_strategy.id))
-        if fx_created:
-            created_strategies.append(fx_def["name"])
-        else:
-            reused_strategies.append(fx_def["name"])
-        fx_artifacts = _seed_fx_strategy(
-            db,
-            fx_strategy,
-            demo_org,
-            demo_project,
-            include_backtest_audits,
-            include_reports,
-        )
-        all_artifacts.extend(fx_artifacts)
-    except Exception as exc:
-        warnings.append(f"FX strategy seed failed: {str(exc)[:200]}")
-        print(f"[demo_seed] FX strategy seed failed: {exc}", file=sys.stderr)
-
-    # Crypto — index 2
-    try:
-        crypto_def = DEMO_STRATEGIES[2]
-        crypto_strategy, crypto_created = _get_or_create_strategy(
-            db,
-            demo_project.id,
-            crypto_def["name"],
-            crypto_def["slug"],
-            crypto_def["asset_class"],
-            crypto_def["status"],
-        )
-        strategy_ids.append(str(crypto_strategy.id))
-        if crypto_created:
-            created_strategies.append(crypto_def["name"])
-        else:
-            reused_strategies.append(crypto_def["name"])
-        crypto_artifacts = _seed_crypto_strategy(
-            db,
-            crypto_strategy,
-            demo_org,
-            demo_project,
-            include_backtest_audits,
-            include_reports,
-        )
-        all_artifacts.extend(crypto_artifacts)
-    except Exception as exc:
-        warnings.append(f"Crypto strategy seed failed: {str(exc)[:200]}")
-        print(f"[demo_seed] Crypto strategy seed failed: {exc}", file=sys.stderr)
-
-    # ---- Step 5: alerts ----
     if include_alerts:
         try:
             from app.services.alerts import generate_alerts
-            org_id_str = str(demo_org.id)
-            generate_alerts(db, org_id_str)
+            generate_alerts(db, demo_org.id.hex)
         except Exception as exc:
             warnings.append(f"Alert generation skipped: {str(exc)[:100]}")
 
-    # ---- Step 6: demo_seeded timeline event ----
-    event = AuditTimelineEvent(
-        organization_id=demo_org.id,
-        project_id=demo_project.id,
-        strategy_id=None,
+    db.add(AuditTimelineEvent(
+        organization_id=demo_org.id, project_id=demo_project.id,
         event_type="demo_seeded",
         title="Demo data seeded",
         description=f"Demo data seeded in {mode} mode.",
-        source_type="admin",
-        source_id=str(demo_org.id),
-        severity=Severity.info,
-        metadata_json={
-            "mode": mode,
-            "created_org": created_org,
-            "created_project": created_project,
-        },
-    )
-    db.add(event)
+        source_type="admin", source_id=str(demo_org.id),
+        severity=Severity.info, event_time=_utcnow(),
+        metadata_json={"mode": mode, "created_org": created_org},
+    ))
     db.commit()
 
     return {
         "mode": mode,
         "summary": (
-            f"Demo seed complete. "
-            f"{'Created' if created_org else 'Reused'} org, "
+            f"Demo seed complete. {'Created' if created_org else 'Reused'} org, "
             f"{'created' if created_project else 'reused'} project, "
-            f"{len(strategy_ids)} strategy(ies) seeded."
+            f"{len(strategy_ids)} strategy(ies)."
         ),
         "organization_id": str(demo_org.id),
         "project_id": str(demo_project.id),
         "strategy_ids": strategy_ids,
-        "created_counts": {
-            "strategies": len(created_strategies),
-            "artifacts": len(all_artifacts),
-        },
-        "reused_counts": {
-            "strategies": len(reused_strategies),
-        },
+        "created_counts": {"strategies": created_s, "artifacts": len(all_arts)},
+        "reused_counts": {"strategies": reused_s},
         "reset_counts": {},
-        "generated_artifacts": all_artifacts,
+        "generated_artifacts": all_arts,
         "warnings": warnings,
     }
 
@@ -1308,7 +995,6 @@ def seed_demo_data(
 # ---------------------------------------------------------------------------
 
 def get_demo_status(db: Session) -> dict:
-    """Return a summary of the current demo data state (read-only)."""
     from app.models.organization import Organization
     from app.models.project import Project
     from app.models.strategy import Strategy
@@ -1317,25 +1003,16 @@ def get_demo_status(db: Session) -> dict:
     org = db.query(Organization).filter(Organization.name == DEMO_ORG_NAME).first()
     if not org:
         return {
-            "demo_org_exists": False,
-            "demo_project_exists": False,
-            "strategy_count": 0,
-            "demo_strategy_names": [],
-            "last_seeded_at": None,
-            "summary": "Demo data not yet seeded.",
+            "demo_org_exists": False, "demo_project_exists": False,
+            "strategy_count": 0, "demo_strategy_names": [],
+            "last_seeded_at": None, "summary": "Demo data not yet seeded.",
         }
-
     proj = db.query(Project).filter(Project.organization_id == org.id).first()
-    strats = (
-        db.query(Strategy).filter(Strategy.project_id == proj.id).all()
-        if proj else []
-    )
-    last_event = (
+    strats = db.query(Strategy).filter(Strategy.project_id == proj.id).all() if proj else []
+    last = (
         db.query(AuditTimelineEvent)
-        .filter(
-            AuditTimelineEvent.organization_id == org.id,
-            AuditTimelineEvent.event_type == "demo_seeded",
-        )
+        .filter(AuditTimelineEvent.organization_id == org.id,
+                AuditTimelineEvent.event_type == "demo_seeded")
         .order_by(AuditTimelineEvent.created_at.desc())
         .first()
     )
@@ -1344,6 +1021,6 @@ def get_demo_status(db: Session) -> dict:
         "demo_project_exists": proj is not None,
         "strategy_count": len(strats),
         "demo_strategy_names": [s.name for s in strats],
-        "last_seeded_at": last_event.created_at if last_event else None,
-        "summary": f"Demo org exists with {len(strats)} strategy(ies).",
+        "last_seeded_at": last.created_at if last else None,
+        "summary": f"{DEMO_ORG_NAME} / {DEMO_PROJECT_NAME}: {len(strats)} strategy(ies).",
     }

@@ -32,6 +32,7 @@ Deduplication:
 
 from __future__ import annotations
 
+import uuid as _uuid_mod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional, Tuple
@@ -127,7 +128,11 @@ def generate_alerts(db: Session, organization_id: str) -> GenerateResult:
     """
     now = datetime.now(timezone.utc)
     result = GenerateResult()
-    org_id_str = str(organization_id)
+    # Use 32-char hex format for FK columns: SQLAlchemy 2.0 stores Uuid(as_uuid=True)
+    # columns on SQLite as 32-char hex (no hyphens). Passing 36-char hyphenated strings
+    # fails SQLite's byte-exact FK string comparison.
+    _org = _uuid_mod.UUID(str(organization_id)) if not isinstance(organization_id, _uuid_mod.UUID) else organization_id
+    org_id_str = _org.hex
 
     # -----------------------------------------------------------------------
     # 1. data_health_below_threshold
@@ -212,7 +217,7 @@ def generate_alerts(db: Session, organization_id: str) -> GenerateResult:
             ),
             source_type=source_type,
             source_id=source_id,
-            strategy_id=str(strategy_id) if strategy_id else None,
+            strategy_id=strategy_id.hex if isinstance(strategy_id, _uuid_mod.UUID) else (str(strategy_id) if strategy_id else None),
             triggered_at=now,
             metadata_json={
                 "trust_score": audit.trust_score,
@@ -296,7 +301,7 @@ def generate_alerts(db: Session, organization_id: str) -> GenerateResult:
             description=bt_issue.description,
             source_type=source_type,
             source_id=source_id,
-            strategy_id=str(strategy_id) if strategy_id else None,
+            strategy_id=strategy_id.hex if isinstance(strategy_id, _uuid_mod.UUID) else (str(strategy_id) if strategy_id else None),
             triggered_at=now,
             metadata_json={
                 "issue_type": bt_issue.issue_type,
@@ -342,7 +347,7 @@ def generate_alerts(db: Session, organization_id: str) -> GenerateResult:
             ),
             source_type=source_type,
             source_id=source_id,
-            strategy_id=str(run.strategy_id),
+            strategy_id=run.strategy_id.hex if isinstance(run.strategy_id, _uuid_mod.UUID) else str(run.strategy_id),
             triggered_at=now,
             metadata_json={
                 "run_type": run.run_type,
@@ -398,7 +403,7 @@ def _create_alert_if_new(
         description=description,
         source_type=source_type,
         source_id=source_id,
-        strategy_id=str(strategy_id),
+        strategy_id=strategy_id.hex if isinstance(strategy_id, _uuid_mod.UUID) else str(strategy_id),
         triggered_at=now,
         metadata_json=metadata_json,
     )
@@ -442,7 +447,8 @@ def run_evidence_quality_alerts(organization_id: str, db: Session) -> dict:
     )
 
     for strategy in strategies:
-        sid = str(strategy.id)
+        # 32-char hex: matches Uuid(as_uuid=True) stored format on SQLite FK columns.
+        sid = strategy.id.hex if isinstance(strategy.id, _uuid_mod.UUID) else str(strategy.id)
 
         # ------------------------------------------------------------------
         # CHECK A: Evidence coverage threshold

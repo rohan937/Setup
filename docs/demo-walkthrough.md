@@ -1,224 +1,231 @@
 # QuantFidelity Demo Walkthrough
 
-This guide walks through the full QuantFidelity demo experience using the three
-pre-seeded strategies: AAPL Mean Reversion (healthy), FX Carry Strategy (review),
-and Crypto Momentum (under-instrumented).
+> **For product demonstrations, investor walkthroughs, and QA sessions.**
+> This guide assumes you have run the "Reset Clean Realistic Demo" seed.
 
 ---
 
-## Prerequisites
-
-Backend running:
-```
-cd backend && uvicorn app.main:app --reload
-```
-
-Frontend running:
-```
-cd frontend && npm run dev
-```
-
-The frontend defaults to `http://localhost:5173` and the backend to `http://localhost:8000`.
-
----
-
-## Step 1: Seed Demo Data
-
-**Option A — Admin UI**
-
-1. Open `http://localhost:5173/admin/system-health`
-2. Scroll to the **Demo Mode** section
-3. Click **Seed / Extend Demo Data**
-4. Watch the result panel — it shows created counts, reused counts, and generated artifacts
-
-**Option B — API directly**
+## 1. Seed the clean demo
 
 ```bash
-curl -X POST http://localhost:8000/api/admin/seed-demo \
+# Option A: via curl (no auth required in local dev)
+curl -s -X POST http://localhost:8000/api/admin/seed-demo \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{
+    "mode": "clean_realistic_demo",
+    "confirm_reset": true,
+    "include_reports": false,
+    "include_alerts": true,
+    "include_backtest_audits": true
+  }' | python3 -m json.tool
+
+# Option B: via the UI
+# Navigate to Admin → Demo Controls → "Reset Clean Realistic Demo"
+# Check the confirmation box and click the button.
 ```
 
-**Option C — Makefile target (if added)**
-
-```bash
-make demo-seed
+**Expected response:**
+```json
+{
+  "mode": "clean_realistic_demo",
+  "summary": "Clean realistic demo seeded: Alpha Reliability Lab / Strategy Reliability Demo Portfolio. 3 strategies, 28 artifacts. ...",
+  "strategy_ids": ["<uuid>", "<uuid>", "<uuid>"]
+}
 ```
 
-The seed operation is idempotent. Running it multiple times with `mode: "extend"`
-(the default) will reuse existing demo entities and only create what is missing.
-
 ---
 
-## Step 2: Dashboard
+## 2. Register / log in
 
-Open `http://localhost:5173`
-
-The dashboard shows:
-- Total strategy count and health summary
-- Portfolio overview with reliability scores
-- Recent timeline activity
-- Open alerts count
-
-With demo data seeded you should see 3 strategies and at least 1 open alert.
-
----
-
-## Step 3: Portfolio Overview
-
-Open `http://localhost:5173/portfolio`
-
-The portfolio page shows all three demo strategies side by side:
-- Health status chips (healthy / review / insufficient evidence)
-- Reliability scores with trend indicators
-- Evidence coverage scores
-- Open alert counts per strategy
-
-Use this page to get a quick at-a-glance comparison before drilling into individual
-strategies.
-
----
-
-## Step 4: Strategy Detail — AAPL Mean Reversion (Healthy)
-
-Navigate to the AAPL Mean Reversion strategy from the Strategies list or Portfolio page.
-
-What to observe:
-- Health status: **healthy**, high reliability score
-- Multiple completed backtest audits with good trust scores
-- Active timeline with frequent evidence events
-- Assumption health: all categories green or watch
-- No open alerts
-- Config snapshots showing disciplined parameter management
-- Evidence coverage score in the high range
-
-This strategy serves as the benchmark for a well-instrumented, production-ready quant strategy.
-
----
-
-## Step 5: Strategy Detail — FX Carry Strategy (Review)
-
-Navigate to the FX Carry Strategy.
-
-What to observe:
-- Health status: **review**
-- Open alerts flagging fill realism issues and cost sensitivity
-- Backtest audit with elevated cost fragility level
-- Assumption health showing fill realism and cost sensitivity categories in review
-- Config diff showing recent parameter changes that weakened assumptions
-- Evidence coverage score in the mid range
-- Suggested checks in the assumption health panel
-
-This strategy demonstrates a common real-world scenario: a strategy that has been
-live long enough to accumulate evidence but now has drift in its key assumptions.
-
----
-
-## Step 6: Crypto Momentum (Under-Instrumented)
-
-Navigate to the Crypto Momentum strategy.
-
-What to observe:
-- Health status: **insufficient_evidence** or **watch**
-- Low reliability score due to limited evidence
-- Sparse timeline — few events logged
-- Assumption health: most categories in insufficient_evidence state
-- No completed backtest audits or only one
-- Evidence coverage score in the low range
-- Many suggested checks pointing to missing evidence types
-
-This strategy demonstrates what the system looks like when a strategy is new or
-when a team has not yet established evidence-logging discipline. The system surfaces
-exactly what evidence is missing.
-
----
-
-## Step 7: Evidence Coverage Matrix
-
-Open `http://localhost:5173/evidence/coverage`
-
-The coverage matrix shows all three demo strategies as columns against evidence
-categories as rows. At a glance you can see:
-- AAPL has broad, deep coverage across all categories
-- FX has partial coverage with gaps in cost and fill categories
-- Crypto has thin coverage across most categories
-
-Use the filter controls to narrow by evidence category or strategy status.
-
----
-
-## Step 8: Alerts Page
-
-Open `http://localhost:5173/alerts`
-
-With demo data seeded you should see alerts for the FX and Crypto strategies.
-Typical demo alerts include:
-- Fill realism concern on FX Carry
-- Cost sensitivity warning on FX Carry
-- Stale evidence alert on Crypto Momentum
-
-Click into an alert to see the detail, linked strategy, and suggested resolution steps.
-
----
-
-## Step 9: Comparison Report
-
-Open `http://localhost:5173/strategies/compare`
-
-1. Select **AAPL Mean Reversion** and **FX Carry Strategy** from the strategy picker
-2. Click **Generate Comparison Report**
-3. Review the generated report sections:
-   - Side-by-side reliability scores and health status
-   - Assumption gap analysis
-   - Evidence coverage differential
-   - Suggested review agenda items
-
-The comparison report is deterministic — re-generating with the same strategy IDs
-produces the same output.
-
----
-
-## Step 10: Strategy Export
-
-Navigate to the AAPL Mean Reversion strategy detail page.
-
-1. Find the **Export** section or button
-2. Generate a JSON export — includes all strategy metadata, runs, config snapshots, and reliability scores
-3. Generate a Markdown export — formatted summary suitable for sharing with stakeholders
-
-Exports are point-in-time snapshots. They do not include live backend data after the export is generated.
-
----
-
-## Reset Demo Data
-
-**Option A — Admin UI**
-
-1. Open `http://localhost:5173/admin/system-health`
-2. Scroll to **Demo Mode**
-3. Check the confirmation checkbox: "I understand this only resets demo data"
-4. Click **Reset Demo Data**
-
-**Option B — API directly**
+If this is a fresh local environment:
 
 ```bash
-curl -X POST http://localhost:8000/api/admin/seed-demo \
+# Register the first user (becomes workspace owner automatically)
+curl -s -X POST http://localhost:8000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"mode": "reset_demo_only", "confirm_reset": true}'
+  -d '{"email": "demo@example.com", "display_name": "Demo User", "password": "demopass123"}' \
+  | python3 -m json.tool
 ```
 
-After reset, you can re-seed at any time to get a fresh copy of the demo data.
+Or use the UI: click **Login / Register** in the top bar.
 
 ---
 
-## Safety Notes
+## 3. Demo workspace overview
 
-- `reset_demo_only` mode only deletes the **QuantFidelity Demo Org** and all entities
-  owned by that organization. No other organizations or their data are touched.
-- Non-demo organizations are never deleted or modified by any seed or reset operation.
-- All demo data is deterministic — re-seeding always produces the same strategies,
-  runs, config snapshots, and evidence structure.
-- The `confirm_reset: true` flag is required for reset operations as an intentional
-  safety gate to prevent accidental data loss.
-- Demo seed operations are safe to run in development and staging environments.
-  Do not run against a production database with real user data.
+| Item | Value |
+|------|-------|
+| Workspace | Alpha Reliability Lab |
+| Project | Strategy Reliability Demo Portfolio |
+| Strategies | 3 |
+| Strategy runs | 6 |
+| Backtest audits | 5 |
+| Alerts | ~11 |
+| Review cases | 2 |
+
+---
+
+## 4. The three demo strategies
+
+### 🟢 AAPL Mean Reversion v1 — *Healthy / Well-instrumented*
+
+**Story:** A disciplined equity mean-reversion strategy. Every evidence layer is
+present: config snapshot with realistic assumptions, clean OHLCV dataset, z-score
+signal snapshot, universe snapshot, research + two backtest runs. Backtest audits
+show realistic costs. Reliability score is high.
+
+| Metric | Value |
+|--------|-------|
+| Sharpe | ~1.43–1.52 |
+| Annual return | ~16–18% |
+| Max drawdown | ~-10% |
+| Turnover | ~1.7× |
+| Trust score | high (pass) |
+
+**What to show:**
+- Strategy Detail page → all evidence layers filled
+- Command Center → healthy status
+- Backtest Audits → low issue count, realistic cost model
+- Promotion Gates → mostly green
+- Evidence Matrix → complete coverage
+
+---
+
+### 🟡 FX Carry Strategy Q1 — *Review / Stale evidence*
+
+**Story:** An FX carry strategy with decent headline metrics but evidence that
+is aging. The signal snapshot is 30+ days old (deliberate stale date). One run
+has no dataset link. Two backtest runs show deteriorating trust. Two alerts are
+open. One review case is open: "FX Carry Evidence Freshness Review."
+
+| Metric | Value |
+|--------|-------|
+| Sharpe | ~0.91 (run 1), ~0.73 (run 2) |
+| Annual return | ~9% → ~7% (deteriorating) |
+| Max drawdown | ~-16% → -18% |
+| Trust score | 63 → 56 (declining) |
+
+**What to show:**
+- Alerts page → 2–3 alerts for FX Carry
+- Review Cases → "FX Carry Evidence Freshness Review" open
+- Evidence Freshness → signal snapshot marked aging/stale
+- Command Center → review status
+- SLA Monitor → one or two SLA violations
+- Promotion Gates → blocked or requires review
+
+---
+
+### 🔴 Crypto Momentum Intraday — *Weak / Under-instrumented*
+
+**Story:** A crypto momentum strategy with inflated headline Sharpe (~2.84) from
+unrealistic assumptions: zero transaction costs, same-close fill model, 3× leverage,
+very high turnover (15×). Signal evidence is sparse (3 rows, 1 missing value).
+Dataset has a suspicious price spike. Backtest audit trust is weak.
+Multiple high alerts and an open review case.
+
+| Metric | Value |
+|--------|-------|
+| Sharpe | ~2.84 (misleading) |
+| Annual return | ~52% (from unrealistic costs) |
+| Transaction cost | 0 bps |
+| Fill model | same_close |
+| Trust score | weak |
+
+**What to show:**
+- Backtest Audit → critical issues: zero costs, same-close fill, high turnover
+- Alerts → high/critical severity alerts
+- Review Cases → "Crypto Momentum Backtest Reliability Degradation" open, high severity
+- Config Policy → fail (missing cost assumptions)
+- Robustness Score → fragile
+- Command Center → blocked
+
+---
+
+## 5. Page-by-page walkthrough
+
+### Dashboard
+- Total strategies: **3** · Total runs: **6**
+- Open alerts: **~11**
+- Recent runs visible with evidence status
+
+### Portfolio
+- AAPL = healthy bar color
+- FX Carry = amber / review
+- Crypto = red / blocked
+
+### Strategies
+- List view: 3 strategies with health status badges
+- Click AAPL → full evidence chain visible
+- Click FX Carry → stale signal warning visible
+- Click Crypto → sparse evidence warning, inflated Sharpe
+
+### Backtests
+- AAPL audits: 2 audits, high trust
+- FX Carry audits: 2 audits, moderate trust (~56–63)
+- Crypto audit: 1 audit, weak trust
+
+### Alerts
+- ~11 alerts: backtest trust, evidence quality, missing evidence
+- FX Carry and Crypto have the most alerts
+
+### Review Cases (Governance → Review Cases)
+- FX Carry: evidence freshness (medium severity, open)
+- Crypto: backtest reliability degradation (high severity, open)
+
+### Command Center
+- AAPL: green / clear
+- FX Carry: amber / review
+- Crypto: red / blocked
+
+---
+
+## 6. Expected dashboard numbers at a glance
+
+After clean realistic demo seed:
+
+| Page | Expected |
+|------|---------|
+| Dashboard — total strategies | 3 |
+| Dashboard — total runs | 6 |
+| Dashboard — open alerts | ~11 |
+| Strategies list | 3 rows |
+| Backtest audits | 5 |
+| Reliability scores | 3 |
+| Review cases | 2 open |
+| Signal snapshots | 3 |
+| Universe snapshots | 3 |
+| Config snapshots | 4 |
+| Dataset snapshots | 3 |
+
+---
+
+## 7. Re-seeding / idempotency
+
+Running the seed again in `extend` mode won't duplicate data:
+
+```bash
+curl -s -X POST http://localhost:8000/api/admin/seed-demo \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "extend", "include_alerts": true, "include_backtest_audits": true}'
+```
+
+To fully reset and start fresh:
+
+```bash
+curl -s -X POST http://localhost:8000/api/admin/seed-demo \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "clean_realistic_demo", "confirm_reset": true, "include_alerts": true, "include_backtest_audits": true}'
+```
+
+---
+
+## 8. Security / demo notes
+
+- Demo data is self-contained in the local SQLite database (`backend/quantfidelity.db`).
+- `workspace_members` and `auth_users` are preserved across clean resets.
+- No real market data, no external APIs, no secrets used.
+- Evidence-based descriptions only — not investment advice.
+
+---
+
+*Updated by demo data cleanup. Workspace: Alpha Reliability Lab.*
