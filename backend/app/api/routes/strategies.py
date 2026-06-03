@@ -4481,6 +4481,114 @@ from app.services.strategy_robustness import (  # noqa: E402
 )
 
 
+# M62: GET /api/strategies/{strategy_id}/progression-freeze
+# ---------------------------------------------------------------------------
+
+from app.schemas.progression_freeze import (  # noqa: E402
+    ProgressionFreezeReason,
+    ProgressionUnfreezeRequirement,
+    ProgressionSubsystemStatus,
+    ProgressionStageContext,
+    StrategyProgressionFreezeResponse,
+)
+from app.services.progression_freeze import (  # noqa: E402
+    compute_progression_freeze_recommendation,
+    VALID_TARGET_STAGES,
+)
+
+
+@router.get(
+    "/strategies/{strategy_id}/progression-freeze",
+    response_model=StrategyProgressionFreezeResponse,
+    tags=["strategies"],
+)
+def get_strategy_progression_freeze(
+    strategy_id: uuid.UUID,
+    target_stage: str | None = None,
+    db: Session = Depends(get_db),
+) -> StrategyProgressionFreezeResponse:
+    """Return a deterministic progression freeze recommendation for a strategy.
+
+    Deterministic — no AI, no live market data.
+    Read-only — no AuditTimelineEvent created.
+    Not investment advice or trading approval.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    if target_stage is not None and target_stage not in VALID_TARGET_STAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid target_stage '{target_stage}'. "
+                f"Must be one of: {', '.join(VALID_TARGET_STAGES)}"
+            ),
+        )
+
+    result = compute_progression_freeze_recommendation(db, strategy_id, target_stage)
+
+    return StrategyProgressionFreezeResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        target_stage=result.target_stage,
+        current_stage=result.current_stage,
+        recommendation=result.recommendation,
+        recommendation_label=result.recommendation_label,
+        freeze_risk_score=result.freeze_risk_score,
+        deterministic_summary=result.deterministic_summary,
+        freeze_reasons=[
+            ProgressionFreezeReason(
+                reason_key=r.reason_key,
+                title=r.title,
+                category=r.category,
+                severity=r.severity,
+                status=r.status,
+                evidence_summary=r.evidence_summary,
+                source_label=r.source_label,
+                source_id=r.source_id,
+                suggested_resolution=r.suggested_resolution,
+                required_to_unfreeze=r.required_to_unfreeze,
+            )
+            for r in result.freeze_reasons
+        ],
+        unfreeze_requirements=[
+            ProgressionUnfreezeRequirement(
+                requirement_key=u.requirement_key,
+                title=u.title,
+                priority=u.priority,
+                required=u.required,
+                current_status=u.current_status,
+                target_status=u.target_status,
+                suggested_action=u.suggested_action,
+                endpoint_hint=u.endpoint_hint,
+            )
+            for u in result.unfreeze_requirements
+        ],
+        blocking_reason_count=result.blocking_reason_count,
+        review_reason_count=result.review_reason_count,
+        watch_reason_count=result.watch_reason_count,
+        missing_evidence_count=result.missing_evidence_count,
+        subsystem_statuses=[
+            ProgressionSubsystemStatus(
+                subsystem=s.subsystem,
+                status=s.status,
+                summary=s.summary,
+                score=s.score,
+            )
+            for s in result.subsystem_statuses
+        ],
+        stage_context=ProgressionStageContext(
+            current_stage=result.stage_context.current_stage,
+            target_stage=result.stage_context.target_stage,
+            next_recommended_stage=result.stage_context.next_recommended_stage,
+            stage_path=result.stage_context.stage_path,
+        ),
+        note=result.note,
+    )
+
+
 @router.get(
     "/strategies/{strategy_id}/robustness",
     response_model=StrategyRobustnessResponse,

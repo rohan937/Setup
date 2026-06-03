@@ -3580,3 +3580,65 @@ export interface StrategyRobustnessResponse {
   evidence_gaps: string[];
   robustness_vs_readiness_note: string;
 }
+
+// M62 - Progression Freeze Recommendations
+export type ProgressionFreezeRecommendation = "continue_progression" | "monitor_before_progression" | "pause_progression" | "freeze_progression" | "insufficient_evidence";
+
+export interface ProgressionFreezeReason {
+  reason_key: string;
+  title: string;
+  category: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: "blocker" | "review" | "watch" | "missing";
+  evidence_summary: string;
+  source_label: string;
+  source_id: string | null;
+  suggested_resolution: string;
+  required_to_unfreeze: boolean;
+}
+
+export interface ProgressionUnfreezeRequirement {
+  requirement_key: string;
+  title: string;
+  priority: "low" | "medium" | "high" | "critical";
+  required: boolean;
+  current_status: string;
+  target_status: string;
+  suggested_action: string;
+  endpoint_hint: string | null;
+}
+
+export interface ProgressionSubsystemStatus {
+  subsystem: string;
+  status: string;
+  summary: string | null;
+  score: number | null;
+}
+
+export interface ProgressionStageContext {
+  current_stage: string;
+  target_stage: string;
+  next_recommended_stage: string;
+  stage_path: string[];
+}
+
+export interface StrategyProgressionFreezeResponse {
+  strategy_id: string;
+  strategy_name: string;
+  generated_at: string;
+  target_stage: string;
+  current_stage: string;
+  recommendation: ProgressionFreezeRecommendation;
+  recommendation_label: string;
+  freeze_risk_score: number;
+  deterministic_summary: string;
+  freeze_reasons: ProgressionFreezeReason[];
+  unfreeze_requirements: ProgressionUnfreezeRequirement[];
+  blocking_reason_count: number;
+  review_reason_count: number;
+  watch_reason_count: number;
+  missing_evidence_count: number;
+  subsystem_statuses: ProgressionSubsystemStatus[];
+  stage_context: ProgressionStageContext;
+  note: string;
+}

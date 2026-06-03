@@ -87,6 +87,7 @@ import type {
   StrategyExperimentAnalysis,
   ParameterSweepAnalysisResponse,
   StrategyRobustnessResponse,
+  StrategyProgressionFreezeResponse,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -139,6 +140,7 @@ import {
   getExperimentAnalyses,
   analyzeParameterSweep,
   getStrategyRobustness,
+  getStrategyProgressionFreeze,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -7971,6 +7973,164 @@ function ExperimentPanel({
   );
 }
 
+function ProgressionFreezePanel({ strategyId }: { strategyId: string }) {
+  const [freezeData, setFreezeData] = useState<StrategyProgressionFreezeResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [targetStage, setTargetStage] = useState<string>("auto");
+
+  const STAGES = [
+    { key: "auto", label: "Auto (infer)" },
+    { key: "backtest_review", label: "Backtest Review" },
+    { key: "paper_candidate", label: "Paper Candidate" },
+    { key: "shadow_production", label: "Shadow Production" },
+    { key: "production_candidate", label: "Production Candidate" },
+  ];
+
+  const handleLoad = async () => {
+    setLoading(true); setError(null);
+    try {
+      const params = targetStage !== "auto" ? { target_stage: targetStage } : undefined;
+      setFreezeData(await getStrategyProgressionFreeze(strategyId, params));
+    } catch (e) { setError(String(e)); }
+    finally { setLoading(false); }
+  };
+
+  const recColor = (r: string) => {
+    if (r === "freeze_progression") return "text-red-400";
+    if (r === "pause_progression") return "text-orange-400";
+    if (r === "monitor_before_progression") return "text-amber-400";
+    if (r === "continue_progression") return "text-cyan-400";
+    return "text-gray-400";
+  };
+
+  const sevBadge = (s: string) => {
+    if (s === "critical") return "bg-red-900/40 text-red-300";
+    if (s === "high") return "bg-orange-900/40 text-orange-300";
+    if (s === "medium") return "bg-amber-900/40 text-amber-300";
+    return "bg-gray-800 text-gray-400";
+  };
+
+  const statusBadge = (s: string) => {
+    if (s === "blocker") return "text-red-400";
+    if (s === "review") return "text-amber-400";
+    if (s === "watch") return "text-blue-400";
+    return "text-gray-500";
+  };
+
+  return (
+    <div className="border border-gray-700 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-mono font-semibold text-gray-200 tracking-wide uppercase">Progression Freeze</h3>
+        <span className="text-xs text-gray-500 font-mono">Research governance — not trading approval</span>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={targetStage}
+          onChange={e => setTargetStage(e.target.value)}
+          className="px-2 py-1 text-xs font-mono bg-gray-900 border border-gray-700 text-gray-200 rounded"
+        >
+          {STAGES.map(s => (
+            <option key={s.key} value={s.key}>{s.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={handleLoad}
+          disabled={loading}
+          className="px-3 py-1.5 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+        >
+          {loading ? "Loading..." : "Get Recommendation"}
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+
+      {!freezeData && !loading && (
+        <p className="text-xs text-gray-500 font-mono">Select a target stage and click "Get Recommendation" to evaluate progression readiness.</p>
+      )}
+
+      {freezeData && (
+        <div className="space-y-4">
+          {/* Recommendation card */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <span className={"text-sm font-mono font-semibold " + recColor(freezeData.recommendation)}>
+                {freezeData.recommendation_label}
+              </span>
+              <span className="text-xs font-mono text-gray-400">Risk: {freezeData.freeze_risk_score.toFixed(0)}/100</span>
+            </div>
+            <div className="text-xs font-mono text-gray-500">
+              {freezeData.current_stage} → {freezeData.target_stage}
+            </div>
+            <p className="text-xs font-mono text-gray-400 leading-relaxed">{freezeData.deterministic_summary}</p>
+            {freezeData.blocking_reason_count > 0 && (
+              <div className="flex gap-3 text-xs font-mono">
+                <span className="text-red-400">{freezeData.blocking_reason_count} blockers</span>
+                {freezeData.review_reason_count > 0 && <span className="text-amber-400">{freezeData.review_reason_count} review</span>}
+                {freezeData.watch_reason_count > 0 && <span className="text-blue-400">{freezeData.watch_reason_count} watch</span>}
+              </div>
+            )}
+          </div>
+
+          {/* Freeze reasons */}
+          {freezeData.freeze_reasons.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-mono text-gray-500 uppercase tracking-wide">Freeze Reasons</p>
+              {freezeData.freeze_reasons.filter(r => r.status !== "missing").map(r => (
+                <div key={r.reason_key} className="flex items-start gap-2 text-xs font-mono border-l-2 border-gray-700 pl-2">
+                  <span className={"px-1 rounded " + sevBadge(r.severity)}>{r.severity}</span>
+                  <div>
+                    <span className={"font-semibold " + statusBadge(r.status)}>{r.title}</span>
+                    {r.required_to_unfreeze && <span className="ml-2 text-red-500 text-xs">required</span>}
+                    <div className="text-gray-500">{r.evidence_summary}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Unfreeze requirements */}
+          {freezeData.unfreeze_requirements.length > 0 && (
+            <details className="text-xs font-mono">
+              <summary className="text-gray-500 cursor-pointer hover:text-gray-400">Unfreeze Requirements ({freezeData.unfreeze_requirements.length})</summary>
+              <div className="mt-2 space-y-1">
+                {freezeData.unfreeze_requirements.map(r => (
+                  <div key={r.requirement_key} className="flex items-start gap-2">
+                    <span className={"px-1 rounded shrink-0 " + (r.required ? "bg-red-900/40 text-red-300" : "bg-gray-800 text-gray-400")}>{r.priority}</span>
+                    <div>
+                      <span className="text-gray-300">{r.title}</span>
+                      <div className="text-gray-500">{r.suggested_action}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* Subsystem status */}
+          {freezeData.subsystem_statuses.length > 0 && (
+            <details className="text-xs font-mono">
+              <summary className="text-gray-500 cursor-pointer hover:text-gray-400">Subsystem Status ({freezeData.subsystem_statuses.length})</summary>
+              <div className="mt-2 grid grid-cols-2 gap-1">
+                {freezeData.subsystem_statuses.map(s => (
+                  <div key={s.subsystem} className="flex items-center gap-2 text-xs font-mono">
+                    <span className="text-gray-600 w-24 truncate">{s.subsystem}</span>
+                    <span className={s.status === "ok" ? "text-cyan-400" : s.status === "blocked" || s.status === "fragile" ? "text-red-400" : s.status === "review" ? "text-amber-400" : s.status === "missing" ? "text-gray-500" : "text-gray-400"}>{s.status}</span>
+                    {s.score != null && <span className="text-gray-600">{s.score.toFixed(0)}</span>}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          <p className="text-xs text-gray-600 font-mono italic">{freezeData.note}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -8783,6 +8943,9 @@ export default function StrategyDetail() {
 
       {/* M61: Strategy Robustness Score */}
       <RobustnessPanel strategyId={strategy.id} />
+
+      {/* M62: Progression Freeze Recommendations */}
+      <ProgressionFreezePanel strategyId={strategy.id} />
     </div>
   );
 }

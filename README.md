@@ -161,7 +161,62 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M61: Strategy Robustness Score
+## Current milestone — M62: Strategy Progression Freeze Recommendations
+
+**Status:** complete
+
+### What was built
+- Service `services/progression_freeze.py` — read-only analysis service, no new DB tables. Aggregates signals across existing milestone tables to produce a freeze risk score and recommendation per strategy.
+- Schemas `schemas/progression_freeze.py` — 5 Pydantic schemas: `FreezeReasonDetail`, `UnfreezeRequirement`, `SubsystemStatus`, `ProgressionFreezeResponse`, and supporting enums.
+- Endpoint `GET /api/strategies/{id}/progression-freeze` added to `routes/strategies.py` router.
+- 4 recommendation levels returned per evaluation:
+  1. `continue` — no significant freeze signals detected
+  2. `monitor` — early warning signals present, increased observation recommended
+  3. `pause` — meaningful signals detected, further progression not advised until resolved
+  4. `freeze` — strong signals detected, progression should stop pending review
+  - `insufficient_evidence` — not enough data across subsystems to make a determination
+- Freeze risk score 0–100 — continuous numeric score driving the recommendation level.
+- 13 freeze reason categories covering: parameter instability, drift exceedance, shadow run variance, regression failures, evidence staleness, assumption violations, policy non-compliance, SLA breaches, cost sensitivity, fill realism issues, open review pressure, promotion gate failures, and robustness fragility.
+- Unfreeze requirements checklist — each active freeze reason produces a corresponding unfreeze requirement item so the researcher knows what must be resolved.
+- 13 subsystem status checks — one per data source integrated (parameter sweep, drift engine, shadow monitor, regression suite, evidence freshness, assumption health, policy engine, SLA monitor, cost sensitivity, fill realism, review cases, promotion gates, robustness score).
+- Frontend `ProgressionFreezePanel` component in `StrategyDetail.tsx` — displays freeze risk score, recommendation badge, active freeze reasons, unfreeze checklist, and per-subsystem status summary.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | /api/strategies/{id}/progression-freeze | Compute and return the progression freeze recommendation for a strategy |
+
+### Recommendation levels
+| Level | Meaning |
+|-------|---------|
+| `continue` | No significant freeze signals; normal progression permitted |
+| `monitor` | Early warning signals present; watch closely before next progression step |
+| `pause` | Meaningful signals detected; do not advance until signals are resolved |
+| `freeze` | Strong signals; progression must stop pending researcher review |
+| `insufficient_evidence` | Insufficient data across subsystems to produce a determination |
+
+### IMPORTANT: scope and intent
+**M62 is NOT a trading kill-switch and is NOT live execution control.** This feature is research governance tooling only. It analyses logged research artifacts (backtest results, shadow run data, drift metrics, etc.) and returns a recommendation to the researcher. It does not connect to any broker, does not send orders, does not halt live positions, and does not control production systems of any kind. Language: "progression freeze recommendation," "research governance," "researcher review." Never: "kill-switch," "halt trading," "stop execution," "live control," "approved to trade."
+
+### Deployment note
+Deployment readiness is intentionally deferred to M65. M62 is an advanced product/platform feature.
+
+### What M62 does not build
+- Trading kill-switch of any kind
+- Broker integration or execution controls
+- Live production system controls
+- Automated approval workflows
+- Notification or alerting pipelines
+- New database tables or migrations
+
+- **22 new backend M62 tests** (`tests/test_progression_freeze_m62.py`). All 22 passed on first run. No fixes needed.
+- **Backend total: 1647 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (Vite built in 865ms, 64 modules, 666.80 kB). One non-blocking chunk-size advisory warning (pre-existing).
+- No external APIs. Deterministic. Not investment advice.
+
+---
+
+## Previously completed — M61: Strategy Robustness Score
 
 **Status:** complete
 

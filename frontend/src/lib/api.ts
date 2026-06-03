@@ -1402,3 +1402,14 @@ export async function analyzeParameterSweep(
     },
   );
 }
+
+// M62 - Progression Freeze Recommendations
+export async function getStrategyProgressionFreeze(
+  strategyId: string,
+  params?: { target_stage?: string },
+): Promise<import("@/types").StrategyProgressionFreezeResponse> {
+  const qs = params?.target_stage ? `?target_stage=${params.target_stage}` : "";
+  return request<import("@/types").StrategyProgressionFreezeResponse>(
+    `/api/strategies/${strategyId}/progression-freeze${qs}`,
+  );
+}
