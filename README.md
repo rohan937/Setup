@@ -161,7 +161,72 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M60: Parameter Sweep Reliability Analysis
+## Current milestone — M61: Strategy Robustness Score
+
+**Status:** complete
+
+### What was built
+- Service `services/strategy_robustness.py` — read-only analysis service, no new DB tables. Aggregates signals across existing milestone tables to produce a composite robustness score per strategy.
+- Schemas `schemas/strategy_robustness.py` — 3 Pydantic schemas: `RobustnessDimensionResult`, `FragilitySignal`, and `StrategyRobustnessResponse`.
+- Endpoint `GET /api/strategies/{id}/robustness` added to `routes/strategies.py` router.
+- 10 robustness dimensions evaluated per strategy:
+  1. Parameter stability (weight 1.5) — from parameter sweep data
+  2. Cost sensitivity (weight 1.2) — transaction cost sensitivity from backtest reality checks
+  3. Fill realism (weight 1.2) — fill assumption realism signals
+  4. Drift stability (weight 1.3) — research-to-production drift signals
+  5. Shadow stability (weight 1.4) — shadow production monitor variance
+  6. Assumption stability (weight 1.1) — assumption health summary
+  7. Regression stability (weight 1.3) — regression test suite results
+  8. Evidence freshness (weight 1.0) — evidence freshness monitor signals
+  9. Policy/SLA compliance (weight 1.2) — config policy engine and evidence SLA results
+  10. Review case pressure (weight 1.0) — open research review cases
+- Weighted average scoring requires 5 or more dimensions to be available; fewer returns `insufficient_data` verdict.
+- 4 robustness verdicts: `robust`, `adequate`, `fragile`, `insufficient_data`.
+- Fragility signal aggregation — individual dimension fragility signals are surfaced in the response without deduplication so callers can see the full picture.
+- Frontend `RobustnessPanel` component in `StrategyDetail.tsx` — displays per-dimension scores, verdict badge, and fragility signal list.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | /api/strategies/{id}/robustness | Compute and return the robustness score for a strategy |
+
+### Robustness dimension weights
+| Dimension | Weight |
+|-----------|--------|
+| Shadow stability | 1.4 |
+| Parameter stability | 1.5 |
+| Drift stability | 1.3 |
+| Regression stability | 1.3 |
+| Cost sensitivity | 1.2 |
+| Fill realism | 1.2 |
+| Policy/SLA compliance | 1.2 |
+| Assumption stability | 1.1 |
+| Evidence freshness | 1.0 |
+| Review case pressure | 1.0 |
+
+### Robustness vs readiness distinction
+Robustness score measures how consistently a strategy has behaved across logged variation — parameter sweeps, shadow runs, drift checks, cost sensitivity, and assumption health. Readiness score (M49) measures whether the required pre-production gates have been completed. A strategy can score high on one and low on the other. M61 does not modify or replace the readiness scorecard.
+
+### Language constraints
+Descriptive only. Language: "robust under logged variation," "fragile dimension," "observed dimension score," "robustness verdict." Never: "safe to trade," "ready to deploy," "low risk," "approved."
+
+### Deployment note
+Deployment readiness is intentionally deferred to M65. M61 is an advanced product/platform feature.
+
+### What M61 does not build
+- New database tables or migrations
+- Real-time monitoring or alerting
+- Cross-strategy robustness comparison views
+- Automated robustness-based promotion or demotion
+
+- **27 new backend M61 tests** (`tests/test_strategy_robustness_m61.py`). All 27 passed on first run. No fixes needed.
+- **Backend total: 1625 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (Vite built in 902ms, 64 modules, 661 kB / 139 kB gzip). One non-blocking chunk-size advisory warning (pre-existing).
+- No external APIs. Deterministic. Not investment advice.
+
+---
+
+## Previously completed — M60: Parameter Sweep Reliability Analysis
 
 **Status:** complete
 

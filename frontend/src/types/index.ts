@@ -3537,3 +3537,46 @@ export interface ParameterSweepAnalysisResponse {
   deterministic_summary: string;
   analysis_id: string | null;
 }
+
+// M61 - Strategy Robustness Score
+export type RobustnessStatus = "robust" | "stable" | "watch" | "review" | "fragile" | "insufficient_evidence";
+export type RobustnessVerdict = "robust_under_logged_variation" | "stable_with_watch_items" | "requires_review" | "fragile_under_variation" | "insufficient_evidence";
+
+export interface RobustnessDimensionScorecard {
+  dimension_key: string;
+  title: string;
+  score: number | null;
+  status: string;
+  evidence_count: number;
+  fragility_signals: string[];
+  positive_evidence: string[];
+  review_items: string[];
+  suggested_actions: string[];
+  source_refs_json: Record<string, unknown> | null;
+}
+
+export interface RobustnessFragilitySignal {
+  signal_key: string;
+  title: string;
+  severity: "low" | "medium" | "high" | "critical";
+  evidence_summary: string;
+  suggested_action: string;
+  source_dimension: string;
+}
+
+export interface StrategyRobustnessResponse {
+  strategy_id: string;
+  strategy_name: string;
+  generated_at: string;
+  robustness_score: number | null;
+  robustness_status: RobustnessStatus;
+  robustness_verdict: RobustnessVerdict;
+  verdict_label: string;
+  deterministic_summary: string;
+  dimension_scorecards: RobustnessDimensionScorecard[];
+  fragility_signals: RobustnessFragilitySignal[];
+  top_review_drivers: string[];
+  suggested_actions: string[];
+  evidence_gaps: string[];
+  robustness_vs_readiness_note: string;
+}

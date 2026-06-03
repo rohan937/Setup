@@ -1380,6 +1380,15 @@ export async function getExperimentAnalysis(
   );
 }
 
+// M61 - Strategy Robustness Score
+export async function getStrategyRobustness(
+  strategyId: string,
+): Promise<import("@/types").StrategyRobustnessResponse> {
+  return request<import("@/types").StrategyRobustnessResponse>(
+    `/api/strategies/${strategyId}/robustness`,
+  );
+}
+
 // M60 - Parameter Sweep Reliability Analysis
 export async function analyzeParameterSweep(
   experimentId: string,

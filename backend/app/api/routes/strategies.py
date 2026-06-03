@@ -4464,3 +4464,84 @@ def get_run_replay_pack(
         content=data.content,
         raw_evidence=data.raw_evidence,
     )
+
+
+# ---------------------------------------------------------------------------
+# M61: GET /api/strategies/{strategy_id}/robustness
+# ---------------------------------------------------------------------------
+
+from app.schemas.strategy_robustness import (  # noqa: E402
+    RobustnessDimensionScorecard,
+    RobustnessFragilitySignal,
+    StrategyRobustnessResponse,
+)
+from app.services.strategy_robustness import (  # noqa: E402
+    RobustnessFragilitySignalData,
+    compute_strategy_robustness,
+)
+
+
+@router.get(
+    "/strategies/{strategy_id}/robustness",
+    response_model=StrategyRobustnessResponse,
+    tags=["strategies"],
+)
+def get_strategy_robustness(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyRobustnessResponse:
+    """Return a multi-dimensional robustness score for a strategy.
+
+    Deterministic — no AI, no live market data.
+    Read-only — no AuditTimelineEvent created.
+    Not investment advice.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    result = compute_strategy_robustness(db, strategy_id)
+
+    return StrategyRobustnessResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        robustness_score=result.robustness_score,
+        robustness_status=result.robustness_status,
+        robustness_verdict=result.robustness_verdict,
+        verdict_label=result.verdict_label,
+        deterministic_summary=result.deterministic_summary,
+        dimension_scorecards=[
+            RobustnessDimensionScorecard(
+                dimension_key=d.dimension_key,
+                title=d.title,
+                score=d.score,
+                status=d.status,
+                evidence_count=d.evidence_count,
+                fragility_signals=[
+                    s.title if isinstance(s, RobustnessFragilitySignalData) else str(s)
+                    for s in d.fragility_signals
+                ],
+                positive_evidence=d.positive_evidence,
+                review_items=d.review_items,
+                suggested_actions=d.suggested_actions,
+                source_refs_json=d.source_refs_json,
+            )
+            for d in result.dimension_scorecards
+        ],
+        fragility_signals=[
+            RobustnessFragilitySignal(
+                signal_key=s.signal_key,
+                title=s.title,
+                severity=s.severity,
+                evidence_summary=s.evidence_summary,
+                suggested_action=s.suggested_action,
+                source_dimension=s.source_dimension,
+            )
+            for s in result.fragility_signals
+        ],
+        top_review_drivers=result.top_review_drivers,
+        suggested_actions=result.suggested_actions,
+        evidence_gaps=result.evidence_gaps,
+        robustness_vs_readiness_note=result.robustness_vs_readiness_note,
+    )

@@ -86,6 +86,7 @@ import type {
   StrategyExperimentDetail,
   StrategyExperimentAnalysis,
   ParameterSweepAnalysisResponse,
+  StrategyRobustnessResponse,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -137,6 +138,7 @@ import {
   analyzeStrategyExperiment,
   getExperimentAnalyses,
   analyzeParameterSweep,
+  getStrategyRobustness,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -7357,6 +7359,154 @@ function ParameterSweepSubPanel({ experimentId }: { experimentId: string }) {
   );
 }
 
+// M61 - Strategy Robustness Score Panel
+function RobustnessPanel({ strategyId }: { strategyId: string }) {
+  const [robustness, setRobustness] = useState<StrategyRobustnessResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleLoad = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setRobustness(await getStrategyRobustness(strategyId));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verdictColor = (v: string) => {
+    if (v === "robust_under_logged_variation") return "text-cyan-400";
+    if (v === "stable_with_watch_items") return "text-blue-400";
+    if (v === "requires_review") return "text-amber-400";
+    if (v === "fragile_under_variation") return "text-red-400";
+    return "text-gray-400";
+  };
+
+  const statusColor = (s: string) => {
+    if (s === "robust" || s === "stable") return "text-cyan-400";
+    if (s === "watch") return "text-blue-400";
+    if (s === "review") return "text-amber-400";
+    if (s === "fragile") return "text-red-400";
+    if (s === "missing") return "text-gray-500";
+    return "text-gray-400";
+  };
+
+  const sevBadge = (sev: string) => {
+    if (sev === "critical") return "bg-red-900/40 text-red-300";
+    if (sev === "high") return "bg-orange-900/40 text-orange-300";
+    if (sev === "medium") return "bg-amber-900/40 text-amber-300";
+    return "bg-gray-800 text-gray-400";
+  };
+
+  return (
+    <div className="border border-gray-700 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-mono font-semibold text-gray-200 tracking-wide uppercase">Strategy Robustness</h3>
+        <button
+          onClick={handleLoad}
+          disabled={loading}
+          className="px-3 py-1.5 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+        >
+          {loading ? "Loading..." : "Load Robustness"}
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+
+      {!robustness && !loading && (
+        <p className="text-xs text-gray-500 font-mono">Click "Load Robustness" to analyze this strategy's variation stability.</p>
+      )}
+
+      {robustness && (
+        <div className="space-y-4">
+          {/* Verdict */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <span className={"text-sm font-mono font-semibold " + verdictColor(robustness.robustness_verdict)}>
+                {robustness.verdict_label}
+              </span>
+              {robustness.robustness_score != null && (
+                <span className="text-xs font-mono text-gray-400">Score: {robustness.robustness_score.toFixed(0)}/100</span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 font-mono leading-relaxed">{robustness.deterministic_summary}</p>
+            <p className="text-xs text-gray-600 font-mono italic">{robustness.robustness_vs_readiness_note}</p>
+          </div>
+
+          {/* Dimension grid */}
+          <div className="grid grid-cols-2 gap-1.5">
+            {robustness.dimension_scorecards.map((d) => (
+              <div key={d.dimension_key} className="bg-gray-900/60 rounded p-2 space-y-0.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono text-gray-400 truncate">{d.title}</span>
+                  <span className={"text-xs font-mono font-semibold " + statusColor(d.status)}>
+                    {d.score != null ? d.score.toFixed(0) : "—"}
+                  </span>
+                </div>
+                <span className={"text-xs font-mono " + statusColor(d.status)}>{d.status}</span>
+                {d.fragility_signals.length > 0 && (
+                  <span className="text-xs font-mono text-red-400 truncate" title={d.fragility_signals[0]}>
+                    {d.fragility_signals[0]}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Fragility signals */}
+          {robustness.fragility_signals.length > 0 && (
+            <details className="text-xs font-mono">
+              <summary className="text-gray-500 cursor-pointer hover:text-gray-400">
+                Fragility signals ({robustness.fragility_signals.length})
+              </summary>
+              <div className="mt-2 space-y-1">
+                {robustness.fragility_signals.map((s) => (
+                  <div key={s.signal_key} className="flex items-start gap-2">
+                    <span className={"px-1.5 py-0.5 rounded shrink-0 " + sevBadge(s.severity)}>{s.severity}</span>
+                    <div>
+                      <span className="text-gray-300">{s.title}</span>
+                      <span className="ml-2 text-gray-600">({s.source_dimension})</span>
+                      <div className="text-gray-500">{s.evidence_summary}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* Evidence gaps */}
+          {robustness.evidence_gaps.length > 0 && (
+            <div className="text-xs font-mono">
+              <p className="text-gray-500 uppercase tracking-wide">Evidence Gaps</p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {robustness.evidence_gaps.map((g, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-gray-800 text-gray-400 rounded">{g}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suggested actions */}
+          {robustness.suggested_actions.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-gray-500 text-xs font-mono uppercase tracking-wide">Suggested Actions</p>
+              {robustness.suggested_actions.slice(0, 5).map((a, i) => (
+                <div key={i} className="flex items-start gap-1.5 text-xs font-mono text-gray-400">
+                  <span className="text-cyan-600">›</span>
+                  <span>{a}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // M59 - Experiment Registry Panel
 function ExperimentPanel({
   strategyId,
@@ -7939,6 +8089,7 @@ export default function StrategyDetail() {
   const [experiments, setExperiments] = useState<StrategyExperiment[]>([]);
   const [_selectedExperiment, _setSelectedExperiment] = useState<StrategyExperimentDetail | null>(null);
   const [_experimentAnalyses, _setExperimentAnalyses] = useState<StrategyExperimentAnalysis[]>([]);
+  const [_robustness, _setRobustness] = useState<StrategyRobustnessResponse | null>(null);
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -8629,6 +8780,9 @@ export default function StrategyDetail() {
         experiments={experiments}
         setExperiments={setExperiments}
       />
+
+      {/* M61: Strategy Robustness Score */}
+      <RobustnessPanel strategyId={strategy.id} />
     </div>
   );
 }
