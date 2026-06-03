@@ -17,27 +17,53 @@ import Settings from "@/pages/Settings";
 import AdminSystemHealth from "@/pages/AdminSystemHealth";
 import DeploymentReadiness from "@/pages/DeploymentReadiness";
 import NotFound from "@/pages/NotFound";
+import CommandCenter from "@/pages/CommandCenter";
+import Experiments from "@/pages/Experiments";
+import ReviewCases from "@/pages/ReviewCases";
+import PromotionGates from "@/pages/PromotionGates";
+import RegressionTests from "@/pages/RegressionTests";
+import Policies from "@/pages/Policies";
+import SLAMonitor from "@/pages/SLAMonitor";
+import AuditTrail from "@/pages/AuditTrail";
+import DeveloperSDK from "@/pages/DeveloperSDK";
+import EvidenceBundles from "@/pages/EvidenceBundles";
+import WorkspaceSettings from "@/pages/WorkspaceSettings";
+import Members from "@/pages/Members";
+import DemoControls from "@/pages/DemoControls";
 
 export default function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<Dashboard />} />
+        <Route path="command-center" element={<CommandCenter />} />
+        <Route path="portfolio" element={<Portfolio />} />
         <Route path="strategies" element={<Strategies />} />
         <Route path="strategies/compare" element={<StrategyComparison />} />
         <Route path="strategies/run-compare" element={<MultiRunComparison />} />
         <Route path="strategies/:id" element={<StrategyDetail />} />
-        <Route path="timeline" element={<Timeline />} />
-        <Route path="evidence/coverage" element={<EvidenceCoverage />} />
-        <Route path="portfolio" element={<Portfolio />} />
-        <Route path="data-health" element={<DataHealth />} />
+        <Route path="experiments" element={<Experiments />} />
         <Route path="backtests" element={<Backtests />} />
+        <Route path="evidence/coverage" element={<EvidenceCoverage />} />
+        <Route path="timeline" element={<Timeline />} />
+        <Route path="data-health" element={<DataHealth />} />
         <Route path="reports" element={<Reports />} />
         <Route path="reports/:id" element={<Reports />} />
         <Route path="live-drift" element={<LiveDrift />} />
         <Route path="alerts" element={<Alerts />} />
+        <Route path="review-cases" element={<ReviewCases />} />
+        <Route path="promotion-gates" element={<PromotionGates />} />
+        <Route path="regression-tests" element={<RegressionTests />} />
+        <Route path="policies" element={<Policies />} />
+        <Route path="sla-monitor" element={<SLAMonitor />} />
+        <Route path="audit-trail" element={<AuditTrail />} />
+        <Route path="developer/sdk" element={<DeveloperSDK />} />
+        <Route path="developer/evidence-bundles" element={<EvidenceBundles />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="workspace/settings" element={<WorkspaceSettings />} />
+        <Route path="workspace/members" element={<Members />} />
         <Route path="admin/system-health" element={<AdminSystemHealth />} />
+        <Route path="admin/demo-controls" element={<DemoControls />} />
         <Route path="admin/deployment-readiness" element={<DeploymentReadiness />} />
         <Route path="*" element={<NotFound />} />
       </Route>

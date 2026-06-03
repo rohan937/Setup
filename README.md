@@ -161,7 +161,60 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M65: Deployment Readiness Checklist
+## Current milestone — M66: Navigation IA + Product Shell
+
+**Status:** complete — *M66 reorganizes QuantFidelity into a coherent product shell with 5 navigation sections.*
+
+### What was built
+- `frontend/src/nav.ts` updated — 5 navigation sections replacing the flat sidebar list: Overview, Research, Governance, Developer, Admin.
+- `frontend/src/App.tsx` updated — all 13 new page routes registered.
+- 13 new pages created across the 5 sections (see below).
+- All existing routes preserved — no pages removed or moved without a redirect.
+
+### New navigation structure
+| Section | Items |
+|---------|-------|
+| Overview | Dashboard, Strategy Reliability Command Center |
+| Research | Strategies, Experiment Registry, Backtest Reality Check, Research Review Cases, Quant Research Audit Trail, Strategy Reliability Snapshot Cache |
+| Governance | Strategy Progression Freeze Recommendations, Strategy Promotion Gates, Strategy Config Policy Engine, Strategy Regression Test Suite |
+| Developer | API Keys, SDK Docs |
+| Admin | System Health, Deployment Readiness |
+
+### New pages created (13)
+1. `OverviewDashboard` — `/` — landing summary of system state
+2. `ReliabilityCommandCenter` — `/research/reliability-command-center`
+3. `ExperimentRegistry` — `/research/experiments`
+4. `BacktestRealityCheck` — `/research/backtest-reality-check`
+5. `ResearchReviewCases` — `/research/review-cases`
+6. `QuantResearchAuditTrail` — `/research/audit-trail`
+7. `ReliabilitySnapshotCache` — `/research/snapshot-cache`
+8. `ProgressionFreezeRecommendations` — `/governance/progression-freeze`
+9. `StrategyPromotionGates` — `/governance/promotion-gates`
+10. `StrategyConfigPolicyEngine` — `/governance/config-policy`
+11. `StrategyRegressionTestSuite` — `/governance/regression-tests`
+12. `ApiKeys` — `/developer/api-keys`
+13. `SdkDocs` — `/developer/sdk-docs`
+
+### Existing routes preserved
+All prior routes (Strategies, Strategy detail, System Health, Deployment Readiness, Run History, Evidence pages, etc.) remain at their original paths.
+
+### Language constraints
+"Navigation structure only — does not add auth, RBAC, or deployment configuration." Never "authenticates," "authorizes," "deploys," or "provisions" in M66.
+
+### Backend note
+Backend tests unchanged — M66 is purely a frontend restructuring milestone. Backend total 1740 passed, 1 skipped (unchanged).
+
+### Next milestones
+- M67: Workspace Settings + Members
+- M68: Auth + User Accounts
+- M69: RBAC
+- M70: Backend Deployment Prep
+
+**Tests:** No new backend tests (frontend-only milestone). 28/28 existing M65 deployment readiness tests still pass. Zero TypeScript errors, clean production build (78 modules, dist/).
+
+---
+
+## Previously completed — M65: Deployment Readiness Checklist
 
 **Status:** complete — *M65 begins the deployment readiness arc.*
 
