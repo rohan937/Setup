@@ -24,6 +24,8 @@ class WorkspaceMember(UUIDPrimaryKeyMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="active")
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # M68: link to auth_users.id (nullable — pre-existing members may not have an account)
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

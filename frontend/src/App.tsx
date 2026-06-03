@@ -30,9 +30,13 @@ import EvidenceBundles from "@/pages/EvidenceBundles";
 import WorkspaceSettings from "@/pages/WorkspaceSettings";
 import Members from "@/pages/Members";
 import DemoControls from "@/pages/DemoControls";
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import { AuthProvider } from "@/context/AuthContext";
 
 export default function App() {
   return (
+    <AuthProvider>
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<Dashboard />} />
@@ -67,6 +71,9 @@ export default function App() {
         <Route path="admin/deployment-readiness" element={<DeploymentReadiness />} />
         <Route path="*" element={<NotFound />} />
       </Route>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
     </Routes>
+    </AuthProvider>
   );
 }

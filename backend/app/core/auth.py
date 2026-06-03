@@ -1,10 +1,11 @@
-"""FastAPI authentication dependencies — M24 API Key Foundation."""
+"""FastAPI authentication dependencies — M24 API Key + M68 JWT User Auth."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -69,3 +70,64 @@ async def require_api_key_if_enabled(
             ),
         )
     return api_key
+
+
+# ---------------------------------------------------------------------------
+# M68: JWT bearer dependencies
+# ---------------------------------------------------------------------------
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+):
+    """Return the authenticated :class:`AuthUser` or raise HTTP 401."""
+    import uuid as _uuid
+
+    from app.core.security import decode_access_token
+    from app.models.auth_user import AuthUser
+
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_access_token(credentials.credentials)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    sub = payload.get("sub")
+    if sub is None:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    # AuthUser.id is Uuid(as_uuid=True) — convert string sub to uuid.UUID
+    try:
+        user_uuid = _uuid.UUID(sub)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    user = db.query(AuthUser).filter(AuthUser.id == user_uuid).first()
+    if user is None or user.status != "active":
+        raise HTTPException(status_code=401, detail="User not found or disabled")
+    return user
+
+
+async def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+):
+    """Return the authenticated :class:`AuthUser` or ``None`` (no 401)."""
+    import uuid as _uuid
+
+    from app.core.security import decode_access_token
+    from app.models.auth_user import AuthUser
+
+    if credentials is None:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if payload is None:
+        return None
+    sub = payload.get("sub")
+    if sub is None:
+        return None
+    try:
+        user_uuid = _uuid.UUID(sub)
+    except (ValueError, AttributeError):
+        return None
+    return db.query(AuthUser).filter(AuthUser.id == user_uuid).first()

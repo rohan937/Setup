@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     # API key prefix environment token: "local" or "live"
     qf_api_key_env: str = "local"
 
+    # M68: JWT / User Auth
+    QF_AUTH_ENABLED: bool = True
+    QF_JWT_SECRET_KEY: str = "dev-secret-key-change-in-production-do-not-commit"
+    QF_JWT_ALGORITHM: str = "HS256"
+    QF_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

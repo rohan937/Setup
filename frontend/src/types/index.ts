@@ -3948,3 +3948,52 @@ export interface WorkspaceMemberListResponse {
   items: WorkspaceMember[];
   total: number;
 }
+
+// M68 - Auth + User Accounts
+export interface User {
+  id: string;
+  email: string;
+  display_name: string;
+  status: string;
+  is_superuser: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserRegisterRequest {
+  email: string;
+  display_name: string;
+  password: string;
+}
+
+export interface UserLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface CurrentUserWorkspaceMembership {
+  member_id: string;
+  organization_id: string;
+  workspace_name: string;
+  role: string;
+  status: string;
+  linked: boolean;
+}
+
+export interface CurrentUserResponse {
+  user: User;
+  workspace_memberships: CurrentUserWorkspaceMembership[];
+}
+
+export interface AuthStatusResponse {
+  auth_enabled: boolean;
+  has_users: boolean;
+  registration_enabled: boolean;
+}

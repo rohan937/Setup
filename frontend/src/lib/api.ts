@@ -103,9 +103,25 @@ import type {
   EvidenceSLAPolicyCreate,
   EvidenceSLAEvaluation,
   EvidenceSLAEvaluationListResponse,
+  UserRegisterRequest,
+  UserLoginRequest,
+  AuthTokenResponse,
+  CurrentUserResponse,
+  AuthStatusResponse,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+export function setAuthToken(token: string): void { localStorage.setItem("qf_access_token", token); }
+export function getAuthToken(): string | null { return localStorage.getItem("qf_access_token"); }
+export function clearAuthToken(): void { localStorage.removeItem("qf_access_token"); }
+
+export function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("qf_access_token");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = "Bearer " + token;
+  return headers;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
@@ -1530,4 +1546,38 @@ export async function removeWorkspaceMember(memberId: string): Promise<void> {
   await request<void>(`/api/workspace/members/${memberId}`, {
     method: "DELETE",
   });
+}
+
+// M68 - Auth + User Accounts
+export async function registerUser(payload: UserRegisterRequest): Promise<AuthTokenResponse> {
+  const res = await fetch(API_BASE_URL + "/api/auth/register", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function loginUser(payload: UserLoginRequest): Promise<AuthTokenResponse> {
+  const res = await fetch(API_BASE_URL + "/api/auth/login", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getCurrentUser(): Promise<CurrentUserResponse> {
+  const res = await fetch(API_BASE_URL + "/api/auth/me", { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function logoutUser(): Promise<void> {
+  await fetch(API_BASE_URL + "/api/auth/logout", { method: "POST", headers: getAuthHeaders() });
+  clearAuthToken();
+}
+
+export async function getAuthStatus(): Promise<AuthStatusResponse> {
+  const res = await fetch(API_BASE_URL + "/api/auth/status", { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }

@@ -18,13 +18,14 @@ M57 routes: /api/strategies/{id}/change-impact
 M59 routes: /api/strategies/{id}/experiments, /api/experiments/{id}, /api/experiment-analyses/{id}
 M65A routes: /api/strategies/{id}/reliability-snapshot/refresh, /api/strategies/{id}/reliability-snapshot, /api/strategies/{id}/reliability-snapshots
 M67 routes: /api/workspace/settings, /api/workspace/members, /api/workspace/members/{id}
+M68 routes: /api/auth/register, /api/auth/login, /api/auth/me, /api/auth/logout, /api/auth/status
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import admin, alerts, api_keys, backtests, change_impact, config_policies, dashboard, datasets, evidence, evidence_sla, experiments, health, meta, portfolio, projects, regression, reliability, reliability_snapshots, reports, review_cases, strategies, timeline, workspace
+from app.api.routes import admin, alerts, api_keys, auth, backtests, change_impact, config_policies, dashboard, datasets, evidence, evidence_sla, experiments, health, meta, portfolio, projects, regression, reliability, reliability_snapshots, reports, review_cases, strategies, timeline, workspace
 
 api_router = APIRouter()
 
@@ -54,3 +55,4 @@ api_router.include_router(change_impact.router, prefix="/api")
 api_router.include_router(experiments.router, prefix="/api")
 api_router.include_router(reliability_snapshots.router, prefix="/api")
 api_router.include_router(workspace.router, prefix="/api")
+api_router.include_router(auth.router, prefix="/api")

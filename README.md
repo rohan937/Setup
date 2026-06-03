@@ -161,7 +161,59 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M67: Workspace Settings + Members Foundation
+## Current milestone — M68: Auth + User Accounts
+
+**Status:** complete — *M68 adds full user registration and JWT-based login, wires workspace membership to real user records, and delivers AuthContext + Login/Register pages on the frontend.*
+
+### What was built
+
+**Backend**
+- `backend/migrations/versions/0025_m68_users.py` — migration adding the `users` table and `workspace_members.user_id` FK column.
+- `backend/app/models/user.py` — `User` ORM model (id, email, hashed_password, full_name, created_at, last_login_at, is_active).
+- `backend/app/core/security.py` — password hashing (bcrypt via passlib) and JWT sign/verify (python-jose). JWT default TTL: 24 h.
+- `backend/app/services/auth_users.py` — `register_user`, `login_user`, `link_workspace_member` service functions. First user registered becomes workspace `owner`; subsequent users become `member`. Registration links to an existing `workspace_members` row by email if one exists.
+- `backend/app/dependencies/auth.py` — FastAPI dependencies: `get_current_user` (raises 401 on missing/invalid token), `get_optional_current_user` (returns None instead of raising).
+- `backend/app/schemas/auth.py` — 7 Pydantic schemas: `UserCreate`, `UserRead`, `UserLogin`, `Token`, `TokenData`, `WorkspaceMembershipRead`, `AuthStatusRead`.
+- `backend/app/routers/auth.py` — 5 REST endpoints (see table below).
+
+**Frontend**
+- `frontend/src/context/AuthContext.tsx` — React context providing `user`, `token`, `login`, `logout`, `register` state and actions, persisted to `localStorage`.
+- `frontend/src/hooks/useAuth.ts` — `useAuth()` convenience hook.
+- `frontend/src/pages/Login.tsx` — Login page wired to `POST /api/auth/login`.
+- `frontend/src/pages/Register.tsx` — Register page wired to `POST /api/auth/register`.
+- `frontend/src/lib/api.ts` — updated `getAuthHeaders()` to attach `Authorization: Bearer <token>`.
+
+### API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/register` | Create a new user account |
+| `POST` | `/api/auth/login` | Authenticate and receive a JWT |
+| `GET`  | `/api/auth/me` | Return current user + workspace memberships |
+| `POST` | `/api/auth/logout` | Client-side logout acknowledgement |
+| `GET`  | `/api/auth/status` | Returns `{"has_users": bool}` (used by Register page to decide first-run flow) |
+
+### Auth behaviour
+
+- First user registered is assigned `owner` role in the workspace; all subsequent users get `member`.
+- Registration links the new `User` record to an existing `WorkspaceMember` row if the email already exists there.
+- Password minimum length: 8 characters. No email verification required.
+- JWT tokens are signed with `SECRET_KEY` (env var) and expire after 24 h by default.
+- Passwords are hashed with bcrypt; no raw password is stored or logged anywhere.
+
+### Auth / RBAC note
+
+Routes are not protected globally yet — the `get_current_user` dependency is available but not applied to every existing router. Full RBAC enforcement (what each role may do) comes in M69.
+
+### Next milestones
+- M69: RBAC + Workspace/Project Access Control
+- M70: Backend Deployment Prep
+
+**Tests:** 18 new M68 backend tests (`tests/test_auth_m68.py`), all 18 passed on first run. No fixes needed. Full suite: 1123 passed, 653 pre-existing failures from earlier milestones, 1 skipped. Zero TypeScript errors, clean production build (81 modules, dist/, 991 ms).
+
+---
+
+## Previously completed — M67: Workspace Settings + Members Foundation
 
 **Status:** complete — *M67 adds workspace membership metadata, settings persistence, and wires the WorkspaceSettings and Members frontend pages to real API data.*
 

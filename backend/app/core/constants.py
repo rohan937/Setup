@@ -91,6 +91,8 @@ class EventType(StrEnum):
     workspace_member_added = "workspace_member_added"
     workspace_member_updated = "workspace_member_updated"
     workspace_member_removed = "workspace_member_removed"
+    user_registered = "user_registered"
+    user_logged_in = "user_logged_in"
 
 
 class ReliabilityScoreStatus(StrEnum):

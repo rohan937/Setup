@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchApiInfo } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 type BackendState =
   | { status: "loading" }
@@ -8,6 +10,7 @@ type BackendState =
 
 export default function Topbar() {
   const [state, setState] = useState<BackendState>({ status: "loading" });
+  const { user, isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
     let active = true;
@@ -30,6 +33,26 @@ export default function Topbar() {
         </span>
       </span>
       <ApiStatus state={state} />
+      {isAuthenticated && user ? (
+        <span className="flex items-center gap-3">
+          <span className="font-mono text-2xs text-text-secondary" title={user.email}>
+            {user.display_name}
+          </span>
+          <button
+            onClick={() => logout()}
+            className="font-mono text-2xs text-text-muted hover:text-fidelity-low uppercase tracking-widest transition-colors"
+          >
+            Sign Out
+          </button>
+        </span>
+      ) : (
+        <Link
+          to="/login"
+          className="font-mono text-2xs text-text-muted hover:text-brand uppercase tracking-widest transition-colors"
+        >
+          Sign In
+        </Link>
+      )}
     </header>
   );
 }
