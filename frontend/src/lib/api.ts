@@ -110,7 +110,29 @@ import type {
   AuthStatusResponse,
 } from "@/types";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+// ---------------------------------------------------------------------------
+// M71: API base URL helpers — resolved from VITE_API_BASE_URL env var.
+// Trailing slashes are trimmed so path concatenation is safe regardless of
+// how the env var is set in the Vercel dashboard.
+// ---------------------------------------------------------------------------
+
+/** Return the configured backend API base URL, trailing-slash trimmed. */
+export function getApiBaseUrl(): string {
+  const raw = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+  return raw.replace(/\/+$/, "");
+}
+
+/** Return the configured frontend environment (local | staging | production). */
+export function getFrontendEnvironment(): string {
+  return import.meta.env.VITE_APP_ENV ?? "local";
+}
+
+/** True when VITE_DEMO_MODE=true is set (reserved for M73). */
+export function isDemoMode(): boolean {
+  return import.meta.env.VITE_DEMO_MODE === "true";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 export function setAuthToken(token: string): void { localStorage.setItem("qf_access_token", token); }
 export function getAuthToken(): string | null { return localStorage.getItem("qf_access_token"); }

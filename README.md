@@ -161,7 +161,64 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M70: Backend Deployment Prep / Render + PostgreSQL Readiness
+## Current milestone — M71: Frontend Deployment Prep / Vercel Readiness
+
+**Status:** complete — *M71 prepares the QuantFidelity frontend for Vercel deployment without actually deploying. The API client is hardened with environment-variable-driven base URL, vercel.json SPA routing, build scripts, and a complete Vercel deployment guide are in place.*
+
+### What was built
+
+**`frontend/.env.example`** — updated with `VITE_API_BASE_URL`, `VITE_APP_ENV`, `VITE_DEMO_MODE` (reserved M73), and production guidance.
+
+**`frontend/src/vite-env.d.ts`** — TypeScript declarations for all `VITE_*` env vars.
+
+**`frontend/src/lib/api.ts`**
+- Exports `getApiBaseUrl()` — reads `VITE_API_BASE_URL`, trims trailing slash, falls back to `http://localhost:8000`.
+- Exports `getFrontendEnvironment()` — reads `VITE_APP_ENV`.
+- Exports `isDemoMode()` — reads `VITE_DEMO_MODE` (reserved for M73).
+- All API calls now flow through `getApiBaseUrl()` — no hardcoded localhost except the fallback.
+
+**`frontend/vercel.json`** — SPA rewrite: all paths → `/index.html` so React Router deep-links work on Vercel refresh.
+
+**Scripts**
+- `scripts/frontend_build.sh` — runs `npm run typecheck && npm run build`; works with `VITE_API_BASE_URL` env var override.
+- `scripts/frontend_preview.sh` — serves the production `dist/` locally via `vite preview`.
+- Both executable, both pass `bash -n` syntax validation.
+
+**`docs/vercel-frontend.md`** — complete Vercel project setup guide (root directory, build command, output dir, env vars, SPA routing, auth note, CORS dependency, security checklist).
+
+**Deployment readiness** — new `frontend_vercel_deployment` category (10+ checks: `.env.example`, `vercel.json`, rewrite rule, docs, build script, `api.ts` VITE env usage, no `.env.local` committed).
+
+**`docs/deployment-readiness.md`** — updated with M71 frontend deployment checklist.
+
+### Vercel summary
+
+| Item | Value |
+|------|-------|
+| Root directory | `frontend` |
+| Install command | `npm ci` |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+| SPA routing | `frontend/vercel.json` |
+| Required env var | `VITE_API_BASE_URL=https://your-render-backend.onrender.com` |
+| Optional env vars | `VITE_APP_ENV=production`, `VITE_DEMO_MODE=false` |
+
+See `docs/vercel-frontend.md` for the full guide.
+
+### Security notes
+
+- `VITE_API_BASE_URL` is set in the Vercel dashboard — never committed.
+- No `.env.local` in the repository.
+- Backend `QF_CORS_ORIGINS` must be updated to the Vercel origin after deployment.
+- JWT localStorage hardening deferred to M72.
+
+### Next milestones
+- M72: Production Auth/CORS/API-Key/Rate-Limit Hardening
+
+**Tests:** 41 new M71 backend tests (`tests/test_frontend_deployment_m71.py`) — all 41 passed. M65 deployment readiness tests updated (+1 category). Targeted suite: 149 tests passing (M71+M70+M65+M68+M69). Zero TypeScript errors, clean production build with both default and production-like `VITE_API_BASE_URL`.
+
+---
+
+## Previously completed — M70: Backend Deployment Prep / Render + PostgreSQL Readiness
 
 **Status:** complete — *M70 prepares the QuantFidelity backend for a Render + PostgreSQL deployment without actually deploying. Scripts, config hardening, a deployment health endpoint, and Render blueprint docs are all in place.*
 

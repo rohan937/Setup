@@ -19,7 +19,17 @@
 - Config: `postgres://` → `postgresql://` auto-normalisation, `QF_ENVIRONMENT`, `QF_LOG_LEVEL`
 - Deployment readiness checks: render_deployment category (M70 artifacts)
 
-## What M65/M70 does NOT do
+## What M71 adds (Vercel + frontend prep)
+- `frontend/.env.example` — updated with `VITE_API_BASE_URL`, `VITE_APP_ENV`, `VITE_DEMO_MODE`
+- `frontend/vercel.json` — SPA routing: rewrites all paths to `/index.html`
+- `frontend/src/lib/api.ts` — exports `getApiBaseUrl()`, `getFrontendEnvironment()`, `isDemoMode()`; trims trailing slash from base URL
+- `frontend/src/vite-env.d.ts` — types for all VITE_ env vars
+- `scripts/frontend_build.sh` — typecheck + production build script
+- `scripts/frontend_preview.sh` — serve production build locally
+- `docs/vercel-frontend.md` — Vercel deployment guide
+- Deployment readiness checks: `frontend_vercel_deployment` category (M71 artifacts)
+
+## What M65/M70/M71 does NOT do
 - Deploy to Render, Vercel, or any server
 - Provision production PostgreSQL
 - Push code or containers
@@ -92,6 +102,33 @@ curl -s -X POST http://localhost:8000/api/admin/seed-demo -H "Content-Type: appl
 
 ---
 
+## Frontend deployment checklist (Vercel)
+
+```bash
+# 1. Typecheck + build with local backend
+bash scripts/frontend_build.sh
+
+# 2. Build with production-like backend URL
+VITE_API_BASE_URL=https://your-render-backend.onrender.com bash scripts/frontend_build.sh
+
+# 3. Preview production build locally
+bash scripts/frontend_preview.sh
+# Open http://localhost:4173
+
+# 4. Verify deep-link routing works (navigate to /strategies, refresh — should not 404)
+```
+
+**Vercel env vars to set:**
+```
+VITE_API_BASE_URL=https://your-render-backend.onrender.com
+VITE_APP_ENV=production
+VITE_DEMO_MODE=false
+```
+
+See `docs/vercel-frontend.md` for the full Vercel setup guide.
+
+---
+
 ## Render-specific commands
 
 See `docs/render-backend.md` for the complete Render setup guide.
@@ -118,11 +155,12 @@ bash ../scripts/backend_start.sh
 ---
 
 ## Secrets checklist (before public deployment)
-- [ ] No `.env` files committed to git (`git log --all -- '*.env'`)
+- [ ] No `.env` or `.env.local` files committed to git (`git log --all -- '*.env'`)
 - [ ] `QF_JWT_SECRET_KEY` is a strong random secret (not the dev default)
 - [ ] `QF_DATABASE_URL` points to PostgreSQL (not SQLite)
-- [ ] `QF_CORS_ORIGINS` is the exact frontend origin — no wildcard
+- [ ] `QF_CORS_ORIGINS` is the exact Vercel frontend origin — no wildcard
 - [ ] `QF_DEBUG=false` in production
+- [ ] `VITE_API_BASE_URL` set in Vercel dashboard (not committed)
 - [ ] No API keys in committed code
 - [ ] Demo API keys rotated after seeding
 - [ ] `/api/health/deployment` returns `jwt_secret_safe: true` and no `production_warnings`
@@ -145,8 +183,7 @@ QF_CORS_ORIGINS=https://your-frontend.vercel.app
 ## Next milestones
 | Milestone | Description |
 |-----------|-------------|
-| M71 | Frontend deployment prep — Vercel project, `VITE_API_BASE_URL`, domain |
-| M72 | Production auth/CORS/rate-limit hardening |
+| M72 | Production auth/CORS/API-key/rate-limit hardening |
 | M73 | Public demo QA — seed production demo, validate all pages |
 
 ---

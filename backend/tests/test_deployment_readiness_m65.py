@@ -36,7 +36,8 @@ EXPECTED_CATEGORY_KEYS = {
     "sdk_ci",
     "database_demo",
     "security_config",
-    "render_deployment",  # added by M70
+    "render_deployment",           # added by M70
+    "frontend_vercel_deployment",  # added by M71
     "deployment_blockers",
 }
 

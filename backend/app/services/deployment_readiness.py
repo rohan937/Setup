@@ -1166,6 +1166,195 @@ def _check_deployment_blockers() -> ReadinessCategoryData:
     return _build_category("deployment_blockers", "Deployment Blockers", checks)
 
 
+def _check_frontend_vercel_deployment() -> ReadinessCategoryData:
+    """M71: checks for Vercel frontend deployment readiness artifacts."""
+    checks: list[ReadinessCheckData] = []
+
+    # frontend/.env.example
+    fe_env_example = os.path.join(FRONTEND_DIR, ".env.example")
+    fe_env_content = ""
+    fe_env_exists = _file_exists(fe_env_example)
+    checks.append(_check(
+        "frontend_env_example_exists",
+        "frontend/.env.example exists",
+        "frontend_vercel_deployment",
+        fe_env_exists,
+        severity="high",
+        pass_explanation="frontend/.env.example documents required VITE_ env vars.",
+        fail_explanation="frontend/.env.example is missing.",
+        suggested_action="Create frontend/.env.example documenting VITE_API_BASE_URL.",
+    ))
+    if fe_env_exists:
+        try:
+            with open(fe_env_example) as fh:
+                fe_env_content = fh.read()
+        except Exception:
+            fe_env_content = ""
+
+    vite_api_url_documented = "VITE_API_BASE_URL" in fe_env_content
+    checks.append(_check(
+        "vite_api_base_url_documented",
+        "VITE_API_BASE_URL documented in frontend/.env.example",
+        "frontend_vercel_deployment",
+        vite_api_url_documented,
+        severity="high",
+        pass_explanation="VITE_API_BASE_URL is documented in frontend/.env.example.",
+        fail_explanation="VITE_API_BASE_URL not found in frontend/.env.example.",
+        suggested_action="Add VITE_API_BASE_URL=http://localhost:8000 to frontend/.env.example.",
+    ))
+
+    # frontend/vercel.json
+    vercel_json = os.path.join(FRONTEND_DIR, "vercel.json")
+    vercel_json_exists = _file_exists(vercel_json)
+    checks.append(_check(
+        "frontend_vercel_json_exists",
+        "frontend/vercel.json exists",
+        "frontend_vercel_deployment",
+        vercel_json_exists,
+        severity="high",
+        pass_explanation="frontend/vercel.json present — SPA routing configured.",
+        fail_explanation="frontend/vercel.json is missing — deep-link refreshes will 404 on Vercel.",
+        suggested_action="Create frontend/vercel.json with SPA rewrite to /index.html.",
+    ))
+    if vercel_json_exists:
+        try:
+            with open(vercel_json) as fh:
+                vercel_json_content = fh.read()
+        except Exception:
+            vercel_json_content = ""
+        has_rewrite = "index.html" in vercel_json_content
+        checks.append(_check(
+            "frontend_vercel_json_has_rewrite",
+            "frontend/vercel.json contains SPA rewrite to /index.html",
+            "frontend_vercel_deployment",
+            has_rewrite,
+            severity="high",
+            pass_explanation="vercel.json rewrites all paths to /index.html.",
+            fail_explanation="vercel.json does not contain a rewrite to /index.html.",
+            suggested_action='Add {"rewrites": [{"source": "/(.*)", "destination": "/index.html"}]} to vercel.json.',
+        ))
+
+    # docs/vercel-frontend.md
+    vercel_docs = os.path.join(DOCS_DIR, "vercel-frontend.md")
+    checks.append(_check(
+        "vercel_frontend_docs_exist",
+        "docs/vercel-frontend.md exists",
+        "frontend_vercel_deployment",
+        _file_exists(vercel_docs),
+        severity="medium",
+        pass_explanation="Vercel deployment guide is present.",
+        fail_explanation="docs/vercel-frontend.md is missing.",
+        suggested_action="Create docs/vercel-frontend.md with Vercel deployment instructions.",
+    ))
+
+    # scripts/frontend_build.sh
+    build_sh = os.path.join(SCRIPTS_DIR, "frontend_build.sh")
+    build_exists = _file_exists(build_sh)
+    checks.append(_check(
+        "frontend_build_sh_exists",
+        "scripts/frontend_build.sh exists",
+        "frontend_vercel_deployment",
+        build_exists,
+        severity="medium",
+        pass_explanation="Frontend build script is present.",
+        fail_explanation="scripts/frontend_build.sh is missing.",
+        suggested_action="Create scripts/frontend_build.sh that runs npm run typecheck && npm run build.",
+    ))
+    if build_exists:
+        executable = os.access(build_sh, os.X_OK)
+        checks.append(_check(
+            "frontend_build_sh_executable",
+            "scripts/frontend_build.sh is executable",
+            "frontend_vercel_deployment",
+            executable,
+            severity="low",
+            pass_explanation="Frontend build script is executable.",
+            fail_explanation="scripts/frontend_build.sh is not executable.",
+            suggested_action="Run: chmod +x scripts/frontend_build.sh",
+        ))
+
+    # api.ts uses VITE_API_BASE_URL
+    api_ts_path = os.path.join(FRONTEND_DIR, "src", "lib", "api.ts")
+    api_ts_content = ""
+    if _file_exists(api_ts_path):
+        try:
+            with open(api_ts_path) as fh:
+                api_ts_content = fh.read()
+        except Exception:
+            api_ts_content = ""
+    api_uses_vite_env = "VITE_API_BASE_URL" in api_ts_content
+    checks.append(_check(
+        "api_ts_uses_vite_api_base_url",
+        "frontend/src/lib/api.ts uses VITE_API_BASE_URL",
+        "frontend_vercel_deployment",
+        api_uses_vite_env,
+        severity="high",
+        pass_explanation="API client reads backend URL from VITE_API_BASE_URL.",
+        fail_explanation="api.ts does not reference VITE_API_BASE_URL — hardcoded localhost will break production.",
+        suggested_action="Update api.ts to use import.meta.env.VITE_API_BASE_URL.",
+    ))
+
+    # No hardcoded non-fallback localhost in api.ts
+    # We allow the fallback default but not a standalone hardcoded URL
+    has_getApiBaseUrl = "getApiBaseUrl" in api_ts_content
+    checks.append(_check(
+        "api_ts_has_get_api_base_url_helper",
+        "frontend/src/lib/api.ts exports getApiBaseUrl helper",
+        "frontend_vercel_deployment",
+        has_getApiBaseUrl,
+        severity="low",
+        pass_explanation="getApiBaseUrl() helper is exported from api.ts.",
+        fail_explanation="getApiBaseUrl() helper not found in api.ts.",
+        suggested_action="Export getApiBaseUrl() from api.ts for environment URL introspection.",
+    ))
+
+    # frontend/.env.local must not exist (secrets check)
+    fe_env_local = os.path.join(FRONTEND_DIR, ".env.local")
+    fe_env_local_absent = not _file_exists(fe_env_local)
+    checks.append(_check(
+        "frontend_env_local_not_committed",
+        "frontend/.env.local not present (not committed)",
+        "frontend_vercel_deployment",
+        fe_env_local_absent,
+        severity="high",
+        pass_explanation="frontend/.env.local is not present — local secrets not at risk of being committed.",
+        fail_explanation="frontend/.env.local exists. Verify it is gitignored and not git-tracked.",
+        suggested_action="Ensure frontend/.env.local is in .gitignore and not tracked by git.",
+    ))
+
+    # Vercel deployment manual checklist
+    checks.append(_manual(
+        "manual_vercel_project_not_created",
+        "Vercel project not created yet",
+        "frontend_vercel_deployment",
+        "Create a Vercel project connected to the repository and set VITE_API_BASE_URL "
+        "to the Render backend URL. See docs/vercel-frontend.md.",
+        severity="high",
+    ))
+
+    checks.append(_manual(
+        "manual_vite_api_base_url_not_set_in_vercel",
+        "VITE_API_BASE_URL not yet set in Vercel dashboard",
+        "frontend_vercel_deployment",
+        "After Render backend is deployed, set VITE_API_BASE_URL in Vercel project "
+        "Settings → Environment Variables.",
+        severity="high",
+    ))
+
+    checks.append(_manual(
+        "manual_backend_cors_not_set_for_vercel",
+        "Backend QF_CORS_ORIGINS not yet updated for Vercel frontend origin",
+        "frontend_vercel_deployment",
+        "After the Vercel URL is known (e.g. https://quantfidelity.vercel.app), update "
+        "QF_CORS_ORIGINS on the Render backend to include that exact origin.",
+        severity="high",
+    ))
+
+    return _build_category(
+        "frontend_vercel_deployment", "Vercel / Frontend Deployment Prep (M71)", checks
+    )
+
+
 # ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
@@ -1232,6 +1421,7 @@ def get_deployment_readiness(db: Session) -> DeploymentReadinessData:
         _check_database_demo_readiness(),
         _check_security_config_readiness(),
         _check_render_deployment_prep(),
+        _check_frontend_vercel_deployment(),
         _check_deployment_blockers(),
     ]
 
