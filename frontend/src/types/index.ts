@@ -3709,3 +3709,90 @@ export interface ResearchAuditTrailResponse {
   suggested_checks: string[];
   events: ResearchAuditEvent[];
 }
+
+// M64 - Strategy Reliability Command Center (Final Advanced Feature)
+export type CommandCenterStatus = "clear" | "monitor" | "review" | "blocked" | "insufficient_evidence";
+
+export interface CommandCenterSubsystemStatus {
+  subsystem_key: string;
+  title: string;
+  status: "healthy" | "watch" | "review" | "blocked" | "missing" | "error";
+  score: number | null;
+  severity: string;
+  summary: string | null;
+  top_issue: string | null;
+  suggested_action: string | null;
+  route_hint: string | null;
+  source_json: Record<string, unknown> | null;
+}
+
+export interface CommandCenterBlocker {
+  blocker_key: string;
+  title: string;
+  category: string;
+  severity: string;
+  evidence_summary: string;
+  source_subsystem: string;
+  required_before_progression: boolean;
+  suggested_resolution: string;
+}
+
+export interface CommandCenterAction {
+  action_key: string;
+  title: string;
+  priority: "low" | "medium" | "high" | "critical";
+  action_type: string;
+  reason: string;
+  endpoint_hint: string | null;
+  route_hint: string | null;
+  depends_on: string[];
+}
+
+export interface CommandCenterGovernanceSummary {
+  open_review_case_count: number;
+  acknowledged_review_case_count: number;
+  high_critical_alert_count: number;
+  latest_regression_status: string | null;
+  latest_policy_status: string | null;
+  latest_sla_status: string | null;
+  latest_freeze_recommendation: string | null;
+  promotion_gate_paper_verdict: string | null;
+  promotion_gate_production_verdict: string | null;
+}
+
+export interface CommandCenterEvidenceSummary {
+  freshness_status: string | null;
+  coverage_score: number | null;
+  missing_evidence_count: number;
+  stale_evidence_count: number;
+  graph_status: string | null;
+  replay_pack_recommended: boolean;
+  latest_run_id: string | null;
+  latest_run_label: string | null;
+}
+
+export interface CommandCenterWorkflowSummary {
+  current_stage: string;
+  next_recommended_stage: string;
+  stage_path: string[];
+  active_experiment_count: number;
+  latest_experiment_analysis_status: string | null;
+  latest_sweep_status: string | null;
+  latest_audit_event_at: string | null;
+}
+
+export interface StrategyReliabilityCommandCenterResponse {
+  strategy_id: string;
+  strategy_name: string;
+  generated_at: string;
+  command_status: CommandCenterStatus;
+  command_score: number | null;
+  deterministic_summary: string;
+  subsystem_statuses: CommandCenterSubsystemStatus[];
+  top_blockers: CommandCenterBlocker[];
+  action_queue: CommandCenterAction[];
+  governance_summary: CommandCenterGovernanceSummary;
+  evidence_summary: CommandCenterEvidenceSummary;
+  workflow_summary: CommandCenterWorkflowSummary;
+  note: string;
+}

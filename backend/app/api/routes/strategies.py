@@ -4780,3 +4780,130 @@ def get_strategy_research_audit_trail_endpoint(
             for e in result.events
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# M64 — Strategy Reliability Command Center
+# ---------------------------------------------------------------------------
+
+from app.schemas.reliability_command_center import (  # noqa: E402
+    CommandCenterSubsystemStatus,
+    CommandCenterBlocker,
+    CommandCenterAction,
+    CommandCenterGovernanceSummary,
+    CommandCenterEvidenceSummary,
+    CommandCenterWorkflowSummary,
+    StrategyReliabilityCommandCenterResponse,
+)
+from app.services.reliability_command_center import (  # noqa: E402
+    get_strategy_reliability_command_center,
+)
+
+
+@router.get(
+    "/strategies/{strategy_id}/command-center",
+    response_model=StrategyReliabilityCommandCenterResponse,
+    tags=["strategies"],
+)
+def get_strategy_reliability_command_center_endpoint(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """Return the Reliability Command Center for a strategy.
+
+    Aggregates all reliability sub-systems into a single governance view.
+    Read-only, deterministic.  Not investment advice or trading authorisation.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        result = get_strategy_reliability_command_center(db, strategy_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    def _subsystem(s) -> CommandCenterSubsystemStatus:
+        return CommandCenterSubsystemStatus(
+            subsystem_key=s.subsystem_key,
+            title=s.title,
+            status=s.status,
+            score=s.score,
+            severity=s.severity,
+            summary=s.summary,
+            top_issue=s.top_issue,
+            suggested_action=s.suggested_action,
+            route_hint=s.route_hint,
+            source_json=s.source_json,
+        )
+
+    def _blocker(b) -> CommandCenterBlocker:
+        return CommandCenterBlocker(
+            blocker_key=b.blocker_key,
+            title=b.title,
+            category=b.category,
+            severity=b.severity,
+            evidence_summary=b.evidence_summary,
+            source_subsystem=b.source_subsystem,
+            required_before_progression=b.required_before_progression,
+            suggested_resolution=b.suggested_resolution,
+        )
+
+    def _action(a) -> CommandCenterAction:
+        return CommandCenterAction(
+            action_key=a.action_key,
+            title=a.title,
+            priority=a.priority,
+            action_type=a.action_type,
+            reason=a.reason,
+            endpoint_hint=a.endpoint_hint,
+            route_hint=a.route_hint,
+            depends_on=list(a.depends_on),
+        )
+
+    gs = result.governance_summary
+    es = result.evidence_summary
+    ws = result.workflow_summary
+
+    return StrategyReliabilityCommandCenterResponse(
+        strategy_id=result.strategy_id,
+        strategy_name=result.strategy_name,
+        generated_at=result.generated_at,
+        command_status=result.command_status,
+        command_score=result.command_score,
+        deterministic_summary=result.deterministic_summary,
+        subsystem_statuses=[_subsystem(s) for s in result.subsystem_statuses],
+        top_blockers=[_blocker(b) for b in result.top_blockers],
+        action_queue=[_action(a) for a in result.action_queue],
+        governance_summary=CommandCenterGovernanceSummary(
+            open_review_case_count=gs.open_review_case_count,
+            acknowledged_review_case_count=gs.acknowledged_review_case_count,
+            high_critical_alert_count=gs.high_critical_alert_count,
+            latest_regression_status=gs.latest_regression_status,
+            latest_policy_status=gs.latest_policy_status,
+            latest_sla_status=gs.latest_sla_status,
+            latest_freeze_recommendation=gs.latest_freeze_recommendation,
+            promotion_gate_paper_verdict=gs.promotion_gate_paper_verdict,
+            promotion_gate_production_verdict=gs.promotion_gate_production_verdict,
+        ),
+        evidence_summary=CommandCenterEvidenceSummary(
+            freshness_status=es.freshness_status,
+            coverage_score=es.coverage_score,
+            missing_evidence_count=es.missing_evidence_count,
+            stale_evidence_count=es.stale_evidence_count,
+            graph_status=es.graph_status,
+            replay_pack_recommended=es.replay_pack_recommended,
+            latest_run_id=es.latest_run_id,
+            latest_run_label=es.latest_run_label,
+        ),
+        workflow_summary=CommandCenterWorkflowSummary(
+            current_stage=ws.current_stage,
+            next_recommended_stage=ws.next_recommended_stage,
+            stage_path=list(ws.stage_path),
+            active_experiment_count=ws.active_experiment_count,
+            latest_experiment_analysis_status=ws.latest_experiment_analysis_status,
+            latest_sweep_status=ws.latest_sweep_status,
+            latest_audit_event_at=ws.latest_audit_event_at,
+        ),
+        note=result.note,
+    )

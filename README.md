@@ -161,7 +161,75 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M63: Quant Research Audit Trail v2
+## Current milestone — M64: Strategy Reliability Command Center
+
+**Status:** complete
+
+**M64 is the final advanced platform feature milestone. Deployment readiness begins at M65.**
+
+### What was built
+- Service `services/reliability_command_center.py` — read-only service, no new DB tables. Aggregates 18 subsystems from existing milestone data and produces a single command-center snapshot per strategy.
+- Schemas `schemas/reliability_command_center.py` — 7 Pydantic schemas: `CommandCenterSnapshot`, `CommandStatus`, `SubsystemStatus`, `TopBlocker`, `ActionQueueItem`, `CommandCenterSummary`, and `CommandCenterResponse`.
+- Endpoint `GET /api/strategies/{id}/command-center` added to `routes/strategies.py` router.
+- **Command score 0–100** — weighted composite across 16+ subsystems. Each subsystem contributes a normalized weight; the final score drives the overall command status.
+- **5 command status levels:**
+  - `clear` — score ≥ 80, no critical blockers
+  - `monitor` — score 60–79, minor issues present
+  - `review` — score 40–59, material issues require attention
+  - `blocked` — score < 40, or at least one hard blocker present
+  - `insufficient_evidence` — fewer than the minimum required subsystems have data
+- **Top blockers** — up to 5 highest-severity issues surfaced from across all subsystems, each with subsystem key, severity, and remediation hint.
+- **Action queue** — up to 10 prioritized action items covering: `gather_evidence`, `run_backtest`, `review_assumption`, `check_policy`, `run_regression`, `update_parameters`, `review_gate`, `resolve_drift`, `check_sla`, `export_evidence`.
+- **Governance summary** — policy compliance count, SLA status, assumption health.
+- **Evidence summary** — evidence coverage, freshness status, dependency health.
+- **Workflow summary** — review case status, promotion gate outcome, freeze recommendation status.
+- Frontend `CommandCenterPanel` component placed high in `StrategyDetail.tsx` — renders the command score, status badge, subsystem matrix, top blockers, and action queue.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | /api/strategies/{id}/command-center | Return the reliability command center snapshot for a strategy |
+
+### 18 subsystem keys in the matrix
+`backtest_evidence`, `signal_evidence`, `dataset_evidence`, `assumption_health`, `policy_compliance`, `drift_monitor`, `universe_coverage`, `signal_coverage`, `config_snapshot`, `review_cases`, `promotion_gates`, `robustness_score`, `regression_suite`, `sla_monitor`, `run_replay`, `experiment_registry`, `parameter_sweep`, `change_impact`
+
+### Command status rules
+| Status | Condition |
+|--------|-----------|
+| `insufficient_evidence` | Fewer than minimum required subsystems have data |
+| `blocked` | Score < 40 OR at least one hard blocker present |
+| `review` | Score 40–59, no hard blockers |
+| `monitor` | Score 60–79, no hard blockers |
+| `clear` | Score ≥ 80, no critical blockers |
+
+### IMPORTANT: scope and language
+**M64 is a research governance command center.** It aggregates the health of all prior-milestone subsystems into a single operational view for quant researchers. Language: "research governance command center," "command score," "subsystem matrix," "action queue," "command status." Never: "trading approval," "kill-switch," "incident," "live trading signal."
+
+### Deployment note
+M64 is the final advanced platform feature milestone. M65 begins the deployment readiness arc.
+
+### What M64 does not build
+- New database tables or migrations (reads existing milestone tables only)
+- Write endpoints — the command center is strictly read-only
+- Live trading signals or execution controls of any kind
+- Alerting or notification pipelines
+- Automated remediation workflows
+- Broker or execution integration of any kind
+
+- **20 new backend M64 tests** (`tests/test_reliability_command_center_m64.py`). All 20 passed on first run. No fixes needed.
+- **Backend total: 1693 passed, 1 skipped.**
+- **Zero TypeScript errors**, clean production build (Vite built in 954ms, 64 modules, 678.40 kB). One non-blocking chunk-size advisory warning (pre-existing).
+- No external APIs. Deterministic. Not investment advice.
+
+---
+
+## M64 completion note
+
+M56 through M64 complete the advanced platform feature arc for QuantFidelity. These nine milestones delivered: Evidence SLA Monitor (M56), Strategy Change Impact Analysis (M57), Run Replay Pack (M58), Experiment Registry (M59), Parameter Sweep Reliability Analysis (M60), Strategy Robustness Score (M61), Strategy Progression Freeze Recommendations (M62), Quant Research Audit Trail (M63), and Strategy Reliability Command Center (M64). M65 begins the deployment readiness arc.
+
+---
+
+## Previously completed — M63: Quant Research Audit Trail v2
 
 **Status:** complete
 

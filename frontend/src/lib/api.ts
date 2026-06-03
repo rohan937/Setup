@@ -1436,3 +1436,12 @@ export async function getStrategyResearchAuditTrail(
     `/api/strategies/${strategyId}/research-audit-trail${qs ? "?" + qs : ""}`,
   );
 }
+
+// M64 - Strategy Reliability Command Center
+export async function getStrategyReliabilityCommandCenter(
+  strategyId: string
+): Promise<import("@/types").StrategyReliabilityCommandCenterResponse> {
+  return request<import("@/types").StrategyReliabilityCommandCenterResponse>(
+    `/api/strategies/${strategyId}/command-center`,
+  );
+}

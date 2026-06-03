@@ -90,6 +90,8 @@ import type {
   StrategyProgressionFreezeResponse,
   ResearchAuditTrailResponse,
   ResearchAuditImportance,
+  StrategyReliabilityCommandCenterResponse,
+  CommandCenterSubsystemStatus,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -144,6 +146,7 @@ import {
   getStrategyRobustness,
   getStrategyProgressionFreeze,
   getStrategyResearchAuditTrail,
+  getStrategyReliabilityCommandCenter,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -8340,6 +8343,171 @@ function ResearchAuditTrailPanel({ strategyId }: { strategyId: string }) {
   );
 }
 
+// M64 - Strategy Reliability Command Center
+function CommandCenterPanel({ strategyId }: { strategyId: string }) {
+  const [ccData, setCcData] = useState<StrategyReliabilityCommandCenterResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showMatrix, setShowMatrix] = useState(false);
+
+  const handleLoad = async () => {
+    setLoading(true); setError(null);
+    try {
+      setCcData(await getStrategyReliabilityCommandCenter(strategyId));
+    } catch (e) { setError(String(e)); }
+    finally { setLoading(false); }
+  };
+
+  const statusColors: Record<string, string> = {
+    clear: "text-cyan-400 border-cyan-800",
+    monitor: "text-blue-400 border-blue-800",
+    review: "text-amber-400 border-amber-800",
+    blocked: "text-red-400 border-red-800",
+    insufficient_evidence: "text-gray-400 border-gray-700",
+  };
+
+  const subsystemStatusColor = (s: string) => {
+    if (s === "healthy") return "text-cyan-400";
+    if (s === "watch") return "text-blue-400";
+    if (s === "review") return "text-amber-400";
+    if (s === "blocked") return "text-red-400";
+    if (s === "missing") return "text-gray-500";
+    return "text-gray-400";
+  };
+
+  const priorityBadge = (p: string) => {
+    if (p === "critical") return "bg-red-900/40 text-red-300";
+    if (p === "high") return "bg-orange-900/40 text-orange-300";
+    if (p === "medium") return "bg-amber-900/40 text-amber-300";
+    return "bg-gray-800 text-gray-400";
+  };
+
+  const ccStatusColor = ccData ? (statusColors[ccData.command_status] || "text-gray-400 border-gray-700") : "";
+
+  return (
+    <div className={"border rounded-lg p-4 space-y-4 " + (ccData ? ccStatusColor.split(" ")[1] : "border-gray-700")}>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-mono font-semibold text-gray-200 tracking-wide uppercase">Reliability Command Center</h3>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 font-mono">Research governance</span>
+          <button
+            onClick={handleLoad}
+            disabled={loading}
+            className="px-3 py-1.5 text-xs font-mono bg-gray-800 border border-gray-600 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+          >
+            {loading ? "Loading..." : ccData ? "Refresh" : "Load Command Center"}
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+
+      {!ccData && !loading && (
+        <p className="text-xs text-gray-500 font-mono">Click "Load Command Center" to aggregate all reliability subsystems into one view.</p>
+      )}
+
+      {ccData && (
+        <div className="space-y-4">
+          {/* Status hero */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <span className={"text-lg font-mono font-bold " + ccStatusColor.split(" ")[0]}>
+                {ccData.command_status.toUpperCase().replace(/_/g, " ")}
+              </span>
+              {ccData.command_score != null && (
+                <span className="text-sm font-mono text-gray-400">Score: {ccData.command_score.toFixed(0)}/100</span>
+              )}
+            </div>
+            <div className="text-xs font-mono text-gray-500">
+              {ccData.workflow_summary.current_stage} → {ccData.workflow_summary.next_recommended_stage}
+            </div>
+            <p className="text-xs font-mono text-gray-400 leading-relaxed">{ccData.deterministic_summary}</p>
+          </div>
+
+          {/* Top blockers */}
+          {ccData.top_blockers.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-mono text-gray-500 uppercase tracking-wide">Top Blockers</p>
+              {ccData.top_blockers.slice(0, 5).map(b => (
+                <div key={b.blocker_key} className="flex items-start gap-2 text-xs font-mono border-l-2 border-red-900/50 pl-2">
+                  <span className={"shrink-0 px-1 rounded " + (b.severity === "critical" ? "bg-red-900/40 text-red-300" : "bg-orange-900/40 text-orange-300")}>{b.severity}</span>
+                  <div>
+                    <span className="text-gray-300">{b.title}</span>
+                    {b.required_before_progression && <span className="ml-2 text-red-500 text-xs">blocker</span>}
+                    <div className="text-gray-500">{b.evidence_summary}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Action queue */}
+          {ccData.action_queue.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-mono text-gray-500 uppercase tracking-wide">Action Queue</p>
+              {ccData.action_queue.slice(0, 6).map(a => (
+                <div key={a.action_key} className="flex items-start gap-2 text-xs font-mono">
+                  <span className={"shrink-0 px-1.5 py-0.5 rounded " + priorityBadge(a.priority)}>{a.priority}</span>
+                  <div>
+                    <span className="text-gray-300">{a.title}</span>
+                    <div className="text-gray-500">{a.reason}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Subsystem matrix toggle */}
+          <button
+            onClick={() => setShowMatrix(!showMatrix)}
+            className="text-xs font-mono text-gray-500 hover:text-gray-400"
+          >
+            {showMatrix ? "▲ Hide subsystem matrix" : "▼ Show subsystem matrix"}
+          </button>
+
+          {showMatrix && (
+            <div className="grid grid-cols-3 gap-1">
+              {ccData.subsystem_statuses.map((s: CommandCenterSubsystemStatus) => (
+                <div key={s.subsystem_key} className="bg-gray-900/60 rounded p-1.5 space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-gray-500 truncate" title={s.title}>{s.title}</span>
+                    <span className={subsystemStatusColor(s.status) + " text-xs font-mono"}>
+                      {s.score != null ? s.score.toFixed(0) : s.status.slice(0, 3)}
+                    </span>
+                  </div>
+                  <span className={"text-xs font-mono " + subsystemStatusColor(s.status)}>{s.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Summary cards row */}
+          <div className="grid grid-cols-3 gap-2 text-xs font-mono">
+            <div className="bg-gray-900/50 rounded p-2">
+              <p className="text-gray-500">Governance</p>
+              {ccData.governance_summary.open_review_case_count > 0 && <p className="text-amber-400">{ccData.governance_summary.open_review_case_count} review cases</p>}
+              {ccData.governance_summary.high_critical_alert_count > 0 && <p className="text-red-400">{ccData.governance_summary.high_critical_alert_count} high alerts</p>}
+              {ccData.governance_summary.latest_freeze_recommendation && <p className="text-gray-400">{ccData.governance_summary.latest_freeze_recommendation.replace(/_/g, " ")}</p>}
+            </div>
+            <div className="bg-gray-900/50 rounded p-2">
+              <p className="text-gray-500">Evidence</p>
+              {ccData.evidence_summary.freshness_status && <p className="text-gray-300">{ccData.evidence_summary.freshness_status}</p>}
+              {ccData.evidence_summary.latest_run_label && <p className="text-gray-500 truncate">{ccData.evidence_summary.latest_run_label}</p>}
+            </div>
+            <div className="bg-gray-900/50 rounded p-2">
+              <p className="text-gray-500">Workflow</p>
+              <p className="text-gray-300">{ccData.workflow_summary.current_stage}</p>
+              {ccData.workflow_summary.active_experiment_count > 0 && <p className="text-gray-500">{ccData.workflow_summary.active_experiment_count} experiments</p>}
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-600 font-mono italic">{ccData.note}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -8706,6 +8874,9 @@ export default function StrategyDetail() {
           </button>
         </div>
       </div>
+
+      {/* M64: Strategy Reliability Command Center */}
+      <CommandCenterPanel strategyId={strategy.id} />
 
       {/* M27: Strategy Health card */}
       {health && <StrategyHealthCard health={health} />}
