@@ -183,8 +183,11 @@ class TestUserRegistration:
         now = datetime.now(timezone.utc)
         # Pre-create workspace member with same email (no user_id yet).
         # WorkspaceMember.id uses UUIDPrimaryKeyMixin (Uuid as_uuid=True) — let it default.
+        # organization_id must use .hex (32-char) — the format SQLAlchemy 2.0 stores
+        # Uuid(as_uuid=True) columns as on SQLite, which _link_or_create_member now
+        # also uses to avoid FK constraint failures.
         pre_member = WorkspaceMember(
-            organization_id=str(organization.id),
+            organization_id=organization.id.hex,
             display_name="Pre-existing Member",
             email=email,
             role="admin",
@@ -324,3 +327,169 @@ class TestAuthHelpers:
         assert resp.status_code == 200
         data = resp.json()
         assert data["has_users"] is True
+
+
+# ---------------------------------------------------------------------------
+# TestRegistrationFKFix — regression for M68/M71 FK bug
+# ---------------------------------------------------------------------------
+# Root cause: organizations.id in the real quantfidelity.db was stored as
+# 32-char hex (no hyphens) by the legacy seed, but _link_or_create_member used
+# str(org.id) which returns 36-char hyphenated format.  SQLite's FK check is a
+# byte-exact string comparison, so the formats don't match → FOREIGN KEY
+# constraint failed.
+#
+# This test reproduces the exact failure mode by:
+# 1. Enabling PRAGMA foreign_keys=ON on the test engine (mimics production).
+# 2. Storing the organization ID as 32-char hex (mimics the legacy seeded DB).
+# 3. Attempting registration — must succeed, not raise IntegrityError.
+# ---------------------------------------------------------------------------
+
+from sqlalchemy import event as sa_event, text as sa_text
+
+
+@pytest.fixture()
+def fk_engine():
+    """In-memory SQLite with FK enforcement ON — mimics production DB."""
+    engine = create_engine(
+        _AUTH_DB_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    def _enable_fk(dbapi_conn, _):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+    sa_event.listen(engine, "connect", _enable_fk)
+    Base.metadata.create_all(engine)
+    yield engine
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+@pytest.fixture()
+def fk_db(fk_engine):
+    session = Session(fk_engine)
+    yield session
+    session.close()
+
+
+@pytest.fixture()
+def fk_org_32char(fk_db):
+    """Seed an organization whose id is stored as 32-char hex (no hyphens).
+
+    This reproduces the legacy quantfidelity.db format that triggered the FK
+    failure in production.
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    org_uuid = uuid.uuid4()
+    # Insert via raw SQL so the id is stored as 32-char hex — exactly as the
+    # legacy Alembic seed stored it.
+    fk_db.execute(
+        sa_text(
+            "INSERT INTO organizations (id, name, slug, created_at, updated_at) "
+            "VALUES (:id, :name, :slug, :cat, :uat)"
+        ),
+        {
+            "id": org_uuid.hex,  # 32-char hex, no hyphens
+            "name": "FK Test Org",
+            "slug": f"fk-test-{org_uuid.hex[:6]}",
+            "cat": now,
+            "uat": now,
+        },
+    )
+    fk_db.commit()
+    return org_uuid
+
+
+@pytest.fixture()
+def fk_client(fk_db, fk_org_32char):  # noqa: ARG001 — org must exist
+    def _override():
+        yield fk_db
+
+    app.dependency_overrides[get_db] = _override
+    with TestClient(app, raise_server_exceptions=True) as c:
+        yield c
+    app.dependency_overrides.pop(get_db, None)
+
+
+class TestRegistrationFKFix:
+    """Regression tests for the FOREIGN KEY constraint failure on registration.
+
+    Previously, _link_or_create_member used str(org.id) (36-char hyphenated)
+    when the real DB stored organizations.id as 32-char hex.  SQLite's FK check
+    then failed with IntegrityError: FOREIGN KEY constraint failed.
+    """
+
+    def test_register_succeeds_with_32char_org_id(self, fk_client):
+        """Registration must succeed even when org ID is stored as 32-char hex."""
+        email = f"fkfix-{uuid.uuid4().hex[:8]}@test.com"
+        resp = fk_client.post(
+            "/api/auth/register",
+            json={"email": email, "display_name": "FK Fix User", "password": "password123"},
+        )
+        assert resp.status_code == 200, (
+            f"Registration failed — likely FK mismatch: {resp.text}"
+        )
+        data = resp.json()
+        assert "access_token" in data
+
+    def test_registered_user_has_workspace_member(self, fk_client, fk_db):
+        """After registration, the user must have a linked WorkspaceMember row."""
+        email = f"fkfix2-{uuid.uuid4().hex[:8]}@test.com"
+        resp = fk_client.post(
+            "/api/auth/register",
+            json={"email": email, "display_name": "FK Fix 2", "password": "password123"},
+        )
+        assert resp.status_code == 200, resp.text
+        fk_db.expire_all()
+        member = (
+            fk_db.query(WorkspaceMember)
+            .filter(WorkspaceMember.email == email)
+            .first()
+        )
+        assert member is not None, "WorkspaceMember must be created on registration"
+        assert member.user_id is not None, "WorkspaceMember must be linked to the AuthUser"
+
+    def test_first_user_is_owner_with_32char_org(self, fk_client, fk_db):
+        """First registered user must get owner role even with 32-char org ID."""
+        email = f"fkowner-{uuid.uuid4().hex[:8]}@test.com"
+        resp = fk_client.post(
+            "/api/auth/register",
+            json={"email": email, "display_name": "FK Owner", "password": "password123"},
+        )
+        assert resp.status_code == 200, resp.text
+        fk_db.expire_all()
+        member = (
+            fk_db.query(WorkspaceMember)
+            .filter(WorkspaceMember.email == email)
+            .first()
+        )
+        assert member is not None
+        assert member.role == "owner", f"Expected owner, got {member.role}"
+
+    def test_workspace_member_org_id_matches_stored_org_id(self, fk_client, fk_db, fk_org_32char):
+        """The workspace_members.organization_id must exactly match organizations.id."""
+        email = f"fkmatch-{uuid.uuid4().hex[:8]}@test.com"
+        resp = fk_client.post(
+            "/api/auth/register",
+            json={"email": email, "display_name": "FK Match", "password": "password123"},
+        )
+        assert resp.status_code == 200, resp.text
+        fk_db.expire_all()
+
+        # Get the actual stored org ID (32-char hex)
+        row = fk_db.execute(sa_text("SELECT id FROM organizations LIMIT 1")).fetchone()
+        stored_org_id = row[0]
+
+        member = (
+            fk_db.query(WorkspaceMember)
+            .filter(WorkspaceMember.email == email)
+            .first()
+        )
+        assert member is not None
+        assert member.organization_id == stored_org_id, (
+            f"organization_id mismatch: member has {member.organization_id!r} "
+            f"but organizations.id is {stored_org_id!r}"
+        )

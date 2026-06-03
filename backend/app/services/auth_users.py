@@ -66,12 +66,35 @@ def authenticate_user(db: Session, email: str, password: str) -> AuthUser:
     return user
 
 
+def _org_id_for_member(org: Organization) -> str:
+    """Return the organization ID in the format SQLAlchemy stores it on SQLite.
+
+    Root cause of the registration FK bug
+    --------------------------------------
+    SQLAlchemy 2.0's ``Uuid(as_uuid=True)`` stores UUIDs on SQLite as a
+    32-char hex string **without hyphens** (e.g. ``0437a06aff484208...``).
+    Python's ``str(uuid.UUID(...))`` returns a 36-char hyphenated string
+    (e.g. ``0437a06a-ff48-4208-...``).  ``workspace_members.organization_id``
+    is a plain ``String`` column with a FK to ``organizations.id``.  SQLite
+    enforces FK constraints via a byte-exact string comparison, so passing
+    ``str(org.id)`` (36-char) against a 32-char stored value raises::
+
+        sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+    Using ``org.id.hex`` (32-char, no hyphens) matches the stored format and
+    fixes the constraint failure in production.  Tests use the same engine
+    and ``Uuid`` type, so ``org.id.hex`` is consistent across environments.
+    """
+    return org.id.hex  # 32-char hex, no hyphens — matches Uuid storage format
+
+
 def _link_or_create_member(db: Session, user: AuthUser) -> None:
     org = db.query(Organization).order_by(Organization.created_at).first()
     if not org:
         return
-    # WorkspaceMember.organization_id is String(36) — use str(org.id)
-    org_id_str = str(org.id)
+    # WorkspaceMember.organization_id is String(36) — use the exact stored
+    # format (32-char hex) to pass the SQLite FK constraint.
+    org_id_str = _org_id_for_member(org)
     existing_member = (
         db.query(WorkspaceMember)
         .filter(

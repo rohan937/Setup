@@ -28,6 +28,18 @@ def _default_org(db: Session) -> Organization | None:
     return db.query(Organization).order_by(Organization.created_at).first()
 
 
+def _org_id_str(org_id: uuid.UUID) -> str:
+    """Return the organization ID in the format used for ``workspace_members.organization_id``.
+
+    SQLAlchemy 2.0's ``Uuid(as_uuid=True)`` stores UUIDs on SQLite as a
+    32-char hex string (no hyphens), e.g. ``0437a06aff484208b894f6e2a425f92d``.
+    Python's ``str(uuid.UUID(...))`` returns the 36-char hyphenated form.
+    Using ``uuid.UUID.hex`` matches the stored format and avoids SQLite FK
+    constraint failures on ``workspace_members.organization_id``.
+    """
+    return org_id.hex  # 32-char hex without hyphens
+
+
 def _create_timeline_event(
     db: Session,
     org: Organization,
@@ -102,7 +114,7 @@ def get_workspace_summary(db: Session) -> dict:
     else:
         strategy_count = 0
 
-    org_id_str = str(org.id)
+    org_id_str = _org_id_str(org.id)
     member_count = (
         db.query(WorkspaceMember)
         .filter(WorkspaceMember.organization_id == org_id_str)
@@ -215,8 +227,12 @@ def update_workspace_settings(
 def get_workspace_members(
     db: Session, organization_id: str, status: str | None = None
 ) -> list[WorkspaceMember]:
+    try:
+        org_id_filter = _org_id_str(uuid.UUID(str(organization_id)))
+    except (ValueError, AttributeError):
+        org_id_filter = str(organization_id)
     q = db.query(WorkspaceMember).filter(
-        WorkspaceMember.organization_id == str(organization_id)
+        WorkspaceMember.organization_id == org_id_filter
     )
     if status is not None:
         q = q.filter(WorkspaceMember.status == status)
@@ -226,14 +242,15 @@ def get_workspace_members(
 def create_workspace_member(
     db: Session, organization_id: str, payload: dict
 ) -> WorkspaceMember:
-    import uuid as _uuid
     try:
-        org_uuid = _uuid.UUID(str(organization_id))
+        org_uuid = uuid.UUID(str(organization_id))
     except (ValueError, AttributeError):
         org_uuid = organization_id  # type: ignore[assignment]
     org = db.query(Organization).filter(Organization.id == org_uuid).first()
     if org is None:
         raise ValueError(f"Organization {organization_id} not found")
+
+    org_id_str = _org_id_str(org.id)
 
     email = payload.get("email", "")
     if not _validate_email(email):
@@ -242,7 +259,7 @@ def create_workspace_member(
     existing = (
         db.query(WorkspaceMember)
         .filter(
-            WorkspaceMember.organization_id == str(organization_id),
+            WorkspaceMember.organization_id == org_id_str,
             WorkspaceMember.email == email,
         )
         .first()
@@ -260,7 +277,7 @@ def create_workspace_member(
 
     now = datetime.now(timezone.utc)
     member = WorkspaceMember(
-        organization_id=str(organization_id),
+        organization_id=org_id_str,
         display_name=payload["display_name"],
         email=email,
         role=role,
