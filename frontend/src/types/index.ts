@@ -3796,3 +3796,46 @@ export interface StrategyReliabilityCommandCenterResponse {
   workflow_summary: CommandCenterWorkflowSummary;
   note: string;
 }
+
+// M65A - Strategy Reliability Snapshot Cache
+export type ReliabilitySnapshotStatus = "fresh" | "stale" | "error";
+
+export interface StrategyReliabilitySnapshot {
+  id: string;
+  strategy_id: string;
+  snapshot_status: ReliabilitySnapshotStatus;
+  command_status: string | null;
+  command_score: number | null;
+  readiness_verdict: string | null;
+  readiness_score: number | null;
+  robustness_verdict: string | null;
+  robustness_score: number | null;
+  freeze_recommendation: string | null;
+  freeze_risk_score: number | null;
+  freshness_status: string | null;
+  freshness_score: number | null;
+  drift_status: string | null;
+  drift_score: number | null;
+  shadow_status: string | null;
+  shadow_score: number | null;
+  open_review_case_count: number;
+  high_critical_alert_count: number;
+  latest_regression_status: string | null;
+  latest_config_policy_status: string | null;
+  latest_sla_status: string | null;
+  top_blockers_json: unknown[] | null;
+  action_queue_json: unknown[] | null;
+  subsystem_statuses_json: unknown[] | null;
+  deterministic_summary: string | null;
+  source_hash: string | null;
+  generated_at: string;
+  stale_after: string;
+  created_at: string;
+  is_stale: boolean;
+  stale_reasons: string[];
+}
+
+export interface StrategyReliabilitySnapshotListResponse {
+  items: StrategyReliabilitySnapshot[];
+  total: number;
+}

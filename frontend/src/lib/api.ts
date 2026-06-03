@@ -1445,3 +1445,31 @@ export async function getStrategyReliabilityCommandCenter(
     `/api/strategies/${strategyId}/command-center`,
   );
 }
+
+// M65A - Strategy Reliability Snapshot Cache
+export async function refreshStrategyReliabilitySnapshot(
+  strategyId: string,
+  force?: boolean
+): Promise<import("@/types").StrategyReliabilitySnapshot> {
+  const qs = force ? "?force=true" : "";
+  return request<import("@/types").StrategyReliabilitySnapshot>(
+    `/api/strategies/${strategyId}/reliability-snapshot/refresh${qs}`,
+    { method: "POST" },
+  );
+}
+
+export async function getStrategyReliabilitySnapshot(
+  strategyId: string
+): Promise<import("@/types").StrategyReliabilitySnapshot> {
+  return request<import("@/types").StrategyReliabilitySnapshot>(
+    `/api/strategies/${strategyId}/reliability-snapshot`,
+  );
+}
+
+export async function getStrategyReliabilitySnapshotHistory(
+  strategyId: string
+): Promise<import("@/types").StrategyReliabilitySnapshotListResponse> {
+  return request<import("@/types").StrategyReliabilitySnapshotListResponse>(
+    `/api/strategies/${strategyId}/reliability-snapshots`,
+  );
+}

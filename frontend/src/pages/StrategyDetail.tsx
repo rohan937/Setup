@@ -92,6 +92,7 @@ import type {
   ResearchAuditImportance,
   StrategyReliabilityCommandCenterResponse,
   CommandCenterSubsystemStatus,
+  StrategyReliabilitySnapshot,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -147,6 +148,8 @@ import {
   getStrategyProgressionFreeze,
   getStrategyResearchAuditTrail,
   getStrategyReliabilityCommandCenter,
+  refreshStrategyReliabilitySnapshot,
+  getStrategyReliabilitySnapshot,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
@@ -8343,6 +8346,147 @@ function ResearchAuditTrailPanel({ strategyId }: { strategyId: string }) {
   );
 }
 
+// M65A - Strategy Reliability Snapshot Cache
+function ReliabilitySnapshotPanel({ strategyId }: { strategyId: string }) {
+  const [snapshot, setSnapshot] = useState<StrategyReliabilitySnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    getStrategyReliabilitySnapshot(strategyId)
+      .then(setSnapshot)
+      .catch(() => {/* No snapshot yet is expected */})
+      .finally(() => setLoading(false));
+  }, [strategyId]);
+
+  const handleRefresh = async (force = false) => {
+    setRefreshing(true); setError(null);
+    try {
+      setSnapshot(await refreshStrategyReliabilitySnapshot(strategyId, force));
+    } catch (e) { setError(String(e)); }
+    finally { setRefreshing(false); }
+  };
+
+  const statusColor = (s: string | null) => {
+    if (!s) return "text-gray-500";
+    if (s === "clear" || s === "fresh") return "text-cyan-400";
+    if (s === "monitor" || s === "aging") return "text-blue-400";
+    if (s === "review" || s === "stale") return "text-amber-400";
+    if (s === "blocked" || s === "error") return "text-red-400";
+    return "text-gray-400";
+  };
+
+  const snapshotBadgeColor = snapshot?.snapshot_status === "fresh" && !snapshot?.is_stale
+    ? "border-cyan-800 text-cyan-400"
+    : snapshot?.is_stale
+    ? "border-amber-800 text-amber-400"
+    : snapshot?.snapshot_status === "error"
+    ? "border-red-800 text-red-400"
+    : "border-gray-700 text-gray-500";
+
+  return (
+    <div className="border border-gray-700 rounded-lg p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="text-xs font-mono font-semibold text-gray-300 tracking-wide uppercase">Reliability Snapshot</h3>
+          {snapshot && (
+            <span className={"text-xs font-mono border rounded px-1 " + snapshotBadgeColor}>
+              {snapshot.is_stale ? "stale" : snapshot.snapshot_status}
+            </span>
+          )}
+        </div>
+        <div className="flex gap-1">
+          <button
+            onClick={() => handleRefresh(false)}
+            disabled={refreshing}
+            className="px-2 py-1 text-xs font-mono bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 disabled:opacity-50"
+          >
+            {refreshing ? "..." : "Refresh"}
+          </button>
+          <button
+            onClick={() => handleRefresh(true)}
+            disabled={refreshing}
+            className="px-2 py-1 text-xs font-mono bg-gray-900 border border-gray-700 text-gray-400 rounded hover:bg-gray-800 disabled:opacity-50"
+            title="Force refresh ignores source hash check"
+          >
+            Force
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+
+      {!snapshot && !loading && !refreshing && (
+        <p className="text-xs text-gray-500 font-mono">No cached snapshot. Click Refresh to create one.</p>
+      )}
+
+      {snapshot && (
+        <div className="space-y-2">
+          {/* Status chips row */}
+          <div className="flex flex-wrap gap-1.5 text-xs font-mono">
+            {snapshot.command_status && (
+              <span className={"px-1.5 rounded bg-gray-800 " + statusColor(snapshot.command_status)}>
+                {snapshot.command_status.replace(/_/g, " ")}
+                {snapshot.command_score != null ? " " + snapshot.command_score.toFixed(0) : ""}
+              </span>
+            )}
+            {snapshot.readiness_verdict && (
+              <span className="px-1.5 rounded bg-gray-800 text-gray-400 truncate max-w-32" title={snapshot.readiness_verdict}>
+                R: {snapshot.readiness_score?.toFixed(0) ?? "—"}
+              </span>
+            )}
+            {snapshot.freshness_status && (
+              <span className={"px-1.5 rounded bg-gray-800 " + statusColor(snapshot.freshness_status)}>
+                F: {snapshot.freshness_status}
+              </span>
+            )}
+            {snapshot.open_review_case_count > 0 && (
+              <span className="px-1.5 rounded bg-amber-900/30 text-amber-400">{snapshot.open_review_case_count} cases</span>
+            )}
+            {snapshot.high_critical_alert_count > 0 && (
+              <span className="px-1.5 rounded bg-red-900/30 text-red-400">{snapshot.high_critical_alert_count} alerts</span>
+            )}
+          </div>
+
+          {/* Stale warning */}
+          {snapshot.is_stale && snapshot.stale_reasons.length > 0 && (
+            <div className="text-xs font-mono text-amber-400">
+              Stale: {snapshot.stale_reasons[0]}
+            </div>
+          )}
+
+          {/* Summary */}
+          {snapshot.deterministic_summary && (
+            <p className="text-xs font-mono text-gray-500 leading-relaxed">{snapshot.deterministic_summary}</p>
+          )}
+
+          {/* Top blockers mini list */}
+          {snapshot.top_blockers_json && Array.isArray(snapshot.top_blockers_json) && snapshot.top_blockers_json.length > 0 && (
+            <div className="text-xs font-mono space-y-0.5">
+              {(snapshot.top_blockers_json as any[]).slice(0, 3).map((b: any, i: number) => (
+                <div key={i} className="flex items-center gap-1.5 text-gray-500">
+                  <span className="text-red-500">&#9658;</span>
+                  <span className="text-gray-400">{b.title || b.blocker_key || "blocker"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Timestamp / hash */}
+          <div className="flex items-center gap-3 text-xs font-mono text-gray-600">
+            <span>{new Date(snapshot.generated_at).toLocaleString()}</span>
+            {snapshot.source_hash && (
+              <span className="font-mono"># {snapshot.source_hash}</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // M64 - Strategy Reliability Command Center
 function CommandCenterPanel({ strategyId }: { strategyId: string }) {
   const [ccData, setCcData] = useState<StrategyReliabilityCommandCenterResponse | null>(null);
@@ -8877,6 +9021,9 @@ export default function StrategyDetail() {
 
       {/* M64: Strategy Reliability Command Center */}
       <CommandCenterPanel strategyId={strategy.id} />
+
+      {/* M65A: Strategy Reliability Snapshot Cache */}
+      <ReliabilitySnapshotPanel strategyId={strategy.id} />
 
       {/* M27: Strategy Health card */}
       {health && <StrategyHealthCard health={health} />}

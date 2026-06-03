@@ -161,7 +161,50 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M64: Strategy Reliability Command Center
+## Current milestone — M65A: Strategy Reliability Snapshot Cache v1
+
+**Status:** complete — *M65A is a pre-deployment performance bridge. The M65 deployment readiness arc begins next.*
+
+### What was built
+- Migration `0023_m65a_reliability_snapshots.py` — 1 new table: `strategy_reliability_snapshots` (24 columns including command/readiness/robustness/freeze/freshness/drift/shadow scores, top blockers, action queue, source hash, stale_after)
+- ORM model: `StrategyReliabilitySnapshot`
+- Service `reliability_snapshots.py` — 4 functions: `refresh_strategy_reliability_snapshot()` (dedup via source_hash, degrades gracefully if M64 fails), `get_latest_strategy_reliability_snapshot()`, `get_strategy_reliability_snapshot_history()`, `is_snapshot_stale()` (5 staleness checks)
+- Source hash: SHA-256 over latest run/audit/alert/review-case/timeline timestamps — no new snapshot if hash unchanged and not stale
+- Staleness detection: age (>24h), new timeline events, new runs, new/updated alerts, updated review cases
+- Schemas `reliability_snapshot.py` — 2 schemas
+- New router `api/routes/reliability_snapshots.py` — 3 endpoints
+- `EventType.reliability_snapshot_refreshed`
+- Frontend: 2 new types, 3 new API functions, `ReliabilitySnapshotPanel` with auto-load, refresh/force-refresh buttons, stale badge, status chips
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /api/strategies/{id}/reliability-snapshot/refresh | Refresh or reuse snapshot (source hash check) |
+| GET | /api/strategies/{id}/reliability-snapshot | Get latest cached snapshot |
+| GET | /api/strategies/{id}/reliability-snapshots | Get snapshot history |
+
+### Snapshot behavior
+- **Deduplication**: If source_hash unchanged and snapshot not stale → returns existing snapshot without calling M64 command center
+- **Staleness (5 checks)**: age > 24h, new timeline event, new run, new/updated alert, updated review case
+- **Error snapshot**: If M64 command center fails, creates snapshot_status="error" with safe summary instead of crashing
+
+### Language constraints
+"Snapshot," "cached reliability state," "stale/fresh" — never "production certified," "guaranteed," "approved."
+
+### Deployment note
+**M65 deployment readiness arc begins next.** M65A completes the pre-deployment performance bridge.
+
+### What M65A does not build
+- Redis or external cache
+- Background scheduler / async workers
+- Deployment files (Render, Vercel, production DB)
+- Live polling or real-time invalidation
+
+**Tests:** 19 new M65A tests, backend total 1712 passed, 1 skipped, zero TypeScript errors, clean build 876ms.
+
+---
+
+## Previously completed — M64: Strategy Reliability Command Center
 
 **Status:** complete
 
@@ -217,7 +260,7 @@ M64 is the final advanced platform feature milestone. M65 begins the deployment 
 - Broker or execution integration of any kind
 
 - **20 new backend M64 tests** (`tests/test_reliability_command_center_m64.py`). All 20 passed on first run. No fixes needed.
-- **Backend total: 1693 passed, 1 skipped.**
+- **Backend total: 1712 passed, 1 skipped.**
 - **Zero TypeScript errors**, clean production build (Vite built in 954ms, 64 modules, 678.40 kB). One non-blocking chunk-size advisory warning (pre-existing).
 - No external APIs. Deterministic. Not investment advice.
 
