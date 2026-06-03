@@ -161,9 +161,54 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M65A: Strategy Reliability Snapshot Cache v1
+## Current milestone — M65: Deployment Readiness Checklist
 
-**Status:** complete — *M65A is a pre-deployment performance bridge. The M65 deployment readiness arc begins next.*
+**Status:** complete — *M65 begins the deployment readiness arc.*
+
+### What was built
+- Service `services/deployment_readiness.py` — read-only, no new DB tables. Runs 7 check categories across repo structure, backend, frontend, SDK/CI, database/demo, security/config, and deployment blockers.
+- Schemas `schemas/deployment_readiness.py` — 3 schemas: `DeploymentReadinessCheck`, `DeploymentReadinessReport`, `DeploymentReadinessResponse`.
+- Endpoint `GET /api/admin/deployment-readiness` added to the admin router.
+- Readiness score 0–100 computed from weighted check results across all categories.
+- Documentation `docs/deployment-readiness.md` — environment variable reference, pre-deployment command checklist, secrets checklist, CORS configuration note, next milestones table.
+- Frontend `DeploymentReadiness` page at `/admin/deployment-readiness` — renders overall readiness status, score, category breakdown, per-check results with severity badges.
+- `AdminSystemHealth` page links to the new deployment readiness page.
+
+### API endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/admin/deployment-readiness | Run all deployment readiness checks and return scored report |
+
+### 7 check categories
+| Category | Checks |
+|----------|--------|
+| Repository hygiene | gitignore, .env exclusion, docs dir, scripts dir |
+| Backend structure | main.py, config, router, Alembic migrations, admin routes, services |
+| Frontend structure | package.json, vite.config, pages dir, API client |
+| SDK/CI readiness | quantfidelity package, CLI, tests, examples, GitHub Actions workflow |
+| Database/demo readiness | migrations applied, demo seed endpoint, system health service |
+| Security/config | .env.example, API key foundation, CORS middleware, no secrets in code |
+| Deployment blockers | manual checklist items for M66+ (Render, Vercel, production DB, HTTPS, monitoring) |
+
+### Readiness status levels
+- `local_demo_ready` — core local demo structure passes; manual deployment checks remain
+- `deployment_prep_ready` — score >= 85, no high/critical failures; ready to start M66
+- `needs_review` — score < 75 or high-severity failures; resolve before M66
+- `blocked` — critical failure detected
+
+### Language constraints
+"Checks readiness only — does not deploy anything." Never "deploys," "provisions," "pushes code," or "configures production."
+
+### Next milestone
+M66: Backend Deployment Prep (Render service, PostgreSQL, migrations, health checks)
+
+**Tests:** 28 new M65 tests (`tests/test_deployment_readiness_m65.py`), all 28 passed on first run. No fixes needed. Backend total 1740 passed, 1 skipped, zero TypeScript errors, clean build 895ms.
+
+---
+
+## Previously completed — M65A: Strategy Reliability Snapshot Cache v1
+
+**Status:** complete — *M65A is a pre-deployment performance bridge.*
 
 ### What was built
 - Migration `0023_m65a_reliability_snapshots.py` — 1 new table: `strategy_reliability_snapshots` (24 columns including command/readiness/robustness/freeze/freshness/drift/shadow scores, top blockers, action queue, source hash, stale_after)
@@ -192,7 +237,7 @@ the backend alongside the frontend to see it connected.
 "Snapshot," "cached reliability state," "stale/fresh" — never "production certified," "guaranteed," "approved."
 
 ### Deployment note
-**M65 deployment readiness arc begins next.** M65A completes the pre-deployment performance bridge.
+M65A completes the pre-deployment performance bridge. M65 (deployment readiness checklist) follows.
 
 ### What M65A does not build
 - Redis or external cache

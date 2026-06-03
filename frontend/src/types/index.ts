@@ -3839,3 +3839,45 @@ export interface StrategyReliabilitySnapshotListResponse {
   items: StrategyReliabilitySnapshot[];
   total: number;
 }
+
+// M65 - Deployment Readiness
+export type DeploymentReadinessStatus = "local_demo_ready" | "deployment_prep_ready" | "needs_review" | "blocked";
+
+export interface DeploymentReadinessCheck {
+  check_key: string;
+  title: string;
+  category: string;
+  status: "pass" | "warning" | "fail" | "manual" | "not_applicable";
+  severity: "info" | "low" | "medium" | "high" | "critical";
+  observed_value: string | null;
+  expected_value: string | null;
+  explanation: string;
+  suggested_action: string | null;
+}
+
+export interface DeploymentReadinessCategory {
+  category_key: string;
+  title: string;
+  status: "pass" | "warning" | "fail" | "manual";
+  pass_count: number;
+  warning_count: number;
+  fail_count: number;
+  manual_count: number;
+  checks: DeploymentReadinessCheck[];
+}
+
+export interface DeploymentReadinessResponse {
+  generated_at: string;
+  overall_status: DeploymentReadinessStatus;
+  readiness_score: number;
+  pass_count: number;
+  warning_count: number;
+  fail_count: number;
+  manual_count: number;
+  blocker_count: number;
+  categories: DeploymentReadinessCategory[];
+  blockers: string[];
+  warnings: string[];
+  suggested_next_steps: string[];
+  deterministic_summary: string;
+}

@@ -1473,3 +1473,10 @@ export async function getStrategyReliabilitySnapshotHistory(
     `/api/strategies/${strategyId}/reliability-snapshots`,
   );
 }
+
+// M65 - Deployment Readiness
+export async function getDeploymentReadiness(): Promise<import("@/types").DeploymentReadinessResponse> {
+  return request<import("@/types").DeploymentReadinessResponse>(
+    "/api/admin/deployment-readiness",
+  );
+}

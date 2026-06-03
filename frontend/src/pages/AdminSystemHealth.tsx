@@ -654,6 +654,20 @@ export default function AdminSystemHealth() {
         </div>
       )}
 
+      {/* Deployment Readiness */}
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-3 flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <p className="caption">Deployment Readiness</p>
+          <p className="font-mono text-2xs text-text-muted">M66 backend deployment prep begins next</p>
+        </div>
+        <Link
+          to="/admin/deployment-readiness"
+          className="font-mono text-2xs text-accent-500 hover:text-accent-400 transition-colors shrink-0"
+        >
+          View checks →
+        </Link>
+      </div>
+
       {/* Footer note */}
       <p className="font-mono text-2xs text-text-muted pb-2">
         This is a deterministic system overview. Not for external reporting.

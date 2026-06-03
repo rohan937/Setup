@@ -22,6 +22,11 @@ from app.schemas.system_health import (
     SystemStrategyHealthRollup,
 )
 from app.schemas.demo_seed import DemoSeedRequest, DemoSeedResponse, DemoStatusResponse
+from app.schemas.deployment_readiness import (
+    DeploymentReadinessCheck,
+    DeploymentReadinessCategory,
+    DeploymentReadinessResponse,
+)
 
 router = APIRouter(tags=["admin"])
 
@@ -173,3 +178,66 @@ def demo_status_endpoint(db: Session = Depends(get_db)) -> DemoStatusResponse:
 
     result = get_demo_status(db)
     return DemoStatusResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# M65: Deployment Readiness Checklist
+# ---------------------------------------------------------------------------
+
+
+@router.get("/admin/deployment-readiness", response_model=DeploymentReadinessResponse)
+def deployment_readiness_endpoint(
+    db: Session = Depends(get_db),
+) -> DeploymentReadinessResponse:
+    """Return a structured deployment readiness checklist.
+
+    Read-only — no database writes occur. Inspects repository structure,
+    configuration files, and service availability to produce a scored
+    checklist across seven categories.
+    """
+    from app.services.deployment_readiness import get_deployment_readiness
+
+    data = get_deployment_readiness(db)
+
+    categories = [
+        DeploymentReadinessCategory(
+            category_key=cat.category_key,
+            title=cat.title,
+            status=cat.status,
+            pass_count=cat.pass_count,
+            warning_count=cat.warning_count,
+            fail_count=cat.fail_count,
+            manual_count=cat.manual_count,
+            checks=[
+                DeploymentReadinessCheck(
+                    check_key=c.check_key,
+                    title=c.title,
+                    category=c.category,
+                    status=c.status,
+                    severity=c.severity,
+                    observed_value=c.observed_value,
+                    expected_value=c.expected_value,
+                    explanation=c.explanation,
+                    suggested_action=c.suggested_action,
+                )
+                for c in cat.checks
+            ],
+        )
+        for cat in data.categories
+    ]
+
+    return DeploymentReadinessResponse(
+        generated_at=data.generated_at,
+        overall_status=data.overall_status,
+        readiness_score=data.readiness_score,
+        pass_count=data.pass_count,
+        warning_count=data.warning_count,
+        fail_count=data.fail_count,
+        manual_count=data.manual_count,
+        blocker_count=data.blocker_count,
+        categories=categories,
+        blockers=data.blockers,
+        warnings=data.warnings,
+        suggested_next_steps=data.suggested_next_steps,
+        deterministic_summary=data.deterministic_summary,
+    )
