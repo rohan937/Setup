@@ -161,7 +161,90 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M69: RBAC + Workspace/Project Access Control
+## Current milestone — M70: Backend Deployment Prep / Render + PostgreSQL Readiness
+
+**Status:** complete — *M70 prepares the QuantFidelity backend for a Render + PostgreSQL deployment without actually deploying. Scripts, config hardening, a deployment health endpoint, and Render blueprint docs are all in place.*
+
+### What was built
+
+**Backend config (`backend/app/core/config.py`)**
+- `QF_ENVIRONMENT` (`local`/`staging`/`production`) and `QF_LOG_LEVEL` settings added.
+- `postgres://` → `postgresql://` URL auto-normalisation for Render compatibility (`field_validator`).
+- `is_production`, `jwt_secret_is_dev_default`, `production_jwt_secret_unsafe` computed properties.
+- Dev-default JWT secret is now flagged explicitly so operators cannot accidentally run production with it.
+
+**requirements.txt** — added `psycopg2-binary>=2.9.0` (PostgreSQL driver).
+
+**`.env.example`** — updated with production notes, PostgreSQL URL examples, JWT secret generation command, CORS production guidance.
+
+**Scripts**
+- `scripts/backend_migrate.sh` — runs `alembic upgrade head`; use as Render pre-deploy command.
+- `scripts/backend_start.sh` — starts uvicorn; honours `PORT` env var (required by Render).
+- Both scripts are executable and syntax-validated.
+
+**`GET /api/health/deployment`**
+- New deployment configuration health endpoint (never exposes secrets).
+- Returns: `database_configured`, `database_reachable`, `database_driver`, `auth_enabled`, `rbac_enabled`, `cors_configured`, `jwt_secret_safe`, `production_warnings`.
+- `production_warnings` lists operator actions needed when `QF_ENVIRONMENT=production` with unsafe config.
+
+**Deployment readiness (`backend/app/services/deployment_readiness.py`)**
+- New `render_deployment` category with 9 M70 checks: migrate/start scripts, Render docs, psycopg2, deployment health endpoint, PostgreSQL URL format, JWT secret documentation.
+- Updated `deployment_blockers` to replace stale M66 reference with M71 frontend prep and production JWT secret blocker.
+
+**Docs**
+- `docs/render-backend.md` — complete Render Web Service setup guide with env var table, step-by-step instructions, security checklist, and local validation commands.
+- `render.yaml.example` — annotated Render blueprint with placeholder values (do not use without editing).
+- `docs/deployment-readiness.md` — updated with M70 checklist, Render commands, and security defaults table.
+
+### Deployment health endpoint
+
+```bash
+# Local
+curl http://localhost:8000/api/health/deployment | python3 -m json.tool
+
+# Expected healthy production response
+{
+  "status": "ok",
+  "environment": "production",
+  "database_configured": true,
+  "database_reachable": true,
+  "database_driver": "postgresql",
+  "auth_enabled": true,
+  "rbac_enabled": true,
+  "cors_configured": true,
+  "jwt_secret_safe": true,
+  "production_warnings": []
+}
+```
+
+### Render deployment summary
+
+| Item | Value |
+|------|-------|
+| Build command | `pip install -r requirements.txt` |
+| Pre-deploy command | `bash ../scripts/backend_migrate.sh` |
+| Start command | `bash ../scripts/backend_start.sh` |
+| Health check path | `/health` |
+| Deployment health | `/api/health/deployment` |
+
+See `docs/render-backend.md` for the full guide.
+
+### Security notes
+
+- Set `QF_JWT_SECRET_KEY` to a strong random secret before deploying.
+- Set `QF_DATABASE_URL` to a PostgreSQL URL (Render internal URL is auto-normalised from `postgres://`).
+- Set `QF_CORS_ORIGINS` to the exact Vercel frontend origin — no wildcards.
+- Set `QF_DEBUG=false`, `QF_ENVIRONMENT=production`.
+- Actual deployment is NOT performed in M70 — that comes after M71 frontend prep.
+
+### Next milestones
+- M71: Frontend Deployment Prep / Vercel Readiness
+
+**Tests:** 37 new M70 backend tests (`tests/test_deployment_m70.py`) — all 37 passed. M65 deployment readiness tests updated (+1 new category). Full targeted suite: 108 tests passing (M70 + M65 + M68 + M69 + workspace + API keys). Zero TypeScript errors, clean production build.
+
+---
+
+## Previously completed — M69: RBAC + Workspace/Project Access Control
 
 **Status:** complete — *M69 adds a role-based access-control foundation on top of the M67 workspace members and M68 users/auth. Workspace, member, API-key, and admin endpoints are role-gated, a representative set of research-write endpoints requires member-or-above, and the frontend hides/disables actions the signed-in role cannot perform.*
 

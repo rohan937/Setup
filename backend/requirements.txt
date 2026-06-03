@@ -7,3 +7,7 @@ sqlalchemy==2.0.36
 alembic==1.14.0
 pytest==8.3.4
 pyjwt>=2.8.0
+# M70: PostgreSQL driver for production (Render + PostgreSQL).
+# psycopg2-binary is the pre-compiled wheel; install psycopg2 (no -binary) if
+# you prefer to compile from source (required on some Linux ARM targets).
+psycopg2-binary>=2.9.0

@@ -896,6 +896,167 @@ def _check_security_config_readiness() -> ReadinessCategoryData:
     return _build_category("security_config", "Security & Configuration", checks)
 
 
+def _check_render_deployment_prep() -> ReadinessCategoryData:
+    """M70: checks for Render + PostgreSQL deployment readiness artifacts."""
+    checks: list[ReadinessCheckData] = []
+
+    # Migrate script
+    migrate_sh = os.path.join(SCRIPTS_DIR, "backend_migrate.sh")
+    migrate_exists = _file_exists(migrate_sh)
+    checks.append(_check(
+        "backend_migrate_sh_exists",
+        "scripts/backend_migrate.sh exists",
+        "render_deployment",
+        migrate_exists,
+        severity="high",
+        pass_explanation="Migration script present — use as Render pre-deploy command.",
+        fail_explanation="scripts/backend_migrate.sh is missing.",
+        suggested_action="Create scripts/backend_migrate.sh that runs `alembic upgrade head`.",
+    ))
+    if migrate_exists:
+        executable = os.access(migrate_sh, os.X_OK)
+        checks.append(_check(
+            "backend_migrate_sh_executable",
+            "scripts/backend_migrate.sh is executable",
+            "render_deployment",
+            executable,
+            severity="medium",
+            pass_explanation="Migration script is executable.",
+            fail_explanation="scripts/backend_migrate.sh is not executable.",
+            suggested_action="Run: chmod +x scripts/backend_migrate.sh",
+        ))
+
+    # Start script
+    start_sh = os.path.join(SCRIPTS_DIR, "backend_start.sh")
+    start_exists = _file_exists(start_sh)
+    checks.append(_check(
+        "backend_start_sh_exists",
+        "scripts/backend_start.sh exists",
+        "render_deployment",
+        start_exists,
+        severity="high",
+        pass_explanation="Start script present — use as Render start command.",
+        fail_explanation="scripts/backend_start.sh is missing.",
+        suggested_action="Create scripts/backend_start.sh that runs uvicorn.",
+    ))
+    if start_exists:
+        executable = os.access(start_sh, os.X_OK)
+        checks.append(_check(
+            "backend_start_sh_executable",
+            "scripts/backend_start.sh is executable",
+            "render_deployment",
+            executable,
+            severity="medium",
+            pass_explanation="Start script is executable.",
+            fail_explanation="scripts/backend_start.sh is not executable.",
+            suggested_action="Run: chmod +x scripts/backend_start.sh",
+        ))
+
+    # Render docs
+    render_docs = os.path.join(DOCS_DIR, "render-backend.md")
+    checks.append(_check(
+        "render_backend_docs_exist",
+        "docs/render-backend.md exists",
+        "render_deployment",
+        _file_exists(render_docs),
+        severity="medium",
+        pass_explanation="Render deployment guide is present.",
+        fail_explanation="docs/render-backend.md is missing.",
+        suggested_action="Create docs/render-backend.md with Render deployment instructions.",
+    ))
+
+    # render.yaml.example
+    render_yaml = os.path.join(BASE_DIR, "render.yaml.example")
+    checks.append(_check(
+        "render_yaml_example_exists",
+        "render.yaml.example exists",
+        "render_deployment",
+        _file_exists(render_yaml),
+        severity="low",
+        pass_explanation="render.yaml.example is present.",
+        fail_explanation="render.yaml.example is missing (optional but helpful).",
+        suggested_action="Create render.yaml.example with placeholder Render blueprint config.",
+    ))
+
+    # PostgreSQL driver documented / present in requirements
+    requirements_path = os.path.join(BACKEND_DIR, "requirements.txt")
+    req_content = ""
+    if _file_exists(requirements_path):
+        try:
+            with open(requirements_path) as fh:
+                req_content = fh.read()
+        except Exception:
+            req_content = ""
+    psycopg_present = "psycopg2" in req_content or "psycopg" in req_content
+    checks.append(_check(
+        "psycopg2_in_requirements",
+        "psycopg2 (PostgreSQL driver) in requirements.txt",
+        "render_deployment",
+        psycopg_present,
+        severity="high",
+        pass_explanation="PostgreSQL driver (psycopg2) is listed in requirements.txt.",
+        fail_explanation="psycopg2-binary is not in requirements.txt — PostgreSQL connections will fail.",
+        suggested_action="Add psycopg2-binary>=2.9.0 to backend/requirements.txt.",
+    ))
+
+    # Deployment health endpoint (GET /api/health/deployment)
+    health_route = os.path.join(BACKEND_DIR, "app", "api", "routes", "health.py")
+    health_content = ""
+    if _file_exists(health_route):
+        try:
+            with open(health_route) as fh:
+                health_content = fh.read()
+        except Exception:
+            health_content = ""
+    deployment_health_endpoint = "health/deployment" in health_content
+    checks.append(_check(
+        "deployment_health_endpoint_exists",
+        "GET /api/health/deployment endpoint exists",
+        "render_deployment",
+        deployment_health_endpoint,
+        severity="medium",
+        pass_explanation="Deployment health endpoint is present.",
+        fail_explanation="Deployment health endpoint (GET /api/health/deployment) not found in health routes.",
+        suggested_action="Add the /api/health/deployment endpoint to backend/app/api/routes/health.py.",
+    ))
+
+    # postgres:// URL normalization documented in config or env example
+    env_example_path = os.path.join(BACKEND_DIR, ".env.example")
+    env_example_content = ""
+    if _file_exists(env_example_path):
+        try:
+            with open(env_example_path) as fh:
+                env_example_content = fh.read()
+        except Exception:
+            env_example_content = ""
+    postgres_url_documented = "postgres://" in env_example_content or "postgresql" in env_example_content
+    checks.append(_check(
+        "postgres_url_documented",
+        "PostgreSQL URL format documented in .env.example",
+        "render_deployment",
+        postgres_url_documented,
+        severity="medium",
+        pass_explanation="PostgreSQL URL format is documented in .env.example.",
+        fail_explanation="PostgreSQL URL format not found in backend/.env.example.",
+        suggested_action="Add a PostgreSQL URL example to backend/.env.example.",
+    ))
+
+    # JWT secret safety note documented
+    jwt_documented = "QF_JWT_SECRET_KEY" in env_example_content
+    checks.append(_check(
+        "jwt_secret_documented",
+        "QF_JWT_SECRET_KEY documented in .env.example",
+        "render_deployment",
+        jwt_documented,
+        severity="medium",
+        pass_explanation="QF_JWT_SECRET_KEY is documented in .env.example.",
+        fail_explanation="QF_JWT_SECRET_KEY not found in backend/.env.example.",
+        suggested_action="Document QF_JWT_SECRET_KEY in backend/.env.example with a security note.",
+    ))
+
+    return _build_category("render_deployment", "Render / PostgreSQL Deployment Prep (M70)", checks)
+
+
 def _check_deployment_blockers() -> ReadinessCategoryData:
     checks: list[ReadinessCheckData] = []
 
@@ -985,12 +1146,21 @@ def _check_deployment_blockers() -> ReadinessCategoryData:
     ))
 
     checks.append(_manual(
-        "blocker_m66_backend_deployment_prep",
-        "M66 Backend deployment prep: start after M65",
+        "blocker_m71_frontend_deployment_prep",
+        "M71 Frontend deployment prep: Vercel project not created yet",
         "deployment_blockers",
-        "M66 (Backend Deployment Prep) should begin after M65 is complete. It covers Dockerfile, "
-        "health check endpoints, and platform-specific configuration.",
+        "M71 (Frontend Deployment Prep) covers Vercel project setup, environment variables, "
+        "and connecting the frontend to the production backend URL.",
         severity="medium",
+    ))
+
+    checks.append(_manual(
+        "blocker_prod_jwt_secret_not_set",
+        "Production QF_JWT_SECRET_KEY not set to a strong secret",
+        "deployment_blockers",
+        "Set QF_JWT_SECRET_KEY to a long random secret on Render before serving real users. "
+        "Generate with: python3 -c \"import secrets; print(secrets.token_hex(32))\"",
+        severity="critical",
     ))
 
     return _build_category("deployment_blockers", "Deployment Blockers", checks)
@@ -1061,6 +1231,7 @@ def get_deployment_readiness(db: Session) -> DeploymentReadinessData:
         _check_sdk_ci_readiness(),
         _check_database_demo_readiness(),
         _check_security_config_readiness(),
+        _check_render_deployment_prep(),
         _check_deployment_blockers(),
     ]
 

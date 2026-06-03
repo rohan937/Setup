@@ -1,0 +1,67 @@
+# render.yaml.example — QuantFidelity Render blueprint example.
+#
+# This is an EXAMPLE ONLY. Do NOT rename to render.yaml without first:
+#   1. Creating a Render PostgreSQL service and noting its internal URL.
+#   2. Replacing ALL <PLACEHOLDER> values with real values.
+#   3. Reviewing the security checklist in docs/render-backend.md.
+#
+# Never commit real secrets. Set environment variables via the Render dashboard.
+#
+# Reference: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: quantfidelity-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: bash ../scripts/backend_migrate.sh
+    startCommand: bash ../scripts/backend_start.sh
+    healthCheckPath: /health
+    envVars:
+      - key: QF_ENVIRONMENT
+        value: production
+
+      # Set QF_DATABASE_URL from the Render PostgreSQL instance's Internal URL.
+      # Render provides postgres:// URLs — they are auto-normalised to postgresql://.
+      # Use fromDatabase to bind automatically:
+      - key: QF_DATABASE_URL
+        fromDatabase:
+          name: quantfidelity-db
+          property: connectionString
+
+      # Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
+      # Set via Render dashboard environment variables — never commit the real value.
+      - key: QF_JWT_SECRET_KEY
+        sync: false   # prompts for manual entry in the Render dashboard
+
+      # Set to your exact Vercel frontend URL (no wildcard).
+      - key: QF_CORS_ORIGINS
+        value: https://<YOUR_FRONTEND>.vercel.app   # replace before use
+
+      - key: QF_DEBUG
+        value: "false"
+
+      - key: QF_AUTH_ENABLED
+        value: "true"
+
+      - key: QF_RBAC_ENABLED
+        value: "true"
+
+      - key: QF_REQUIRE_API_KEY_FOR_INGESTION
+        value: "true"
+
+      - key: QF_API_KEY_ENV
+        value: live
+
+      - key: QF_LOG_LEVEL
+        value: info
+
+      - key: QF_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+
+databases:
+  - name: quantfidelity-db
+    databaseName: quantfidelity
+    user: qf
+    plan: free   # upgrade before production traffic
