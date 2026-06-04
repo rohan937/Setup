@@ -327,7 +327,10 @@ export default function EvidenceBundleUploader({
         <p className="text-sm text-text-secondary">
           Drag &amp; drop a <span className="font-mono text-text-primary">.json</span> bundle here
         </p>
-        <p className="mt-1 text-2xs text-text-muted">JSON only · max 1 MB</p>
+        <p className="mt-1 text-2xs text-text-muted">
+          JSON only · max 1 MB · Two ways to add evidence: upload a bundle here, or ingest
+          automatically from your pipeline with the SDK / CI.
+        </p>
         <div className="mt-4 flex items-center justify-center gap-2">
           <Button size="sm" variant="secondary" onClick={() => fileInputRef.current?.click()}>
             Choose file

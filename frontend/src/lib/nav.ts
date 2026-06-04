@@ -2,7 +2,8 @@ import type { NavItem } from "@/types";
 
 export const navItems: NavItem[] = [
   // Overview
-  { label: "Dashboard",          path: "/",                section: "Overview" },
+  { label: "Home",               path: "/",                section: "Overview" },
+  { label: "Dashboard",          path: "/dashboard",       section: "Overview" },
   { label: "Portfolio",          path: "/portfolio",       section: "Overview" },
   { label: "Command Center",     path: "/command-center",  section: "Overview" },
   // Research

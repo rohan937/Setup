@@ -163,6 +163,7 @@ import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import EvidenceBundleUploader from "@/components/EvidenceBundleUploader";
 import EvidenceRepairModal from "@/components/EvidenceRepairModal";
 import StrategyLifecycleBar from "@/components/StrategyLifecycleBar";
+import PanelEmptyState from "@/components/PanelEmptyState";
 import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
@@ -4849,7 +4850,13 @@ function shadowDirectionIcon(direction: string): string {
   }
 }
 
-function ShadowMonitorPanel({ monitor }: { monitor: StrategyShadowMonitorResponse }) {
+function ShadowMonitorPanel({
+  monitor,
+  onGoDeveloper,
+}: {
+  monitor: StrategyShadowMonitorResponse;
+  onGoDeveloper: () => void;
+}) {
   const [checksExpanded, setChecksExpanded] = useState(false);
   const [metricsExpanded, setMetricsExpanded] = useState(false);
   const [evidenceExpanded, setEvidenceExpanded] = useState(false);
@@ -4903,15 +4910,14 @@ function ShadowMonitorPanel({ monitor }: { monitor: StrategyShadowMonitorRespons
 
       {/* B: No shadow runs */}
       {monitor.monitor_status === "no_shadow_runs" && (
-        <div className="rounded border border-border bg-bg-700 px-4 py-4 space-y-1">
-          <p className="font-mono text-xs font-semibold text-text-secondary">No paper or live-like run logged.</p>
-          <p className="font-mono text-2xs text-text-muted">
-            Log a paper or live-like run through the SDK to enable shadow monitoring.
-          </p>
-          <p className="mt-2 font-mono text-2xs text-text-muted bg-bg-900 rounded px-2 py-1 inline-block">
-            --run-type paper
-          </p>
-        </div>
+        <PanelEmptyState
+          title="No paper or live-like run yet"
+          description="Shadow monitoring compares a paper (or live-like) run against the backtest to see whether real-world behavior matches expectations. Upload a paper-run bundle to enable it."
+          note="Use the Developer tab uploader, or ingest a bundle with the SDK using --run-type paper."
+          actions={[
+            { label: "Go to Developer tab", onClick: onGoDeveloper, primary: true },
+          ]}
+        />
       )}
 
       {/* C: Insufficient baseline */}
@@ -5706,16 +5712,20 @@ function RegressionTestPanel({
       </h3>
 
       {tests.length === 0 ? (
-        <div className="flex items-center gap-3">
-          <p className="font-mono text-2xs text-text-muted">No regression tests defined.</p>
-          <button
-            onClick={onSetupDefaults}
-            disabled={loading}
-            className="rounded bg-accent px-2 py-1 font-mono text-2xs text-white hover:bg-accent/80 disabled:opacity-50"
-          >
-            {loading ? "Creating…" : "Create Default Tests"}
-          </button>
-        </div>
+        <PanelEmptyState
+          title="No regression tests yet"
+          description="Regression tests catch metric and trust deterioration between runs — they compare a new run against a baseline and flag when Sharpe, drawdown, turnover, or trust scores slip."
+          note="Start with the recommended defaults, then tune thresholds per strategy."
+          needsWrite
+          actions={[
+            {
+              label: "Create default tests",
+              onClick: onSetupDefaults,
+              primary: true,
+              loading,
+            },
+          ]}
+        />
       ) : (
         <>
           {/* Summary row */}
@@ -5975,18 +5985,20 @@ function ConfigPolicyPanel({
 
       {/* Setup */}
       {configPolicies.length === 0 ? (
-        <div className="space-y-2">
-          <p className="text-xs text-gray-400 font-mono">
-            No config policies defined. Create default assumption guardrails to evaluate config snapshots.
-          </p>
-          <button
-            onClick={handleCreateDefault}
-            disabled={loading}
-            className="px-3 py-1.5 text-xs font-mono bg-cyan-900/30 border border-cyan-700 text-cyan-300 rounded hover:bg-cyan-900/50 disabled:opacity-50"
-          >
-            {loading ? "Creating…" : "Create Default Guardrails"}
-          </button>
-        </div>
+        <PanelEmptyState
+          title="No config guardrails yet"
+          description="Guardrails check that a strategy's assumptions are realistic — transaction costs, fill model, leverage, borrow/shorting, and liquidity. They prevent inflated results from zero-cost or same-close-fill configs."
+          note="The defaults cover the common unrealistic-assumption checks; you can refine them afterwards."
+          needsWrite
+          actions={[
+            {
+              label: "Create default guardrails",
+              onClick: handleCreateDefault,
+              primary: true,
+              loading,
+            },
+          ]}
+        />
       ) : (
         <div className="space-y-1">
           <div className="flex items-center gap-3 text-xs font-mono text-gray-400">
@@ -6240,9 +6252,19 @@ function ReviewCasesPanel({
       {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
 
       {reviewCases.length === 0 && !generating && (
-        <p className="text-xs text-gray-500 font-mono">
-          No review cases. Click &ldquo;Generate&rdquo; to evaluate current evidence state.
-        </p>
+        <PanelEmptyState
+          title="No review cases yet"
+          description="Review cases group related evidence issues (stale snapshots, weak assumptions, deteriorating trust) into a single item a reviewer can acknowledge or resolve — so problems are tracked, not lost."
+          needsWrite
+          actions={[
+            {
+              label: "Generate review cases",
+              onClick: handleGenerate,
+              primary: true,
+              loading: generating,
+            },
+          ]}
+        />
       )}
 
       <div className="space-y-2">
@@ -6424,16 +6446,20 @@ function EvidenceSLAPanel({
       </div>
 
       {slaPolicies.length === 0 ? (
-        <div className="space-y-2">
-          <p className="text-xs text-gray-400 font-mono">No SLA policies defined. Create the default evidence obligations to track freshness and quality SLAs.</p>
-          <button
-            onClick={handleCreateDefault}
-            disabled={creating}
-            className="px-3 py-1.5 text-xs font-mono bg-cyan-900/30 border border-cyan-700 text-cyan-300 rounded hover:bg-cyan-900/50 disabled:opacity-50"
-          >
-            {creating ? 'Creating…' : 'Create Default Evidence SLA'}
-          </button>
-        </div>
+        <PanelEmptyState
+          title="No evidence SLA policy yet"
+          description="An evidence SLA tracks freshness and completeness obligations — how recently each evidence layer (dataset, signal, universe, config) must be refreshed before a review. It surfaces stale or missing evidence before it blocks progression."
+          note="The default policy encodes the common freshness and quality obligations."
+          needsWrite
+          actions={[
+            {
+              label: "Create default SLA",
+              onClick: handleCreateDefault,
+              primary: true,
+              loading: creating,
+            },
+          ]}
+        />
       ) : (
         <div className="space-y-2">
           <div className="flex items-center gap-3 text-xs font-mono text-gray-400">
@@ -8448,7 +8474,13 @@ function ReliabilitySnapshotPanel({ strategyId }: { strategyId: string }) {
       {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
 
       {!snapshot && !loading && !refreshing && (
-        <p className="text-xs text-gray-500 font-mono">No cached snapshot. Click Refresh to create one.</p>
+        <PanelEmptyState
+          title="No cached snapshot yet"
+          description="A reliability snapshot caches the strategy's deterministic reliability state (scores, coverage, freshness) so dashboards and exports load instantly. Refresh to compute and cache one."
+          actions={[
+            { label: "Refresh snapshot", onClick: () => handleRefresh(false), primary: true, loading: refreshing },
+          ]}
+        />
       )}
 
       {snapshot && (
@@ -10110,7 +10142,9 @@ export default function StrategyDetail() {
       )}
 
       {/* M50: Shadow Production Monitor — backtest vs shadow */}
-      {shadowMonitor && <ShadowMonitorPanel monitor={shadowMonitor} />}
+      {shadowMonitor && (
+        <ShadowMonitorPanel monitor={shadowMonitor} onGoDeveloper={() => setActiveTab("developer")} />
+      )}
 
       {/* M58: Run Replay Pack */}
       <RunReplayPanel strategyId={strategy.id} runs={strategy.runs} />
@@ -10230,6 +10264,23 @@ export default function StrategyDetail() {
         Export this strategy’s full evidence pack, or generate a reliability report using
         “Generate Report” in the header.
       </p>
+
+      {/* M77: report empty-state quick action */}
+      {!latestReport && (
+        <PanelEmptyState
+          title="No reliability report generated yet"
+          description="A reliability report packages the current evidence state — coverage, trust, assumptions, freshness — into a shareable, point-in-time summary for review and export."
+          needsWrite
+          actions={[
+            {
+              label: "Generate reliability report",
+              onClick: handleGenerateReport,
+              primary: true,
+              loading: generatingReport,
+            },
+          ]}
+        />
+      )}
 
       {/* M31: Strategy Evidence Export */}
       <ExportPanel strategyId={id!} />

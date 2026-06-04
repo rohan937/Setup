@@ -161,7 +161,26 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M76: Guided Demo Walkthrough + Strategy Lifecycle Visual v1
+## Current milestone — M77: Home Workbench + Role-Aware UX + Empty-State Quick Actions v1
+
+**Status:** complete — *product-completeness pass: a warm Home / Workbench landing, calm role-aware access messaging, and actionable empty states so panels are never dead ends. Frontend-only — no backend changes, no deployment.*
+
+### What was built
+
+**Home / Workbench** (`/pages/Home.tsx`, route `/`, default post-login landing; Dashboard moves to `/dashboard`)
+- Welcome header (workspace name, user, role badge, environment badge), workspace snapshot cards (strategies / healthy / review / blocked / open alerts / pending actions), Today's recommended actions (top M74 Action Queue items aggregated across strategies, each linking to the strategy + correct tab), a guided-demo card (Start / Continue / Restart), a strategy status summary (the clean-demo story when demo data exists), and quick actions (Create Strategy, Upload Evidence Bundle, Open Command Center, Start Guided Demo, Run Demo Reset if permitted). Composed entirely from existing endpoints — **no new backend**.
+
+**Role-aware UX** (`RoleAwareAccess.tsx`)
+- Replaces blunt "Admin access required" with: current role, required role/permission, what the user can still do, and a constructive next step (ask an owner to upgrade, or sign in as owner/admin). `AccessRequired` now delegates to it, so all `RequirePermission`-gated pages (Demo Controls, System Health, Deployment Readiness) upgrade at once. Never exposes secrets, never suggests DB edits.
+
+**Empty-state quick actions** (`PanelEmptyState.tsx`)
+- Regression Tests, Config Policy Guardrails, Evidence SLA Monitor, Shadow Monitor (→ Developer tab), Reliability Snapshot, Reports/Export, Review Cases, the Evidence Bundle uploader, and the Strategy list now explain the missing artifact and offer the next action — with a calm role-aware disabled state when the user lacks write access.
+
+All prior milestones (M73 tabs, M74 Action Queue, M75 repair/management, M76 walkthrough + lifecycle) are preserved. Product language only — no AI, no external APIs, no trading actions.
+
+See [`docs/home-workbench.md`](docs/home-workbench.md), [`docs/roles-and-permissions.md`](docs/roles-and-permissions.md), [`docs/empty-state-actions.md`](docs/empty-state-actions.md).
+
+### Previous milestone — M76: Guided Demo Walkthrough + Strategy Lifecycle Visual v1
 
 **Status:** complete — *adds product comprehension: a guided demo walkthrough for first-time users/investors, and a deterministic strategy lifecycle visual that shows where each strategy is and what blocks it from progressing. No deployment was performed.*
 
@@ -228,7 +247,7 @@ See [`docs/action-queue.md`](docs/action-queue.md) for the full design.
 - Tabbed Strategy Detail (Overview / Evidence / Runs / Governance / Lineage / Exports / Developer) with a first local Action Queue on the Overview tab.
 
 ### Next milestones
-- M77: TBD
+- M78: TBD
 
 ---
 

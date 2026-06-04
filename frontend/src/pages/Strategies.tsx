@@ -5,8 +5,11 @@ import { getStrategies, getStrategiesHealth } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
+import PanelEmptyState from "@/components/PanelEmptyState";
 import StrategyCreateDrawer from "@/components/StrategyCreateDrawer";
 import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
+import { useAuth } from "@/context/AuthContext";
+import { canSeedDemo } from "@/lib/permissions";
 
 type StatusFilter = "active" | "archived" | "all";
 
@@ -91,6 +94,7 @@ export default function Strategies() {
   const [editTarget, setEditTarget] = useState<Strategy | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Strategy | null>(null);
   const navigate = useNavigate();
+  const auth = useAuth();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -182,14 +186,24 @@ export default function Strategies() {
         </div>
       )}
 
-      {!loading && !error && strategies.length === 0 && (
+      {!loading && !error && strategies.length === 0 && statusFilter === "archived" && (
         <EmptyState
-          title={statusFilter === "archived" ? "No archived strategies" : "No strategies registered"}
-          description={
-            statusFilter === "archived"
-              ? "Archived strategies will appear here."
-              : "Register your first strategy to begin tracking run evidence and reliability metrics."
-          }
+          title="No archived strategies"
+          description="Archived strategies will appear here."
+        />
+      )}
+
+      {!loading && !error && strategies.length === 0 && statusFilter !== "archived" && (
+        <PanelEmptyState
+          title="No strategies registered yet"
+          description="A strategy is the unit QuantFidelity tracks — register one to start logging runs, linking evidence, and scoring reliability. Or load the clean realistic demo to explore a fully-populated example."
+          actions={[
+            { label: "Create Strategy", onClick: () => setDrawerOpen(true), primary: true },
+            { label: "Upload Evidence Bundle", to: "/developer/evidence-bundles" },
+            ...(canSeedDemo(auth)
+              ? [{ label: "Reset Clean Realistic Demo", to: "/admin/demo-controls" }]
+              : []),
+          ]}
         />
       )}
 

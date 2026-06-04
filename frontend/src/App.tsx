@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import AppShell from "@/components/AppShell";
+import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
 import Strategies from "@/pages/Strategies";
 import StrategyComparison from "@/pages/StrategyComparison";
@@ -40,7 +41,8 @@ export default function App() {
     <AuthProvider>
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<Home />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route path="command-center" element={<CommandCenter />} />
         <Route path="portfolio" element={<Portfolio />} />
         <Route path="strategies" element={<Strategies />} />
