@@ -8671,6 +8671,328 @@ function CommandCenterPanel({ strategyId }: { strategyId: string }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// M73: Tabbed workflow — tab bar + unified Action Queue
+// ---------------------------------------------------------------------------
+
+type StrategyTab =
+  | "overview"
+  | "evidence"
+  | "runs"
+  | "governance"
+  | "lineage"
+  | "exports"
+  | "developer";
+
+const STRATEGY_TABS: { key: StrategyTab; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "evidence", label: "Evidence" },
+  { key: "runs", label: "Runs" },
+  { key: "governance", label: "Governance" },
+  { key: "lineage", label: "Lineage" },
+  { key: "exports", label: "Exports" },
+  { key: "developer", label: "Developer" },
+];
+
+function StrategyTabBar({
+  active,
+  onChange,
+}: {
+  active: StrategyTab;
+  onChange: (t: StrategyTab) => void;
+}) {
+  return (
+    <div className="sticky top-0 z-20 -mx-1 border-b border-border bg-bg-900/85 px-1 backdrop-blur supports-[backdrop-filter]:bg-bg-900/70">
+      <div className="flex flex-wrap gap-1 py-2" role="tablist">
+        {STRATEGY_TABS.map((t) => {
+          const isActive = t.key === active;
+          return (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => onChange(t.key)}
+              className={[
+                "rounded-control px-3.5 py-1.5 text-sm transition-colors",
+                isActive
+                  ? "bg-bg-700 font-medium text-text-primary shadow-card"
+                  : "text-text-muted hover:bg-bg-700/50 hover:text-text-secondary",
+              ].join(" ")}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// --- Action Queue ----------------------------------------------------------
+
+type ActionSeverity = "critical" | "high" | "medium" | "low" | "info";
+
+interface ActionItem {
+  id: string;
+  title: string;
+  why: string;
+  severity: ActionSeverity;
+  action: string;
+  tab?: StrategyTab;
+}
+
+const SEV_RANK: Record<ActionSeverity, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+};
+
+const SEV_DOT: Record<ActionSeverity, string> = {
+  critical: "bg-fidelity-low",
+  high: "bg-fidelity-low/80",
+  medium: "bg-fidelity-medium",
+  low: "bg-accent-500/70",
+  info: "bg-text-muted",
+};
+
+const SEV_LABEL: Record<ActionSeverity, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  info: "Info",
+};
+
+const TAB_LABEL: Record<StrategyTab, string> = {
+  overview: "Overview",
+  evidence: "Evidence",
+  runs: "Runs",
+  governance: "Governance",
+  lineage: "Lineage",
+  exports: "Exports",
+  developer: "Developer",
+};
+
+function prettify(s: string): string {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Human-readable label: snake_case tokens get prettified + a "Missing" prefix;
+// full sentences (already human text) are used as-is with a capitalized first letter.
+function evidenceLabel(s: string): string {
+  const looksLikeToken = !s.includes(" ") || /^[a-z0-9_]+$/.test(s);
+  if (looksLikeToken) return `Missing ${prettify(s)}`;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function buildActionItems(args: {
+  health: StrategyHealth | null;
+  readiness: StrategyReadinessResponse | null;
+  freshness: StrategyEvidenceFreshnessResponse | null;
+  promotionGates: StrategyPromotionGateResponse | null;
+  hasReport: boolean;
+  runs: StrategyRun[];
+}): ActionItem[] {
+  const { health, readiness, freshness, promotionGates, hasReport, runs } = args;
+  const items: ActionItem[] = [];
+
+  // Readiness blockers
+  (readiness?.blockers ?? []).forEach((b, i) =>
+    items.push({
+      id: `ready-${i}`,
+      title: b,
+      why: "This blocks the strategy from advancing to the next research stage.",
+      severity: "high",
+      action: "Resolve blocker",
+      tab: "governance",
+    }),
+  );
+
+  // Promotion gate blockers
+  (promotionGates?.blockers ?? []).forEach((b, i) =>
+    items.push({
+      id: `promo-${i}`,
+      title: b,
+      why: `Promotion gate to "${prettify(promotionGates?.target_stage ?? "next stage")}" is blocked.`,
+      severity: "high",
+      action: "Review promotion gates",
+      tab: "governance",
+    }),
+  );
+
+  // Open alerts
+  if (health && health.open_alert_count > 0) {
+    items.push({
+      id: "alerts",
+      title: `${health.open_alert_count} open alert${health.open_alert_count !== 1 ? "s" : ""}`,
+      why: "Open alerts indicate evidence-quality or reliability issues that need triage.",
+      severity: "high",
+      action: "Open Alerts",
+    });
+  }
+
+  // Stale / aging evidence
+  if (freshness && freshness.stale_count > 0) {
+    items.push({
+      id: "stale",
+      title: `${freshness.stale_count} stale evidence item${freshness.stale_count !== 1 ? "s" : ""}`,
+      why: "Stale snapshots should be refreshed before progression so decisions use current evidence.",
+      severity: "high",
+      action: "Refresh evidence",
+      tab: "evidence",
+    });
+  } else if (freshness && freshness.aging_count > 0) {
+    items.push({
+      id: "aging",
+      title: `${freshness.aging_count} aging evidence item${freshness.aging_count !== 1 ? "s" : ""}`,
+      why: "Some evidence is approaching its freshness limit and will need refreshing soon.",
+      severity: "medium",
+      action: "Review freshness",
+      tab: "evidence",
+    });
+  }
+
+  // Missing evidence layers
+  (health?.missing_evidence ?? []).slice(0, 6).forEach((m, i) =>
+    items.push({
+      id: `missing-${i}`,
+      title: evidenceLabel(m),
+      why: "This evidence layer is not present, which weakens the reliability assessment.",
+      severity: "medium",
+      action: "Add evidence",
+      tab: "evidence",
+    }),
+  );
+
+  // No paper / live run yet
+  const hasProgressionRun = runs.some(
+    (r) => r.run_type === "paper" || r.run_type === "live",
+  );
+  if (runs.length > 0 && !hasProgressionRun) {
+    items.push({
+      id: "no-paper-run",
+      title: "No paper or live run logged",
+      why: "Only research/backtest runs exist. A paper run is typically required before live progression.",
+      severity: "low",
+      action: "Log a run",
+      tab: "runs",
+    });
+  }
+
+  // No reliability report
+  if (!hasReport) {
+    items.push({
+      id: "no-report",
+      title: "No reliability report generated",
+      why: "A report packages the current evidence into a shareable summary for review.",
+      severity: "low",
+      action: "Generate report",
+      tab: "exports",
+    });
+  }
+
+  // Suggested checks (lower priority)
+  (health?.suggested_checks ?? []).slice(0, 4).forEach((c, i) =>
+    items.push({
+      id: `check-${i}`,
+      title: c,
+      why: "Suggested follow-up to strengthen the evidence base.",
+      severity: "info",
+      action: "Review",
+      tab: "evidence",
+    }),
+  );
+
+  return items.sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity]).slice(0, 10);
+}
+
+function ActionQueue({
+  health,
+  readiness,
+  freshness,
+  promotionGates,
+  hasReport,
+  runs,
+  onNavigate,
+}: {
+  health: StrategyHealth | null;
+  readiness: StrategyReadinessResponse | null;
+  freshness: StrategyEvidenceFreshnessResponse | null;
+  promotionGates: StrategyPromotionGateResponse | null;
+  hasReport: boolean;
+  runs: StrategyRun[];
+  onNavigate: (t: StrategyTab) => void;
+}) {
+  const items = buildActionItems({
+    health,
+    readiness,
+    freshness,
+    promotionGates,
+    hasReport,
+    runs,
+  });
+  const summaryLoaded = health !== null || readiness !== null;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700 shadow-card">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div>
+          <p className="caption mb-0.5">Action Queue</p>
+          <p className="text-sm font-medium text-text-primary">What to do next</p>
+        </div>
+        {items.length > 0 && (
+          <span className="rounded-chip border border-border-strong bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-secondary">
+            {items.length} item{items.length !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      <div className="divide-y divide-border">
+        {items.length === 0 ? (
+          <div className="px-4 py-6">
+            {summaryLoaded ? (
+              <p className="text-sm text-fidelity-high">
+                No outstanding actions — the core evidence looks complete.
+              </p>
+            ) : (
+              <p className="text-sm text-text-muted">
+                Reliability summary is still loading. Open the panels below for detail.
+              </p>
+            )}
+          </div>
+        ) : (
+          items.map((item) => (
+            <div key={item.id} className="flex items-start gap-3 px-4 py-3">
+              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${SEV_DOT[item.severity]}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="text-sm text-text-primary">{item.title}</span>
+                  <span className="text-2xs text-text-muted">{SEV_LABEL[item.severity]}</span>
+                </div>
+                <p className="mt-0.5 text-xs leading-relaxed text-text-secondary">{item.why}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                {item.tab ? (
+                  <button
+                    onClick={() => onNavigate(item.tab!)}
+                    className="rounded-control border border-border px-2.5 py-1 text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                  >
+                    Go to {TAB_LABEL[item.tab]}
+                  </button>
+                ) : (
+                  <span className="text-2xs text-text-muted">{item.action}</span>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -8682,6 +9004,9 @@ export default function StrategyDetail() {
   const [versionDrawerOpen, setVersionDrawerOpen] = useState(false);
   const [configSnapshotDrawerOpen, setConfigSnapshotDrawerOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // M73: tabbed workflow — Overview is the default landing tab.
+  const [activeTab, setActiveTab] = useState<StrategyTab>("overview");
+  const onTab = (t: StrategyTab) => activeTab === t;
 
   // M16: universe snapshot drawer state
   const [universeSnapshotDrawerOpen, setUniverseSnapshotDrawerOpen] = useState(false);
@@ -9038,17 +9363,42 @@ export default function StrategyDetail() {
         </div>
       </div>
 
-      {/* M64: Strategy Reliability Command Center */}
-      <CommandCenterPanel strategyId={strategy.id} />
+      {/* M73: Tab bar */}
+      <StrategyTabBar active={activeTab} onChange={setActiveTab} />
 
-      {/* M65A: Strategy Reliability Snapshot Cache */}
-      <ReliabilitySnapshotPanel strategyId={strategy.id} />
+      {/* M73: single page-level disclaimer */}
+      <p className="text-2xs text-text-muted">
+        QuantFidelity evaluates research evidence quality. It does not provide trading
+        recommendations.
+      </p>
 
-      {/* M27: Strategy Health card */}
-      {health && <StrategyHealthCard health={health} />}
+      {/* OVERVIEW TAB — executive summary */}
+      {onTab("overview") && (
+        <>
+          {/* M73: Unified Action Queue */}
+          <ActionQueue
+            health={health}
+            readiness={readiness}
+            freshness={freshness}
+            promotionGates={promotionGates}
+            hasReport={latestReport !== null}
+            runs={strategy.runs}
+            onNavigate={setActiveTab}
+          />
 
-      {/* M49: Strategy Readiness panel */}
-      {readiness && <ReadinessPanel readiness={readiness} />}
+          {/* M64: Strategy Reliability Command Center */}
+          <CommandCenterPanel strategyId={strategy.id} />
+
+          {/* M65A: Strategy Reliability Snapshot Cache */}
+          <ReliabilitySnapshotPanel strategyId={strategy.id} />
+
+          {/* M27: Strategy Health card */}
+          {health && <StrategyHealthCard health={health} />}
+
+          {/* M49: Strategy Readiness panel */}
+          {readiness && <ReadinessPanel readiness={readiness} />}
+        </>
+      )}
 
       <RunLogDrawer
         open={runDrawerOpen}
@@ -9097,7 +9447,7 @@ export default function StrategyDetail() {
         onCreated={() => setRefreshKey((k) => k + 1)}
       />
 
-      {/* Stat strip */}
+      {/* Stat strip — always-visible context */}
       <div className="flex flex-wrap gap-6 rounded-card border border-border bg-bg-700 px-5 py-3">
         <StatCell label="Runs" value={strategy.run_count} />
         <StatCell label="Last Run" value={fmtDate(strategy.latest_run_at)} />
@@ -9108,6 +9458,9 @@ export default function StrategyDetail() {
         />
       </div>
 
+      {/* ===================== OVERVIEW (continued) ===================== */}
+      {onTab("overview") && (
+        <>
       {/* M14: Report error */}
       {reportError && (
         <div className="rounded-control border border-fidelity-low/30 bg-fidelity-low/10 px-3 py-2 font-mono text-xs text-fidelity-low">
@@ -9168,7 +9521,12 @@ export default function StrategyDetail() {
         onCompute={handleComputeReliabilityScore}
         computing={computingReliability}
       />
+        </>
+      )}
 
+      {/* ===================== EVIDENCE TAB ===================== */}
+      {onTab("evidence") && (
+        <>
       {/* M7: Data Evidence panel — shown when any run has a linked snapshot */}
       <DataEvidencePanel runs={strategy.runs} />
 
@@ -9211,6 +9569,56 @@ export default function StrategyDetail() {
         onCompare={handleCompareConfig}
       />
 
+      {/* M30: Evidence Trends */}
+      {evidenceTrends && <EvidenceTrendsPanel trends={evidenceTrends} />}
+
+      {/* M48: Evidence Freshness */}
+      {freshness && <FreshnessPanel freshness={freshness} />}
+
+      {/* M52: Evidence Dependency Graph */}
+      {evidenceGraph && (
+        <EvidenceGraphPanel
+          graph={evidenceGraph}
+          strategyId={id}
+          onFocusChange={(nid, ntype) => {
+            setGraphFocusNode(nid);
+            getStrategyEvidenceGraph(id!, { focus_node_id: nid, focus_node_type: ntype })
+              .then(setEvidenceGraph)
+              .catch(() => {});
+          }}
+        />
+      )}
+
+      {/* M38: Signal Quality Drilldown */}
+      {signalDrilldown && signalDrilldownId && (
+        <SignalQualityDrilldownPanel drilldown={signalDrilldown} />
+      )}
+      {signalDrilldownLoading && (
+        <p className="text-sm text-text-muted">Loading signal quality…</p>
+      )}
+
+      {/* M39: Universe Coverage Analysis */}
+      {universeCoverage && universeCoverageId && (
+        <UniverseCoveragePanel coverage={universeCoverage} />
+      )}
+      {universeCoverageLoading && (
+        <p className="text-sm text-text-muted">Loading universe coverage…</p>
+      )}
+
+      {/* M40: Config Diff */}
+      {configDiff && <ConfigDiffPanel diff={configDiff} />}
+      {configDiffLoading && (
+        <p className="text-sm text-text-muted">Comparing configs…</p>
+      )}
+
+      {/* M41: Assumption Health */}
+      {assumptionHealth && <AssumptionHealthPanel health={assumptionHealth} />}
+        </>
+      )}
+
+      {/* ===================== RUNS TAB ===================== */}
+      {onTab("runs") && (
+        <>
       {/* Run evidence */}
       <div className="rounded-card border border-border bg-bg-700">
         <div className="border-b border-border px-4 py-2.5">
@@ -9218,7 +9626,9 @@ export default function StrategyDetail() {
         </div>
         <div className="p-4">
           {strategy.runs.length === 0 ? (
-            <p className="font-mono text-2xs text-text-muted">No runs logged yet.</p>
+            <p className="text-sm text-text-muted">
+              No runs logged yet. Use “+ Log Run” above, or ingest a bundle from the Developer tab.
+            </p>
           ) : (
             <div className="divide-y divide-border">
               {strategy.runs.map((r) => (
@@ -9312,72 +9722,13 @@ export default function StrategyDetail() {
         </div>
       </div>
 
-      {/* M10: Strategy audit trail preview */}
-      <AuditTrailPanel strategyId={id!} />
-
       {/* Run comparison (M5) */}
       <RunComparisonPanel strategyId={id!} runs={strategy.runs} />
 
       {/* M29: Run History panel */}
       {runHistory && <RunHistoryPanel history={runHistory} />}
 
-      {/* M29: Evidence Timeline drilldown */}
-      {timelineDrilldown && <EvidenceTimelinePanel drilldown={timelineDrilldown} strategyId={id} />}
-
-      {/* M30: Evidence Trends */}
-      {evidenceTrends && <EvidenceTrendsPanel trends={evidenceTrends} />}
-
-      {/* M22: Evidence Bundle Ingestion (developer tool) */}
-      <IngestionPanel
-        strategyId={id!}
-        bundlePayload={bundlePayload}
-        setBundlePayload={setBundlePayload}
-        bundleResult={bundleResult}
-        setBundleResult={setBundleResult}
-        bundleLoading={bundleLoading}
-        setBundleLoading={setBundleLoading}
-        bundleError={bundleError}
-        setBundleError={setBundleError}
-        idempotencyKey={idempotencyKey}
-        setIdempotencyKey={setIdempotencyKey}
-        onSuccess={() => setRefreshKey((k) => k + 1)}
-      />
-
-      {/* M31: Strategy Evidence Export */}
-      <ExportPanel strategyId={id!} />
-
-      {/* M35: Version Lineage */}
-      {versionLineage && <VersionLineagePanel lineage={versionLineage} />}
-
-      {/* M38: Signal Quality Drilldown */}
-      {signalDrilldown && signalDrilldownId && (
-        <SignalQualityDrilldownPanel drilldown={signalDrilldown} />
-      )}
-      {signalDrilldownLoading && (
-        <p className="font-mono text-2xs text-text-muted">Loading signal quality…</p>
-      )}
-
-      {/* M39: Universe Coverage Analysis */}
-      {universeCoverage && universeCoverageId && (
-        <UniverseCoveragePanel coverage={universeCoverage} />
-      )}
-      {universeCoverageLoading && (
-        <p className="font-mono text-2xs text-text-muted">Loading universe coverage…</p>
-      )}
-
-      {/* M40: Config Diff */}
-      {configDiff && <ConfigDiffPanel diff={configDiff} />}
-      {configDiffLoading && (
-        <p className="font-mono text-2xs text-text-muted">Comparing configs…</p>
-      )}
-
-      {/* M41: Assumption Health */}
-      {assumptionHealth && <AssumptionHealthPanel health={assumptionHealth} />}
-
-      {/* M43: Timeline Analytics */}
-      {timelineAnalytics && <TimelineAnalyticsPanel analytics={timelineAnalytics} />}
-
-      {/* M47: Drift Panel */}
+      {/* M47: Drift Panel — research-to-production drift */}
       {driftData && (
         <DriftPanel
           drift={driftData}
@@ -9387,12 +9738,25 @@ export default function StrategyDetail() {
         />
       )}
 
-      {/* M48: Evidence Freshness */}
-      {freshness && <FreshnessPanel freshness={freshness} />}
-
-      {/* M50: Shadow Production Monitor */}
+      {/* M50: Shadow Production Monitor — backtest vs shadow */}
       {shadowMonitor && <ShadowMonitorPanel monitor={shadowMonitor} />}
 
+      {/* M58: Run Replay Pack */}
+      <RunReplayPanel strategyId={strategy.id} runs={strategy.runs} />
+
+      {/* M59: Experiment Registry */}
+      <ExperimentPanel
+        strategyId={strategy.id}
+        runs={strategy.runs || []}
+        experiments={experiments}
+        setExperiments={setExperiments}
+      />
+        </>
+      )}
+
+      {/* ===================== GOVERNANCE TAB ===================== */}
+      {onTab("governance") && (
+        <>
       {/* M51: Promotion Gates */}
       {promotionGates && (
         <PromotionGatesPanel
@@ -9404,45 +9768,29 @@ export default function StrategyDetail() {
         />
       )}
 
-      {/* M52: Evidence Dependency Graph */}
-      {evidenceGraph && (
-        <EvidenceGraphPanel
-          graph={evidenceGraph}
-          strategyId={id}
-          onFocusChange={(nid, ntype) => {
-            setGraphFocusNode(nid);
-            getStrategyEvidenceGraph(id!, { focus_node_id: nid, focus_node_type: ntype })
-              .then(setEvidenceGraph)
-              .catch(() => {});
-          }}
-        />
-      )}
-
       {/* M53: Regression Test Suite */}
-      {(regressionTests.length > 0 || true) && (
-        <RegressionTestPanel
-          tests={regressionTests}
-          latestRun={regressionRun}
-          loading={regressionLoading}
-          strategyId={id!}
-          onSetupDefaults={() => {
-            setRegressionLoading(true);
-            createDefaultRegressionTests(id!)
-              .then(setRegressionTests)
-              .catch(() => {})
-              .finally(() => setRegressionLoading(false));
-          }}
-          onRunTests={(mode) => {
-            setRegressionLoading(true);
-            runStrategyRegressionTests(id!, { mode })
-              .then((run) => {
-                setRegressionRun(run);
-              })
-              .catch(() => {})
-              .finally(() => setRegressionLoading(false));
-          }}
-        />
-      )}
+      <RegressionTestPanel
+        tests={regressionTests}
+        latestRun={regressionRun}
+        loading={regressionLoading}
+        strategyId={id!}
+        onSetupDefaults={() => {
+          setRegressionLoading(true);
+          createDefaultRegressionTests(id!)
+            .then(setRegressionTests)
+            .catch(() => {})
+            .finally(() => setRegressionLoading(false));
+        }}
+        onRunTests={(mode) => {
+          setRegressionLoading(true);
+          runStrategyRegressionTests(id!, { mode })
+            .then((run) => {
+              setRegressionRun(run);
+            })
+            .catch(() => {})
+            .finally(() => setRegressionLoading(false));
+        }}
+      />
 
       {/* M54: Config Policy Engine */}
       <ConfigPolicyPanel
@@ -9473,28 +9821,75 @@ export default function StrategyDetail() {
         setSlaEvaluations={setSlaEvaluations}
       />
 
-      {/* M57: Strategy Change Impact Analysis */}
-      <ChangeImpactPanel strategyId={strategy.id} />
-
-      {/* M58: Run Replay Pack */}
-      <RunReplayPanel strategyId={strategy.id} runs={strategy.runs} />
-
-      {/* M59: Experiment Registry */}
-      <ExperimentPanel
-        strategyId={strategy.id}
-        runs={strategy.runs || []}
-        experiments={experiments}
-        setExperiments={setExperiments}
-      />
-
       {/* M61: Strategy Robustness Score */}
       <RobustnessPanel strategyId={strategy.id} />
 
       {/* M62: Progression Freeze Recommendations */}
       <ProgressionFreezePanel strategyId={strategy.id} />
+        </>
+      )}
+
+      {/* ===================== LINEAGE TAB ===================== */}
+      {onTab("lineage") && (
+        <>
+      {/* M10: Strategy audit trail preview */}
+      <AuditTrailPanel strategyId={id!} />
+
+      {/* M29: Evidence Timeline drilldown */}
+      {timelineDrilldown && <EvidenceTimelinePanel drilldown={timelineDrilldown} strategyId={id} />}
+
+      {/* M43: Timeline Analytics */}
+      {timelineAnalytics && <TimelineAnalyticsPanel analytics={timelineAnalytics} />}
+
+      {/* M35: Version Lineage */}
+      {versionLineage && <VersionLineagePanel lineage={versionLineage} />}
+
+      {/* M57: Strategy Change Impact Analysis */}
+      <ChangeImpactPanel strategyId={strategy.id} />
 
       {/* M63: Research Audit Trail */}
       <ResearchAuditTrailPanel strategyId={strategy.id} />
+        </>
+      )}
+
+      {/* ===================== EXPORTS TAB ===================== */}
+      {onTab("exports") && (
+        <>
+      <p className="text-sm text-text-secondary">
+        Export this strategy’s full evidence pack, or generate a reliability report using
+        “Generate Report” in the header.
+      </p>
+
+      {/* M31: Strategy Evidence Export */}
+      <ExportPanel strategyId={id!} />
+        </>
+      )}
+
+      {/* ===================== DEVELOPER TAB ===================== */}
+      {onTab("developer") && (
+        <>
+      <p className="text-sm text-text-secondary">
+        Ingest evidence bundles from research pipelines, notebooks, or CI. Upload or paste JSON
+        below, or use the SDK / REST API for automated ingestion.
+      </p>
+
+      {/* M22: Evidence Bundle Ingestion (web upload + raw payload) */}
+      <IngestionPanel
+        strategyId={id!}
+        bundlePayload={bundlePayload}
+        setBundlePayload={setBundlePayload}
+        bundleResult={bundleResult}
+        setBundleResult={setBundleResult}
+        bundleLoading={bundleLoading}
+        setBundleLoading={setBundleLoading}
+        bundleError={bundleError}
+        setBundleError={setBundleError}
+        idempotencyKey={idempotencyKey}
+        setIdempotencyKey={setIdempotencyKey}
+        onSuccess={() => setRefreshKey((k) => k + 1)}
+      />
+        </>
+      )}
     </div>
   );
 }
