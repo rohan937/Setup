@@ -83,6 +83,7 @@ import type {
   DemoStatusResponse,
   StrategyDriftResponse,
   StrategyEvidenceFreshnessResponse,
+  ActionQueueResponse,
   StrategyReadinessResponse,
   StrategyShadowMonitorResponse,
   StrategyPromotionGateResponse,
@@ -1042,6 +1043,22 @@ export async function getStrategyReadiness(
 ): Promise<StrategyReadinessResponse> {
   return request<StrategyReadinessResponse>(
     `/api/strategies/${strategyId}/readiness`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M74: Strategy Action Queue
+// ---------------------------------------------------------------------------
+
+export async function getStrategyActionQueue(
+  strategyId: string,
+  limit?: number,
+): Promise<ActionQueueResponse> {
+  const qs = new URLSearchParams();
+  if (limit !== undefined) qs.set("limit", String(limit));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ActionQueueResponse>(
+    `/api/strategies/${strategyId}/action-queue${query}`,
   );
 }
 

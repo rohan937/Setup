@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, PortfolioOverview, ProjectHealth, RecentEvidenceItem, Strategy, StrategyHealthListResponse, SystemHealthResponse } from "@/types";
-import { getDashboardSummary, getEvidenceCoverage, getPortfolioOverview, getProjectsHealth, getStrategies, getStrategiesHealth, getSystemHealth } from "@/lib/api";
+import type { ActionItem, DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, PortfolioOverview, ProjectHealth, RecentEvidenceItem, Strategy, StrategyHealthListResponse, SystemHealthResponse } from "@/types";
+import { getDashboardSummary, getEvidenceCoverage, getPortfolioOverview, getProjectsHealth, getStrategies, getStrategiesHealth, getStrategyActionQueue, getSystemHealth } from "@/lib/api";
 import Badge from "@/components/Badge";
 
 // ---------------------------------------------------------------------------
@@ -243,6 +243,110 @@ const HEALTH_CHIP: Record<string, string> = {
   insufficient_evidence: "bg-bg-600 text-text-muted border-border",
 };
 
+// ---------------------------------------------------------------------------
+// M74: compact cross-strategy action summary (self-contained, fail-safe)
+// ---------------------------------------------------------------------------
+
+interface TopAction {
+  strategyId: string;
+  strategyName: string;
+  item: ActionItem;
+}
+
+function DashboardActionSummary({ strategies }: { strategies: Strategy[] }) {
+  const [blocking, setBlocking] = useState(0);
+  const [pending, setPending] = useState(0);
+  const [top, setTop] = useState<TopAction[]>([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (strategies.length === 0) {
+      setReady(false);
+      return;
+    }
+    let cancelled = false;
+    // Cap fan-out to keep the dashboard light.
+    const sample = strategies.slice(0, 6);
+    Promise.all(
+      sample.map((s) =>
+        getStrategyActionQueue(s.id, 5)
+          .then((q) => ({ s, q }))
+          .catch(() => null),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      let b = 0;
+      let p = 0;
+      const tops: TopAction[] = [];
+      for (const r of results) {
+        if (!r) continue;
+        b += r.q.blocked_count;
+        p += r.q.pending_count;
+        if (r.q.items.length > 0) {
+          tops.push({ strategyId: r.s.id, strategyName: r.s.name, item: r.q.items[0] });
+        }
+      }
+      // Highest-severity items first; blockers/criticals bubble up.
+      const rank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+      tops.sort((a, b2) => (rank[a.item.severity] ?? 9) - (rank[b2.item.severity] ?? 9));
+      setBlocking(b);
+      setPending(p);
+      setTop(tops.slice(0, 3));
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [strategies]);
+
+  if (!ready || top.length === 0) return null;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700 shadow-card">
+      <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-text-primary">Top Priority Actions</h2>
+        <Link to="/command-center" className="text-xs text-accent-500 hover:text-accent-300">
+          Open Command Center →
+        </Link>
+      </div>
+      <div className="px-4 py-2.5 flex flex-wrap gap-4 border-b border-border">
+        <span className="text-xs text-text-secondary">
+          <span className={`font-semibold ${blocking > 0 ? "text-fidelity-low" : "text-text-primary"}`}>
+            {blocking}
+          </span>{" "}
+          blocking
+        </span>
+        <span className="text-xs text-text-secondary">
+          <span className="font-semibold text-accent-300">{pending}</span> pending
+        </span>
+        <span className="text-2xs text-text-muted">
+          across {Math.min(strategies.length, 6)} of {strategies.length} strateg
+          {strategies.length === 1 ? "y" : "ies"}
+        </span>
+      </div>
+      <div className="divide-y divide-border">
+        {top.map((t) => (
+          <Link
+            key={`${t.strategyId}:${t.item.id}`}
+            to={`/strategies/${t.strategyId}${t.item.target_tab ? `?tab=${t.item.target_tab}` : ""}`}
+            className="flex items-center gap-3 px-4 py-2.5 hover:bg-bg-600/30 transition-colors"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm text-text-primary">{t.item.title}</span>
+              <span className="block truncate text-2xs text-text-muted">{t.strategyName}</span>
+            </span>
+            <span className="shrink-0 text-2xs text-text-muted">{t.item.action_label} →</span>
+          </Link>
+        ))}
+      </div>
+      <p className="px-4 py-2 text-2xs text-text-muted">
+        Action Queue prioritizes research evidence tasks. It does not provide trading
+        recommendations.
+      </p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -318,6 +422,11 @@ export default function Dashboard() {
         <div className="rounded-card border border-red-800/60 bg-red-900/20 px-4 py-3 text-sm text-severity-high">
           {error}
         </div>
+      )}
+
+      {/* M74: compact cross-strategy action summary */}
+      {!loading && strategies.length > 0 && (
+        <DashboardActionSummary strategies={strategies} />
       )}
 
       {/* ------------------------------------------------------------------ */}

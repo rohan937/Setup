@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type {
   BacktestAudit,
   BacktestIssue,
@@ -58,6 +58,8 @@ import type {
   AssumptionDriftItem,
   StrategyEvidenceFreshnessResponse,
   EvidenceFreshnessItem,
+  ActionQueueResponse,
+  ActionItem as BackendActionItem,
   StrategyReadinessResponse,
   StrategyReadinessDimension,
   StrategyShadowMonitorResponse,
@@ -116,6 +118,7 @@ import {
   getStrategyTimelineAnalytics,
   getStrategyDrift,
   getStrategyEvidenceFreshness,
+  getStrategyActionQueue,
   getStrategyReadiness,
   getStrategyShadowMonitor,
   getStrategyPromotionGates,
@@ -8993,6 +8996,125 @@ function ActionQueue({
   );
 }
 
+// --- M74: Backend-driven Action Queue --------------------------------------
+
+const ACTION_SEV_CHIP: Record<string, string> = {
+  critical: "border-fidelity-low/40 bg-fidelity-low/10 text-fidelity-low",
+  high: "border-fidelity-low/30 bg-fidelity-low/5 text-fidelity-low",
+  medium: "border-fidelity-medium/40 bg-fidelity-medium/10 text-fidelity-medium",
+  low: "border-border-strong bg-bg-800 text-text-secondary",
+  info: "border-border bg-bg-800 text-text-muted",
+};
+
+const ACTION_STATUS_CHIP: Record<string, string> = {
+  blocked: "border-fidelity-low/40 bg-fidelity-low/10 text-fidelity-low",
+  pending: "border-accent-500/30 bg-accent-500/10 text-accent-300",
+  optional: "border-border bg-bg-800 text-text-muted",
+  done: "border-fidelity-high/30 bg-fidelity-high/10 text-fidelity-high",
+};
+
+const ACTION_STATUS_LABEL: Record<string, string> = {
+  blocked: "Blocked",
+  pending: "Pending",
+  optional: "Optional",
+  done: "Done",
+};
+
+const VALID_TABS: StrategyTab[] = [
+  "overview", "evidence", "runs", "governance", "lineage", "exports", "developer",
+];
+
+function BackendActionQueue({
+  data,
+  onNavigate,
+}: {
+  data: ActionQueueResponse;
+  onNavigate: (t: StrategyTab) => void;
+}) {
+  const items = data.items;
+  const headerCount =
+    data.blocked_count > 0
+      ? `${data.blocked_count} blocking`
+      : `${data.pending_count} pending`;
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700 shadow-card">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div>
+          <p className="caption mb-0.5">Action Queue</p>
+          <p className="text-sm font-medium text-text-primary">What to do next</p>
+        </div>
+        {data.total_action_count > 0 && (
+          <span className="rounded-chip border border-border-strong bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-secondary">
+            {data.total_action_count} item{data.total_action_count !== 1 ? "s" : ""} · {headerCount}
+          </span>
+        )}
+      </div>
+
+      <div className="divide-y divide-border">
+        {items.length === 0 ? (
+          <div className="px-4 py-6">
+            <p className="text-sm text-fidelity-high">
+              No outstanding actions — the core evidence looks complete.
+            </p>
+          </div>
+        ) : (
+          items.map((item: BackendActionItem) => {
+            const tab =
+              item.target_tab && VALID_TABS.includes(item.target_tab as StrategyTab)
+                ? (item.target_tab as StrategyTab)
+                : null;
+            return (
+              <div key={item.id} className="flex items-start gap-3 px-4 py-3">
+                <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-2xs text-text-muted">
+                  {item.priority_rank}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm text-text-primary">{item.title}</span>
+                    <span
+                      className={`rounded-chip border px-1.5 py-px text-2xs ${ACTION_SEV_CHIP[item.severity] ?? ACTION_SEV_CHIP.info}`}
+                    >
+                      {SEV_LABEL[item.severity as ActionSeverity] ?? item.severity}
+                    </span>
+                    <span
+                      className={`rounded-chip border px-1.5 py-px text-2xs ${ACTION_STATUS_CHIP[item.status] ?? ACTION_STATUS_CHIP.pending}`}
+                    >
+                      {ACTION_STATUS_LABEL[item.status] ?? item.status}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs leading-relaxed text-text-secondary">
+                    {item.why_it_matters}
+                  </p>
+                  <p className="mt-1 text-2xs text-text-muted">
+                    {prettify(item.category)} · {prettify(item.source)}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  {tab ? (
+                    <button
+                      onClick={() => onNavigate(tab)}
+                      className="rounded-control border border-border px-2.5 py-1 text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                    >
+                      {item.action_label}
+                    </button>
+                  ) : (
+                    <span className="text-2xs text-text-muted">{item.action_label}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="border-t border-border px-4 py-2.5">
+        <p className="text-2xs leading-relaxed text-text-muted">{data.disclaimer}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -9005,8 +9127,17 @@ export default function StrategyDetail() {
   const [configSnapshotDrawerOpen, setConfigSnapshotDrawerOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   // M73: tabbed workflow — Overview is the default landing tab.
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<StrategyTab>("overview");
   const onTab = (t: StrategyTab) => activeTab === t;
+
+  // M74: honor ?tab= deep links (e.g. from the Command Center action queue).
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && VALID_TABS.includes(tab as StrategyTab)) {
+      setActiveTab(tab as StrategyTab);
+    }
+  }, [searchParams]);
 
   // M16: universe snapshot drawer state
   const [universeSnapshotDrawerOpen, setUniverseSnapshotDrawerOpen] = useState(false);
@@ -9040,6 +9171,10 @@ export default function StrategyDetail() {
 
   // M27: strategy health
   const [health, setHealth] = useState<StrategyHealth | null>(null);
+
+  // M74: backend-driven action queue (null = not loaded / failed → fallback to local)
+  const [actionQueue, setActionQueue] = useState<ActionQueueResponse | null>(null);
+  const [actionQueueFailed, setActionQueueFailed] = useState(false);
 
   // M29: run history and timeline drilldown
   const [runHistory, setRunHistory] = useState<StrategyRunHistoryResponse | null>(null);
@@ -9206,6 +9341,16 @@ export default function StrategyDetail() {
       .finally(() => setLoading(false));
     // M27: load health in parallel
     getStrategyHealth(id).then(setHealth).catch(() => setHealth(null));
+    // M74: load backend action queue in parallel (fall back to local on failure)
+    getStrategyActionQueue(id)
+      .then((q) => {
+        setActionQueue(q);
+        setActionQueueFailed(false);
+      })
+      .catch(() => {
+        setActionQueue(null);
+        setActionQueueFailed(true);
+      });
     // M29: load run history and timeline drilldown in parallel
     getStrategyRunHistory(id, { limit: 50 }).then(setRunHistory).catch(() => setRunHistory(null));
     getStrategyTimelineDrilldown(id, { limit: 30 }).then(setTimelineDrilldown).catch(() => setTimelineDrilldown(null));
@@ -9375,16 +9520,28 @@ export default function StrategyDetail() {
       {/* OVERVIEW TAB — executive summary */}
       {onTab("overview") && (
         <>
-          {/* M73: Unified Action Queue */}
-          <ActionQueue
-            health={health}
-            readiness={readiness}
-            freshness={freshness}
-            promotionGates={promotionGates}
-            hasReport={latestReport !== null}
-            runs={strategy.runs}
-            onNavigate={setActiveTab}
-          />
+          {/* M74: backend-driven Action Queue; M73 local queue is the graceful fallback */}
+          {actionQueue ? (
+            <BackendActionQueue data={actionQueue} onNavigate={setActiveTab} />
+          ) : (
+            <>
+              {actionQueueFailed && (
+                <p className="text-2xs text-text-muted">
+                  Showing a locally computed action summary — the live queue is
+                  temporarily unavailable.
+                </p>
+              )}
+              <ActionQueue
+                health={health}
+                readiness={readiness}
+                freshness={freshness}
+                promotionGates={promotionGates}
+                hasReport={latestReport !== null}
+                runs={strategy.runs}
+                onNavigate={setActiveTab}
+              />
+            </>
+          )}
 
           {/* M64: Strategy Reliability Command Center */}
           <CommandCenterPanel strategyId={strategy.id} />

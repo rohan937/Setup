@@ -4011,3 +4011,45 @@ export interface AuthStatusResponse {
   has_users: boolean;
   registration_enabled: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// M74: Strategy Action Queue
+// ---------------------------------------------------------------------------
+
+export type ActionSeverity = "critical" | "high" | "medium" | "low" | "info";
+export type ActionStatus = "pending" | "done" | "blocked" | "optional";
+
+export interface ActionItem {
+  id: string;
+  strategy_id: string;
+  title: string;
+  description: string;
+  why_it_matters: string;
+  severity: ActionSeverity;
+  priority_rank: number;
+  status: ActionStatus;
+  category: string;
+  source: string;
+  target_tab: string | null;
+  target_panel_label: string | null;
+  action_label: string;
+  action_type: string;
+  related_object_id: string | null;
+  related_object_type: string | null;
+  deterministic_reason: string;
+  created_from: string[];
+}
+
+export interface ActionQueueResponse {
+  strategy_id: string;
+  strategy_name: string;
+  generated_at: string;
+  items: ActionItem[];
+  total_action_count: number;
+  completed_count: number;
+  pending_count: number;
+  blocked_count: number;
+  optional_count: number;
+  deterministic_summary: string;
+  disclaimer: string;
+}

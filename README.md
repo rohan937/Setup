@@ -161,27 +161,31 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M72A / M72B: Design System Refinement + Web Evidence Uploader
+## Current milestone — M74: Strategy Action Queue v1
 
-**Status:** complete — *M72A refines the dark B2B design system, and M72B adds a reusable web evidence-bundle uploader. No deployment was performed.*
+**Status:** complete — *a unified, deterministic, backend-driven action queue that consolidates "what to do next" across the strategy evidence lifecycle. No deployment was performed.*
 
 ### What was built
 
-**M72A — Design system refinement**
-- Refined dark B2B design system with **calmer accent colors** and a clearer **sans-serif typographic hierarchy**.
-- Polished shared components and a new reusable **`Button`** component for consistent actions across the app.
+**Backend**
+- New service `app/services/action_queue.py` + schema `app/schemas/action_queue.py` and endpoint `GET /api/strategies/{id}/action-queue` (read-only, deterministic).
+- A **DB-existence backbone** (runs, run evidence links, report, regression tests, config policy, SLA) plus **guarded enrichment** from health, readiness, freshness, promotion gates, and assumption health — each wrapped in `try/except` so one broken subsystem cannot break the queue.
+- **Deduplication** merges multiple sources pointing at the same issue into one item (`created_from`), and **priority sorting** orders by severity → status → category, returning the top 10 by default with full counts.
 
-**M72B — Web evidence-bundle uploader**
-- New reusable **Evidence Bundle uploader** (drag/drop + paste + validate + preview + ingest), surfaced on the **Evidence Bundles** page and on **Strategy Detail**.
-- Ships a sample **KO/PEP bundle template** to use as a starting point.
-- File safety: `.json` only, ≤ 1 MB, JSON treated as data (never executed).
-- RBAC: ingestion requires the **write-research** permission; a 403 surfaces *"You do not have permission to ingest evidence."*
-- **SDK/CLI ingestion preserved** — the web uploader is an additional manual/demo path, not a replacement.
+**Frontend**
+- **Strategy Detail → Overview** now renders the backend queue (priority number, severity + status chips, why-it-matters, category · source, tab-switching action button), with graceful fallback to the M73 local queue if the endpoint fails. All M73 tabs and panels are preserved.
+- **Command Center** is now an operating console: strategy selector + summary strip + queue grouped into **Immediate blockers / Evidence fixes / Governance setup / Reporting & export**, deep-linking via `?tab=`.
+- **Dashboard** gains a compact, fail-safe **Top Priority Actions** card.
 
-See [`docs/web-evidence-upload.md`](docs/web-evidence-upload.md) for the web upload flow and [`docs/ci-ingestion.md`](docs/ci-ingestion.md) for the SDK/CLI path.
+The queue uses product language only, contains no AI and no trading-recommendation language, and always shows the disclaimer: *"Action Queue prioritizes research evidence tasks. It does not provide trading recommendations."*
+
+See [`docs/action-queue.md`](docs/action-queue.md) for the full design.
+
+### Previous milestone — M73: Strategy Detail Tabbed Workflow + Action Queue v1
+- Tabbed Strategy Detail (Overview / Evidence / Runs / Governance / Lineage / Exports / Developer) with a first local Action Queue on the Overview tab.
 
 ### Next milestones
-- M73: Demo Mode polish
+- M75: TBD
 
 ---
 

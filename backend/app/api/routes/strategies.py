@@ -4073,6 +4073,36 @@ from app.services.shadow_production import (  # noqa: E402
     StrategyShadowMonitorData,
 )
 
+from app.schemas.action_queue import ActionQueueResponse  # noqa: E402
+from app.services.action_queue import get_action_queue  # noqa: E402
+
+
+@router.get(
+    "/strategies/{strategy_id}/action-queue",
+    response_model=ActionQueueResponse,
+    tags=["strategies"],
+)
+def get_strategy_action_queue(
+    strategy_id: uuid.UUID,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+) -> ActionQueueResponse:
+    """Return the prioritized, deterministic action queue for a strategy.
+
+    Consolidates "what to do next" across the evidence lifecycle — evidence
+    linkage, readiness, governance setup, freshness, assumptions, and
+    reporting. Computed live from existing evidence and services.
+
+    Deterministic — no AI, no live market data, no trading recommendations.
+    Read-only — no AuditTimelineEvent created.
+    """
+    try:
+        payload = get_action_queue(db, strategy_id, limit=limit)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return ActionQueueResponse(**payload)
+
 
 @router.get(
     "/strategies/{strategy_id}/shadow-monitor",
