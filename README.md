@@ -161,7 +161,27 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M77: Home Workbench + Role-Aware UX + Empty-State Quick Actions v1
+## Current milestone — M78: Advanced Demo Strategy Seed v1
+
+**Status:** complete — *one realistic, multi-version equity strategy ("US Equity Quality-Momentum Rotation") with a full historical evidence trail, so the whole product can be demoed end-to-end on local or deployed Postgres. No deployment performed.*
+
+### What was built
+
+**Backend**
+- New `app/services/advanced_demo_seed.py` — deterministic, **idempotent** seed that creates one strategy with 4 versions (v1 weak → v4 paper-candidate), 4 configs/universes/signals/datasets, 7 runs (research/backtest×4/paper/live-like), 5 backtest audits, 5 reliability scores, 4 reports, 10 alerts (7 resolved + 3 open), 3 review cases, governance (regression/config-policy/SLA), and a rich audit-timeline. Reuses the clean-demo `_make_*` helpers; re-running never duplicates the strategy.
+- New endpoint `POST /api/admin/demo/advanced-strategy` (RBAC: `can_seed_demo`) + CLI `scripts/seed_advanced_demo_strategy.py` (works against local SQLite or Render Postgres).
+- Tests in `tests/test_advanced_demo_strategy_m78.py` (8 pass): creates strategy, idempotent, has runs/reports/audits/alerts/review-cases, viewer → 403.
+
+**Frontend**
+- **Demo Controls** → "Advanced Strategy Demo" card with **Seed Advanced Strategy**, result counts, and **Open Strategy →**.
+
+**The story:** v1 has the best Sharpe (1.8) but the worst trust (~48) — same-close fills, zero costs, 8.5× turnover. v4 has a lower Sharpe (1.18) but high trust (~86) — realistic costs, liquidity filters, sector cap, 1.9× turnover. QuantFidelity makes that difference visible. The strategy lands at the **Shadow** lifecycle stage, blocked from Production Candidate.
+
+The clean realistic demo seed is untouched. Deterministic synthetic data only — no AI, no external APIs, no broker/trading actions.
+
+See [`docs/advanced-demo-strategy.md`](docs/advanced-demo-strategy.md).
+
+### Previous milestone — M77: Home Workbench + Role-Aware UX + Empty-State Quick Actions v1
 
 **Status:** complete — *product-completeness pass: a warm Home / Workbench landing, calm role-aware access messaging, and actionable empty states so panels are never dead ends. Frontend-only — no backend changes, no deployment.*
 
@@ -247,7 +267,7 @@ See [`docs/action-queue.md`](docs/action-queue.md) for the full design.
 - Tabbed Strategy Detail (Overview / Evidence / Runs / Governance / Lineage / Exports / Developer) with a first local Action Queue on the Overview tab.
 
 ### Next milestones
-- M78: TBD
+- M79: TBD
 
 ---
 

@@ -80,6 +80,7 @@ import type {
   SystemHealthResponse,
   DemoSeedRequest,
   DemoSeedResponse,
+  AdvancedDemoSeedResponse,
   DemoStatusResponse,
   StrategyDriftResponse,
   StrategyEvidenceFreshnessResponse,
@@ -1049,6 +1050,13 @@ export async function seedDemoData(payload: DemoSeedRequest): Promise<DemoSeedRe
 
 export async function getDemoStatus(): Promise<DemoStatusResponse> {
   return request<DemoStatusResponse>("/api/admin/demo-status");
+}
+
+// M78: seed the advanced demo strategy
+export async function seedAdvancedDemoStrategy(): Promise<AdvancedDemoSeedResponse> {
+  return request<AdvancedDemoSeedResponse>("/api/admin/demo/advanced-strategy", {
+    method: "POST",
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -26,7 +26,12 @@ from app.schemas.system_health import (
     SystemProjectHealthRollup,
     SystemStrategyHealthRollup,
 )
-from app.schemas.demo_seed import DemoSeedRequest, DemoSeedResponse, DemoStatusResponse
+from app.schemas.demo_seed import (
+    AdvancedDemoSeedResponse,
+    DemoSeedRequest,
+    DemoSeedResponse,
+    DemoStatusResponse,
+)
 from app.schemas.deployment_readiness import (
     DeploymentReadinessCheck,
     DeploymentReadinessCategory,
@@ -177,6 +182,29 @@ def seed_demo_endpoint(
         raise HTTPException(
             status_code=500,
             detail=f"Demo seed failed: {str(exc)[:200]}",
+        )
+
+
+@router.post("/admin/demo/advanced-strategy", response_model=AdvancedDemoSeedResponse)
+def seed_advanced_strategy_endpoint(
+    db: Session = Depends(get_db),
+    _member=Depends(require_can_seed_demo),
+) -> AdvancedDemoSeedResponse:
+    """Seed the advanced demo strategy "US Equity Quality-Momentum Rotation".
+
+    Idempotent — re-running reuses existing artifacts without duplicating the
+    strategy. RBAC: Owner/Admin (can_seed_demo). Deterministic synthetic data
+    only — not real trading performance.
+    """
+    from app.services.advanced_demo_seed import seed_advanced_demo_strategy
+
+    try:
+        result = seed_advanced_demo_strategy(db)
+        return AdvancedDemoSeedResponse(**result)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Advanced demo seed failed: {str(exc)[:200]}",
         )
 
 

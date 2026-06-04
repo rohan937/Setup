@@ -43,3 +43,18 @@ class DemoStatusResponse(BaseModel):
     demo_strategy_names: list[str] = []
     last_seeded_at: Optional[datetime] = None
     summary: str
+
+
+class AdvancedDemoSeedResponse(BaseModel):
+    """Response body for POST /api/admin/demo/advanced-strategy (M78)."""
+
+    status: str  # created | refreshed
+    strategy_id: str
+    strategy_name: str
+    strategy_slug: str
+    organization_id: str
+    project_id: str
+    counts: dict = {}
+    total_artifacts: int
+    summary: str
+    disclaimer: str

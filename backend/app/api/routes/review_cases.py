@@ -97,7 +97,7 @@ def list_review_cases(
     )
     total = (
         db.query(ResearchReviewCase)
-        .filter(ResearchReviewCase.strategy_id == str(strategy_id))
+        .filter(ResearchReviewCase.strategy_id.in_(svc._strategy_id_forms(strategy_id)))
         .count()
     )
 

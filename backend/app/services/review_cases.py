@@ -70,6 +70,15 @@ def _to_uuid(strategy_id: str | uuid.UUID) -> uuid.UUID:
     return uuid.UUID(str(strategy_id))
 
 
+def _strategy_id_forms(strategy_id: str | uuid.UUID) -> list[str]:
+    """Both stored forms of a strategy id (36-char str and 32-char hex)."""
+    try:
+        u = _to_uuid(strategy_id)
+        return [str(u), u.hex]
+    except Exception:
+        return [str(strategy_id)]
+
+
 def _gather_evidence(db: Session, strategy_id: str) -> dict[str, Any]:
     """Collect all evidence needed for case generation."""
     evidence: dict[str, Any] = {}
@@ -707,8 +716,10 @@ def get_research_review_cases(
     offset: int = 0,
 ) -> list[ResearchReviewCase]:
     """Return review cases for a strategy, optionally filtered by status."""
+    # strategy_id may be stored as the 36-char str or the 32-char hex form
+    # (SQLAlchemy 2.0 SQLite stores UUID PKs as hex). Match both defensively.
     q = db.query(ResearchReviewCase).filter(
-        ResearchReviewCase.strategy_id == str(strategy_id)
+        ResearchReviewCase.strategy_id.in_(_strategy_id_forms(strategy_id))
     )
     if status is not None:
         q = q.filter(ResearchReviewCase.status == status)

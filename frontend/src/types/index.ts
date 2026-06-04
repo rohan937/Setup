@@ -2549,6 +2549,20 @@ export interface DemoStatusResponse {
   summary: string;
 }
 
+// M78: advanced demo strategy seed
+export interface AdvancedDemoSeedResponse {
+  status: string; // created | refreshed
+  strategy_id: string;
+  strategy_name: string;
+  strategy_slug: string;
+  organization_id: string;
+  project_id: string;
+  counts: Record<string, number>;
+  total_artifacts: number;
+  summary: string;
+  disclaimer: string;
+}
+
 // ---------------------------------------------------------------------------
 // M47: Strategy Drift
 // ---------------------------------------------------------------------------

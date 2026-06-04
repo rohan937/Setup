@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getDemoStatus, seedDemoData } from "@/lib/api";
-import type { DemoSeedResponse, DemoStatusResponse } from "@/types";
+import { getDemoStatus, seedDemoData, seedAdvancedDemoStrategy } from "@/lib/api";
+import type { AdvancedDemoSeedResponse, DemoSeedResponse, DemoStatusResponse } from "@/types";
 import PageHeader from "@/components/PageHeader";
 import { startWalkthrough } from "@/lib/demoWalkthrough";
 
@@ -31,6 +31,11 @@ export default function DemoControls() {
   const [cleanError, setCleanError] = useState<string | null>(null);
   const [cleanLoading, setCleanLoading] = useState(false);
   const [cleanConfirmed, setCleanConfirmed] = useState(false);
+
+  // M78: advanced demo strategy seed state
+  const [advResult, setAdvResult] = useState<AdvancedDemoSeedResponse | null>(null);
+  const [advError, setAdvError] = useState<string | null>(null);
+  const [advLoading, setAdvLoading] = useState(false);
 
   // Legacy seed/reset state
   const [seedResult, setSeedResult] = useState<DemoSeedResponse | null>(null);
@@ -79,6 +84,21 @@ export default function DemoControls() {
       setCleanError(err instanceof Error ? err.message : "Clean seed failed.");
     } finally {
       setCleanLoading(false);
+    }
+  }
+
+  async function handleAdvancedSeed() {
+    setAdvLoading(true);
+    setAdvError(null);
+    setAdvResult(null);
+    try {
+      const result = await seedAdvancedDemoStrategy();
+      setAdvResult(result);
+      fetchStatus();
+    } catch (err) {
+      setAdvError(err instanceof Error ? err.message : "Advanced seed failed.");
+    } finally {
+      setAdvLoading(false);
     }
   }
 
@@ -331,6 +351,59 @@ export default function DemoControls() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* M78: Advanced Strategy Demo */}
+      <div className="mb-6 rounded-lg border border-cyan-800/50 bg-cyan-950/10 p-5">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-cyan-300">
+          Advanced Strategy Demo
+        </h2>
+        <p className="mb-3 text-xs text-gray-400">
+          Seeds one multi-version equity strategy — “US Equity Quality-Momentum Rotation” —
+          with historical reports, audits, alerts, review cases, governance, and lifecycle
+          progression (v1 → v4). Idempotent: re-running never duplicates it. Deterministic
+          synthetic data — not real trading performance.
+        </p>
+        <button
+          onClick={handleAdvancedSeed}
+          disabled={advLoading}
+          className="rounded border border-cyan-700 bg-cyan-900/30 px-4 py-2 font-mono text-xs text-cyan-300 hover:bg-cyan-900/50 disabled:opacity-50"
+        >
+          {advLoading ? "Seeding…" : "Seed Advanced Strategy"}
+        </button>
+
+        {advError && (
+          <p className="mt-3 rounded border border-red-700/40 bg-red-900/20 px-3 py-2 text-xs text-red-400">
+            {advError}
+          </p>
+        )}
+
+        {advResult && (
+          <div className="mt-4 rounded border border-gray-700 bg-gray-900 p-4">
+            <p className="mb-2 text-sm text-gray-300">
+              <span className="uppercase tracking-wider text-cyan-400">{advResult.status}</span>
+              {" — "}
+              {advResult.strategy_name}
+            </p>
+            <p className="mb-3 font-mono text-2xs text-gray-500">{advResult.strategy_id}</p>
+            <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-2xs text-gray-400">
+              <span>{advResult.counts.versions} versions</span>
+              <span>{advResult.counts.runs} runs</span>
+              <span>{advResult.counts.reports} reports</span>
+              <span>{advResult.counts.audits} audits</span>
+              <span>{advResult.counts.alerts} alerts</span>
+              <span>{advResult.counts.review_cases} review cases</span>
+              <span className="text-gray-500">· {advResult.total_artifacts} total artifacts</span>
+            </div>
+            <Link
+              to={`/strategies/${advResult.strategy_id}`}
+              className="inline-block rounded border border-cyan-700 px-3 py-1.5 font-mono text-xs text-cyan-400 transition hover:border-cyan-500"
+            >
+              Open Strategy →
+            </Link>
+            <p className="mt-3 text-2xs text-gray-600">{advResult.disclaimer}</p>
           </div>
         )}
       </div>
