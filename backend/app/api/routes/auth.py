@@ -24,7 +24,12 @@ from app.schemas.auth import (
     UserRead,
     UserRegisterRequest,
 )
-from app.services.auth_users import authenticate_user, register_user
+from app.services.auth_users import (
+    authenticate_user,
+    bootstrap_owner,
+    owner_exists,
+    register_user,
+)
 
 router = APIRouter()
 
@@ -133,6 +138,38 @@ def get_me(
         organization_id=organization_id,
         permissions=perms,
     )
+
+
+@router.post("/auth/bootstrap-first-owner", response_model=CurrentUserResponse)
+def bootstrap_first_owner(
+    current_user: AuthUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """One-time first-owner bootstrap for a fresh deployment.
+
+    Promotes the **currently authenticated** user to owner of the default
+    workspace (creating the workspace if none exists). Allowed ONLY while no
+    owner exists anywhere — once any owner exists this returns 409, so it can
+    never be used to escalate privileges on an established workspace.
+    """
+    if owner_exists(db):
+        raise HTTPException(
+            status_code=409,
+            detail="An owner already exists. First-owner bootstrap is disabled.",
+        )
+    try:
+        bootstrap_owner(
+            db,
+            email=current_user.email,
+            display_name=current_user.display_name,
+            require_no_owner=True,
+        )
+        db.commit()
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e))
+    # Return the refreshed /me payload so the client updates role + permissions.
+    return get_me(current_user=current_user, db=db)
 
 
 @router.post("/auth/logout")

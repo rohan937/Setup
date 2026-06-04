@@ -8,6 +8,7 @@ import {
   getFrontendEnvironment,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import NoWorkspaceNotice from "@/components/NoWorkspaceNotice";
 import { canSeedDemo, roleBadgeClasses } from "@/lib/permissions";
 import {
   startWalkthrough,
@@ -131,6 +132,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col gap-5">
+      <NoWorkspaceNotice />
       {/* 1. Welcome header */}
       <div className="rounded-card border border-border bg-bg-700 px-5 py-5 shadow-card">
         <p className="caption mb-1">Workbench</p>

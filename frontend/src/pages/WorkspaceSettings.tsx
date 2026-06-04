@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
+import NoWorkspaceNotice from "@/components/NoWorkspaceNotice";
 import {
   getWorkspaceSummary,
   updateWorkspaceSettings,
@@ -130,6 +131,9 @@ export default function WorkspaceSettings() {
     return (
       <div className="min-h-screen bg-gray-950 px-6 py-6 text-gray-200">
         <PageHeader tag="ADMIN" title="Workspace Settings" subtitle="Error loading data" />
+        <div className="mb-4">
+          <NoWorkspaceNotice />
+        </div>
         <div className="rounded-lg border border-red-800/50 bg-red-900/20 p-5 text-sm text-red-400">
           {error}
         </div>
@@ -141,6 +145,9 @@ export default function WorkspaceSettings() {
 
   return (
     <div className="min-h-screen bg-gray-950 px-6 py-6 text-gray-200">
+      <div className="mb-4">
+        <NoWorkspaceNotice />
+      </div>
       <PageHeader
         tag="ADMIN"
         title="Workspace Settings"

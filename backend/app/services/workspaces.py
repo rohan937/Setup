@@ -275,6 +275,14 @@ def create_workspace_member(
     if status not in VALID_STATUSES:
         raise ValueError(f"invalid status: {status!r}")
 
+    # If the email already belongs to a registered auth user, link them so the
+    # member is "linked" immediately (no separate invitation step needed).
+    from app.models.auth_user import AuthUser
+
+    linked_user = (
+        db.query(AuthUser).filter(AuthUser.email == email.lower().strip()).first()
+    )
+
     now = datetime.now(timezone.utc)
     member = WorkspaceMember(
         organization_id=org_id_str,
@@ -284,6 +292,7 @@ def create_workspace_member(
         status=status,
         title=payload.get("title"),
         notes=payload.get("notes"),
+        user_id=str(linked_user.id) if linked_user else None,
         created_at=now,
         updated_at=now,
     )

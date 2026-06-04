@@ -1682,6 +1682,25 @@ export async function logoutUser(): Promise<void> {
   clearAuthToken();
 }
 
+// First-owner bootstrap: promote the current user to owner of the default
+// workspace. The backend only permits this while no owner exists anywhere.
+export async function bootstrapFirstOwner(): Promise<CurrentUserResponse> {
+  const res = await fetch(API_BASE_URL + "/api/auth/bootstrap-first-owner", {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      detail = (await res.json()).detail ?? detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 export async function getAuthStatus(): Promise<AuthStatusResponse> {
   const res = await fetch(API_BASE_URL + "/api/auth/status", { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(await res.text());

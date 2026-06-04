@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
+import NoWorkspaceNotice from "@/components/NoWorkspaceNotice";
 import { useAuth } from "@/context/AuthContext";
 import { roleBadgeClasses } from "@/lib/permissions";
 
@@ -38,6 +39,12 @@ export default function RoleAwareAccess({
   return (
     <div className="px-1 py-1">
       <PageHeader tag="Access" title={title} subtitle="Restricted to higher access" />
+
+      {/* When the user has no workspace membership at all, offer the first-owner
+          bootstrap (renders nothing if they already belong to a workspace). */}
+      <div className="mt-4 max-w-2xl">
+        <NoWorkspaceNotice />
+      </div>
 
       <div className="mt-4 max-w-2xl rounded-card border border-fidelity-medium/30 bg-fidelity-medium/5 p-6">
         <p className="text-sm font-medium text-text-primary">
