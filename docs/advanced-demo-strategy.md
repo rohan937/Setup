@@ -93,6 +93,22 @@ python3 scripts/seed_advanced_demo_strategy.py
 ```
 Runs against whatever `DATABASE_URL` points to (local SQLite or Render Postgres).
 
+### Option D — Single-slice evidence bundle (Developer → Evidence Bundles)
+For demonstrating the **upload flow** itself, an exportable bundle is provided at
+[`docs/samples/advanced-demo-strategy-bundle.json`](samples/advanced-demo-strategy-bundle.json).
+It is the **v4 Paper Candidate slice** (version, config, universe, signal,
+dataset + snapshot, run) and, on ingest, runs a backtest audit + reliability
+score. Open **Developer → Evidence Bundles**, select a strategy, paste or upload
+the file, and ingest. This attaches one realistic evidence chain to an existing
+strategy — it does **not** create the multi-version story.
+
+> The admin seed (Options A–C) remains the **recommended** path: it creates the
+> full strategy with all four versions, seven runs, audits, reports, alerts, and
+> review cases. The bundle is a lightweight way to show the manual/SDK upload
+> path. (`generate_strategy_report` / `generate_alerts` and `idempotency_key` are
+> intentionally omitted from the sample so it ingests cleanly on both local SQLite
+> and deployed Postgres; generate the report afterward with **Generate Report**.)
+
 **Idempotency:** every path is safe to run repeatedly — it reuses existing
 artifacts (deduped by natural keys) and **never duplicates the strategy**. The
 response `status` is `created` on first run and `refreshed` thereafter.

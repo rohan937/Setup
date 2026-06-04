@@ -1,0 +1,165 @@
+{
+  "_comment": "QuantFidelity advanced demo evidence bundle — the v4 Paper Candidate slice of 'US Equity Quality-Momentum Rotation'. Upload via Developer -> Evidence Bundles (select a strategy, paste/upload this file). Ingesting it creates a full evidence chain (version, config, universe, signal, dataset+snapshot, run) and runs a backtest audit + reliability score. Deterministic synthetic data — NOT real trading performance. RECOMMENDED PATH for the full multi-version story (4 versions, 7 runs, audits, reports, alerts, review cases) is the admin seed: Admin -> Demo Controls -> Seed Advanced Strategy (POST /api/admin/demo/advanced-strategy). Notes: this bundle runs the backtest audit + reliability score on ingest. 'generate_strategy_report' and 'generate_alerts' are left off so it ingests warning-free on both local SQLite and deployed Postgres — generate the report afterward with the 'Generate Report' button on the strategy. No 'idempotency_key' is included for cross-database safety; the evidence sections still de-duplicate by their labels/hashes on re-upload.",
+  "strategy_version": {
+    "version_label": "v4 Paper Candidate",
+    "git_commit": "qmr4d39",
+    "branch_name": "main",
+    "code_path": "strategies/quality_momentum_rotation_v4.py",
+    "signal_name": "quality_momentum_score_v4",
+    "signal_description": "Composite rank of 12-month momentum, gross profitability, and a volatility filter, with liquidity and sector-cap constraints."
+  },
+  "config_snapshot": {
+    "strategy_version_label": "v4 Paper Candidate",
+    "label": "v4 Paper Candidate Config",
+    "source_type": "manual_json",
+    "config_json": {
+      "params": {
+        "rebalance_frequency": "monthly",
+        "rank_top_n": 12,
+        "momentum_lookback_months": 12,
+        "turnover_target": 2.0
+      },
+      "assumptions": {
+        "transaction_cost_bps": 7,
+        "slippage_bps": 4,
+        "fill_model": "next_bar_open",
+        "max_leverage": 1.0,
+        "max_position_weight": 0.08,
+        "liquidity_filter": "adv_1m_gt_30m",
+        "sector_cap": 0.30,
+        "turnover_target": 2.0
+      }
+    }
+  },
+  "universe_snapshot": {
+    "strategy_version_label": "v4 Paper Candidate",
+    "label": "v4 Paper Candidate Universe",
+    "symbols": [
+      "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "JPM", "XOM", "UNH", "COST",
+      "HD", "LLY", "AVGO", "MA", "V", "PG", "JNJ", "WMT", "ORCL", "ADBE"
+    ],
+    "metadata_json": {
+      "universe_type": "US_LARGE_CAP",
+      "rebalance_freq": "monthly",
+      "liquidity_filter": "adv_1m_gt_30m",
+      "sector_cap": "0.30",
+      "ranking_factors": ["12m_momentum", "gross_profitability", "volatility_filter", "liquidity_filter", "sector_cap"]
+    }
+  },
+  "signal_snapshot": {
+    "strategy_version_label": "v4 Paper Candidate",
+    "universe_snapshot_label": "v4 Paper Candidate Universe",
+    "label": "v4 Quality-Momentum Signal",
+    "signal_name": "quality_momentum_score_v4",
+    "signal_column": "signal",
+    "rows": [
+      {"symbol": "AAPL",  "timestamp": "2026-05-01", "signal": 1.42},
+      {"symbol": "MSFT",  "timestamp": "2026-05-01", "signal": 1.28},
+      {"symbol": "NVDA",  "timestamp": "2026-05-01", "signal": 1.15},
+      {"symbol": "AMZN",  "timestamp": "2026-05-01", "signal": 0.94},
+      {"symbol": "GOOGL", "timestamp": "2026-05-01", "signal": 0.81},
+      {"symbol": "META",  "timestamp": "2026-05-01", "signal": 0.67},
+      {"symbol": "JPM",   "timestamp": "2026-05-01", "signal": 0.53},
+      {"symbol": "XOM",   "timestamp": "2026-05-01", "signal": 0.39},
+      {"symbol": "UNH",   "timestamp": "2026-05-01", "signal": 0.25},
+      {"symbol": "COST",  "timestamp": "2026-05-01", "signal": 0.12},
+      {"symbol": "HD",    "timestamp": "2026-05-01", "signal": -0.02},
+      {"symbol": "LLY",   "timestamp": "2026-05-01", "signal": -0.16},
+      {"symbol": "AVGO",  "timestamp": "2026-05-01", "signal": -0.29},
+      {"symbol": "MA",    "timestamp": "2026-05-01", "signal": -0.43},
+      {"symbol": "V",     "timestamp": "2026-05-01", "signal": -0.57},
+      {"symbol": "PG",    "timestamp": "2026-05-01", "signal": -0.71},
+      {"symbol": "JNJ",   "timestamp": "2026-05-01", "signal": -0.84},
+      {"symbol": "WMT",   "timestamp": "2026-05-01", "signal": -0.98},
+      {"symbol": "ORCL",  "timestamp": "2026-05-01", "signal": -1.12},
+      {"symbol": "ADBE",  "timestamp": "2026-05-01", "signal": -1.26}
+    ],
+    "metadata_json": {
+      "factors": {
+        "momentum_lookback_months": 12,
+        "quality_metric": "gross_profitability",
+        "volatility_filter": "trailing_60d",
+        "liquidity_filter": "adv_1m_gt_30m",
+        "sector_cap": 0.30
+      }
+    }
+  },
+  "dataset": {
+    "name": "US Equity OHLCV — Quality-Momentum Rotation",
+    "description": "Synthetic daily OHLCV for the quality-momentum large-cap universe. Demo data, not real market data.",
+    "dataset_type": "equity_prices",
+    "source_type": "csv_upload"
+  },
+  "dataset_snapshot": {
+    "snapshot_label": "v4",
+    "source_filename": "us_equity_ohlcv_v4.csv",
+    "rows": [
+      {"symbol": "AAPL",  "timestamp": "2026-04-30", "open": 100.0, "high": 101.2, "low": 99.1, "close": 100.4, "volume": 20000000},
+      {"symbol": "MSFT",  "timestamp": "2026-04-30", "open": 107.5, "high": 108.8, "low": 106.6, "close": 107.9, "volume": 21500000},
+      {"symbol": "NVDA",  "timestamp": "2026-04-30", "open": 115.0, "high": 116.4, "low": 114.0, "close": 115.5, "volume": 23000000},
+      {"symbol": "AMZN",  "timestamp": "2026-04-30", "open": 122.5, "high": 124.0, "low": 121.4, "close": 123.0, "volume": 24500000},
+      {"symbol": "GOOGL", "timestamp": "2026-04-30", "open": 130.0, "high": 131.6, "low": 128.8, "close": 130.5, "volume": 26000000},
+      {"symbol": "META",  "timestamp": "2026-04-30", "open": 137.5, "high": 139.2, "low": 136.2, "close": 138.0, "volume": 27500000},
+      {"symbol": "JPM",   "timestamp": "2026-04-30", "open": 145.0, "high": 146.7, "low": 143.7, "close": 145.6, "volume": 29000000},
+      {"symbol": "XOM",   "timestamp": "2026-04-30", "open": 152.5, "high": 154.3, "low": 151.1, "close": 153.1, "volume": 30500000},
+      {"symbol": "UNH",   "timestamp": "2026-04-30", "open": 160.0, "high": 161.9, "low": 158.6, "close": 160.6, "volume": 32000000},
+      {"symbol": "COST",  "timestamp": "2026-04-30", "open": 167.5, "high": 169.5, "low": 166.0, "close": 168.2, "volume": 33500000},
+      {"symbol": "HD",    "timestamp": "2026-04-30", "open": 175.0, "high": 177.1, "low": 173.5, "close": 175.7, "volume": 35000000},
+      {"symbol": "LLY",   "timestamp": "2026-04-30", "open": 182.5, "high": 184.7, "low": 180.9, "close": 183.2, "volume": 36500000},
+      {"symbol": "AVGO",  "timestamp": "2026-04-30", "open": 190.0, "high": 192.3, "low": 188.3, "close": 190.8, "volume": 38000000},
+      {"symbol": "MA",    "timestamp": "2026-04-30", "open": 197.5, "high": 199.9, "low": 195.8, "close": 198.3, "volume": 39500000},
+      {"symbol": "V",     "timestamp": "2026-04-30", "open": 205.0, "high": 207.5, "low": 203.2, "close": 205.8, "volume": 41000000},
+      {"symbol": "PG",    "timestamp": "2026-04-30", "open": 212.5, "high": 215.1, "low": 210.7, "close": 213.4, "volume": 42500000},
+      {"symbol": "JNJ",   "timestamp": "2026-04-30", "open": 220.0, "high": 222.6, "low": 218.1, "close": 220.9, "volume": 44000000},
+      {"symbol": "WMT",   "timestamp": "2026-04-30", "open": 227.5, "high": 230.2, "low": 225.6, "close": 228.4, "volume": 45500000},
+      {"symbol": "ORCL",  "timestamp": "2026-04-30", "open": 235.0, "high": 237.8, "low": 233.0, "close": 236.0, "volume": 47000000},
+      {"symbol": "ADBE",  "timestamp": "2026-04-30", "open": 242.5, "high": 245.4, "low": 240.5, "close": 243.5, "volume": 48500000},
+      {"symbol": "AAPL",  "timestamp": "2026-05-01", "open": 100.4, "high": 101.6, "low": 99.5, "close": 100.9, "volume": 20100000},
+      {"symbol": "MSFT",  "timestamp": "2026-05-01", "open": 107.9, "high": 109.2, "low": 107.0, "close": 108.4, "volume": 21600000},
+      {"symbol": "NVDA",  "timestamp": "2026-05-01", "open": 115.5, "high": 116.9, "low": 114.5, "close": 116.0, "volume": 23100000},
+      {"symbol": "AMZN",  "timestamp": "2026-05-01", "open": 123.0, "high": 124.5, "low": 121.9, "close": 123.5, "volume": 24600000},
+      {"symbol": "GOOGL", "timestamp": "2026-05-01", "open": 130.5, "high": 132.1, "low": 129.3, "close": 131.0, "volume": 26100000}
+    ]
+  },
+  "strategy_run": {
+    "strategy_version_label": "v4 Paper Candidate",
+    "dataset_snapshot_label": "v4",
+    "universe_snapshot_label": "v4 Paper Candidate Universe",
+    "signal_snapshot_label": "v4 Quality-Momentum Signal",
+    "run_name": "US Equity Quality-Momentum Rotation — Backtest v4 (bundle)",
+    "run_type": "backtest",
+    "status": "completed",
+    "params_json": {
+      "rebalance_frequency": "monthly",
+      "rank_top_n": 12,
+      "momentum_lookback_months": 12,
+      "turnover_target": 2.0
+    },
+    "assumptions_json": {
+      "transaction_cost_bps": 7,
+      "slippage_bps": 4,
+      "fill_model": "next_bar_open",
+      "max_leverage": 1.0,
+      "max_position_weight": 0.08,
+      "liquidity_filter": "adv_1m_gt_30m",
+      "sector_cap": 0.30,
+      "turnover_target": 2.0
+    },
+    "metrics_json": {
+      "sharpe": 1.18,
+      "annual_return": 0.098,
+      "volatility": 0.09,
+      "max_drawdown": -0.085,
+      "turnover": 1.9,
+      "trade_count": 470,
+      "win_rate": 0.57
+    },
+    "notes": "v4 Paper Candidate backtest. Realistic costs, liquidity filter, sector cap, and turnover control — lower headline Sharpe than v1 but far more trustworthy."
+  },
+  "actions": {
+    "run_backtest_audit": true,
+    "compute_reliability_score": true,
+    "generate_strategy_report": false,
+    "generate_alerts": false
+  }
+}
