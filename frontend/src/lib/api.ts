@@ -84,6 +84,7 @@ import type {
   StrategyDriftResponse,
   StrategyEvidenceFreshnessResponse,
   ActionQueueResponse,
+  StrategyLifecycleResponse,
   RepairOptionsResponse,
   RunLinkUpdateRequest,
   RunLinkSummary,
@@ -1105,6 +1106,15 @@ export async function getStrategyActionQueue(
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return request<ActionQueueResponse>(
     `/api/strategies/${strategyId}/action-queue${query}`,
+  );
+}
+
+// M76: strategy lifecycle inference
+export async function getStrategyLifecycle(
+  strategyId: string,
+): Promise<StrategyLifecycleResponse> {
+  return request<StrategyLifecycleResponse>(
+    `/api/strategies/${strategyId}/lifecycle`,
   );
 }
 

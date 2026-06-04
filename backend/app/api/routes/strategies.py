@@ -4086,6 +4086,30 @@ from app.services.shadow_production import (  # noqa: E402
 from app.schemas.action_queue import ActionQueueResponse  # noqa: E402
 from app.services.action_queue import get_action_queue  # noqa: E402
 
+from app.schemas.strategy_lifecycle import StrategyLifecycleResponse  # noqa: E402
+from app.services.strategy_lifecycle import compute_strategy_lifecycle  # noqa: E402
+
+
+@router.get(
+    "/strategies/{strategy_id}/lifecycle",
+    response_model=StrategyLifecycleResponse,
+    tags=["strategies"],
+)
+def get_strategy_lifecycle(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyLifecycleResponse:
+    """Return the inferred research-progression lifecycle for a strategy.
+
+    Deterministic — stage is inferred from runs, promotion gates, and the
+    action queue. Read-only. No AI, no live market data, no trading advice.
+    """
+    try:
+        payload = compute_strategy_lifecycle(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return StrategyLifecycleResponse(**payload)
+
 
 @router.get(
     "/strategies/{strategy_id}/action-queue",

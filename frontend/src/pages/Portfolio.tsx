@@ -13,10 +13,43 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { PortfolioOverview, PortfolioStrategyItem } from "@/types";
-import { getPortfolioOverview } from "@/lib/api";
+import { getPortfolioOverview, getStrategyLifecycle } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
+
+// M76: lazy, fail-safe lifecycle stage chip for a single strategy row.
+function PortfolioStageChip({ strategyId }: { strategyId: string }) {
+  const [stage, setStage] = useState<{ label: string; blocked: boolean } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getStrategyLifecycle(strategyId)
+      .then((lc) => {
+        if (!cancelled) setStage({ label: lc.current_stage_label, blocked: lc.blocked });
+      })
+      .catch(() => {
+        if (!cancelled) setStage(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [strategyId]);
+
+  if (!stage) return <span className="text-text-muted">—</span>;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-chip border px-2 py-0.5 text-2xs ${
+        stage.blocked
+          ? "border-fidelity-medium/40 bg-fidelity-medium/10 text-fidelity-medium"
+          : "border-border-strong bg-bg-800 text-text-secondary"
+      }`}
+    >
+      {stage.blocked && <span className="h-1.5 w-1.5 rounded-full bg-fidelity-medium" />}
+      {stage.label}
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -227,6 +260,9 @@ function PortfolioTableRow({ item }: { item: PortfolioStrategyItem }) {
       </td>
       <td className={TD}>
         <Badge value={item.asset_class} variant="asset_class" />
+      </td>
+      <td className={TD}>
+        <PortfolioStageChip strategyId={item.strategy_id} />
       </td>
       <td className={TD}>
         <span
@@ -513,6 +549,7 @@ export default function Portfolio() {
                     <tr className="border-b border-border/60 bg-bg-800/60">
                       <th className={TH}>Strategy</th>
                       <th className={TH}>Asset</th>
+                      <th className={TH}>Stage</th>
                       <th className={TH}>Health</th>
                       <th className={TH}>Reliability</th>
                       <th className={TH}>Coverage</th>

@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
-import { getStrategies, getStrategyActionQueue } from "@/lib/api";
-import type { ActionItem, ActionQueueResponse, Strategy } from "@/types";
+import StrategyLifecycleBar from "@/components/StrategyLifecycleBar";
+import { getStrategies, getStrategyActionQueue, getStrategyLifecycle } from "@/lib/api";
+import type {
+  ActionItem,
+  ActionQueueResponse,
+  LifecycleBlocker,
+  StrategyLifecycleResponse,
+  Strategy,
+} from "@/types";
 
 // ---------------------------------------------------------------------------
 // Action presentation helpers
@@ -81,6 +88,7 @@ export default function CommandCenter() {
   const [queue, setQueue] = useState<ActionQueueResponse | null>(null);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
+  const [lifecycle, setLifecycle] = useState<StrategyLifecycleResponse | null>(null);
 
   useEffect(() => {
     getStrategies()
@@ -98,6 +106,7 @@ export default function CommandCenter() {
   useEffect(() => {
     if (!selectedId) {
       setQueue(null);
+      setLifecycle(null);
       return;
     }
     setQueueLoading(true);
@@ -112,12 +121,23 @@ export default function CommandCenter() {
         setQueue(null);
         setQueueLoading(false);
       });
+    // M76: lifecycle visual for the selected strategy (best-effort).
+    getStrategyLifecycle(selectedId).then(setLifecycle).catch(() => setLifecycle(null));
   }, [selectedId]);
 
   const grouped = useMemo(
     () => (queue ? groupItems(queue.items) : null),
     [queue],
   );
+
+  const navigate = useNavigate();
+
+  // M76: a lifecycle blocker deep-links into the strategy (repair flows live there).
+  function handleLifecycleBlocker(b: LifecycleBlocker) {
+    if (!selectedId) return;
+    const tab = b.target_tab ? `?tab=${b.target_tab}` : "";
+    navigate(`/strategies/${selectedId}${tab}`);
+  }
 
   return (
     <div className="flex flex-col gap-4 px-6 py-6 max-w-4xl mx-auto">
@@ -167,6 +187,15 @@ export default function CommandCenter() {
           </span>
         )}
       </div>
+
+      {/* M76: lifecycle visual for the selected strategy */}
+      {lifecycle && (
+        <StrategyLifecycleBar
+          data={lifecycle}
+          onBlockerAction={handleLifecycleBlocker}
+          compact
+        />
+      )}
 
       {/* Summary strip */}
       {queue && (

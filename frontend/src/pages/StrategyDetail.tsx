@@ -60,6 +60,8 @@ import type {
   EvidenceFreshnessItem,
   ActionQueueResponse,
   ActionItem as BackendActionItem,
+  StrategyLifecycleResponse,
+  LifecycleBlocker,
   StrategyReadinessResponse,
   StrategyReadinessDimension,
   StrategyShadowMonitorResponse,
@@ -119,6 +121,7 @@ import {
   getStrategyDrift,
   getStrategyEvidenceFreshness,
   getStrategyActionQueue,
+  getStrategyLifecycle,
   generateAlerts,
   getStrategyReadiness,
   getStrategyShadowMonitor,
@@ -159,6 +162,7 @@ import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import EvidenceBundleUploader from "@/components/EvidenceBundleUploader";
 import EvidenceRepairModal from "@/components/EvidenceRepairModal";
+import StrategyLifecycleBar from "@/components/StrategyLifecycleBar";
 import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
@@ -9187,6 +9191,9 @@ export default function StrategyDetail() {
   const [actionQueue, setActionQueue] = useState<ActionQueueResponse | null>(null);
   const [actionQueueFailed, setActionQueueFailed] = useState(false);
 
+  // M76: lifecycle visual
+  const [lifecycle, setLifecycle] = useState<StrategyLifecycleResponse | null>(null);
+
   // M75: evidence repair + action execution + strategy management
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -9371,6 +9378,8 @@ export default function StrategyDetail() {
         setActionQueue(null);
         setActionQueueFailed(true);
       });
+    // M76: load lifecycle in parallel (best-effort)
+    getStrategyLifecycle(id).then(setLifecycle).catch(() => setLifecycle(null));
     // M29: load run history and timeline drilldown in parallel
     getStrategyRunHistory(id, { limit: 50 }).then(setRunHistory).catch(() => setRunHistory(null));
     getStrategyTimelineDrilldown(id, { limit: 30 }).then(setTimelineDrilldown).catch(() => setTimelineDrilldown(null));
@@ -9426,6 +9435,30 @@ export default function StrategyDetail() {
   // M75: reload all strategy data (also refreshes the action queue).
   function reloadAll() {
     setRefreshKey((k) => k + 1);
+  }
+
+  // M76: lifecycle blocker → reuse the same action handling as the Action Queue.
+  function handleLifecycleBlocker(b: LifecycleBlocker) {
+    handleActionItem({
+      id: `lifecycle:${b.action_type}:${b.related_run_id ?? ""}`,
+      strategy_id: id ?? "",
+      title: b.reason,
+      description: b.detail,
+      why_it_matters: b.detail,
+      severity: b.severity as BackendActionItem["severity"],
+      priority_rank: 0,
+      status: "pending",
+      category: "",
+      source: "lifecycle",
+      target_tab: b.target_tab,
+      target_panel_label: null,
+      action_label: b.action_label,
+      action_type: b.action_type,
+      related_object_id: b.related_run_id,
+      related_object_type: b.related_run_id ? "strategy_run" : null,
+      deterministic_reason: "",
+      created_from: ["lifecycle"],
+    });
   }
 
   // M75: execute an action-queue item. Many actions call an existing endpoint
@@ -9646,6 +9679,14 @@ export default function StrategyDetail() {
       {/* OVERVIEW TAB — executive summary */}
       {onTab("overview") && (
         <>
+          {/* M76: strategy lifecycle visual */}
+          {lifecycle && (
+            <StrategyLifecycleBar
+              data={lifecycle}
+              onBlockerAction={handleLifecycleBlocker}
+            />
+          )}
+
           {/* M74: backend-driven Action Queue; M73 local queue is the graceful fallback */}
           {actionQueue ? (
             <BackendActionQueue

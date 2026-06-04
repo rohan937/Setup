@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { ActionItem, DashboardAlertItem, DashboardSummary, EvidenceCoverageSummary, PortfolioOverview, ProjectHealth, RecentEvidenceItem, Strategy, StrategyHealthListResponse, SystemHealthResponse } from "@/types";
-import { getDashboardSummary, getEvidenceCoverage, getPortfolioOverview, getProjectsHealth, getStrategies, getStrategiesHealth, getStrategyActionQueue, getSystemHealth } from "@/lib/api";
+import { getDashboardSummary, getEvidenceCoverage, getPortfolioOverview, getProjectsHealth, getStrategies, getStrategiesHealth, getStrategyActionQueue, getStrategyLifecycle, getSystemHealth } from "@/lib/api";
+import { startWalkthrough, hasDemoStrategies, findDemoStrategyId } from "@/lib/demoWalkthrough";
 import Badge from "@/components/Badge";
 
 // ---------------------------------------------------------------------------
@@ -244,6 +245,111 @@ const HEALTH_CHIP: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// M76: guided demo card + compact lifecycle summary (self-contained, fail-safe)
+// ---------------------------------------------------------------------------
+
+interface DemoLifecycleRow {
+  role: string;
+  name: string;
+  stageLabel: string;
+  blocked: boolean;
+  reason: string | null;
+  strategyId: string;
+}
+
+function DashboardGuidedDemo({ strategies }: { strategies: Strategy[] }) {
+  const [rows, setRows] = useState<DemoLifecycleRow[]>([]);
+  const navigate = useNavigate();
+  const demoReady = hasDemoStrategies(strategies);
+
+  useEffect(() => {
+    if (!demoReady) {
+      setRows([]);
+      return;
+    }
+    let cancelled = false;
+    const targets: { role: string; key: Parameters<typeof findDemoStrategyId>[1] }[] = [
+      { role: "Healthy", key: "aapl" },
+      { role: "Review", key: "fxCarry" },
+      { role: "Weak", key: "crypto" },
+    ];
+    Promise.all(
+      targets.map((t) => {
+        const sid = findDemoStrategyId(strategies, t.key);
+        if (!sid) return Promise.resolve(null);
+        return getStrategyLifecycle(sid)
+          .then((lc): DemoLifecycleRow => ({
+            role: t.role,
+            name: lc.strategy_name,
+            stageLabel: lc.current_stage_label,
+            blocked: lc.blocked,
+            reason: lc.blockers[0]?.reason ?? null,
+            strategyId: sid,
+          }))
+          .catch(() => null);
+      }),
+    ).then((res) => {
+      if (!cancelled) setRows(res.filter((r) => r !== null) as DemoLifecycleRow[]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [strategies, demoReady]);
+
+  if (!demoReady) return null;
+
+  return (
+    <div className="rounded-card border border-accent-500/30 bg-accent-500/5 shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+        <div>
+          <h2 className="text-sm font-semibold text-text-primary">Guided demo</h2>
+          <p className="text-2xs text-text-muted">
+            A 6-step tour of the clean realistic demo — Dashboard → Portfolio → strategies.
+          </p>
+        </div>
+        <button
+          onClick={() => startWalkthrough(true)}
+          className="rounded-control border border-accent-500/40 bg-accent-500/15 px-3 py-1.5 text-xs font-medium text-accent-200 hover:bg-accent-500/25"
+        >
+          Start guided demo
+        </button>
+      </div>
+      {rows.length > 0 && (
+        <div className="divide-y divide-border">
+          {rows.map((r) => (
+            <button
+              key={r.strategyId}
+              onClick={() => navigate(`/strategies/${r.strategyId}`)}
+              className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-bg-600/30 transition-colors"
+            >
+              <span className="w-14 shrink-0 text-2xs uppercase tracking-eyebrow text-text-muted">
+                {r.role}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
+                {r.name}
+              </span>
+              <span className="shrink-0 text-2xs text-text-secondary">
+                {r.stageLabel}
+              </span>
+              <span
+                className={`shrink-0 rounded-chip border px-1.5 py-px text-2xs ${
+                  r.blocked
+                    ? "border-fidelity-medium/40 bg-fidelity-medium/10 text-fidelity-medium"
+                    : "border-fidelity-high/30 bg-fidelity-high/10 text-fidelity-high"
+                }`}
+                title={r.reason ?? undefined}
+              >
+                {r.blocked ? "Blocked" : "Clear"}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // M74: compact cross-strategy action summary (self-contained, fail-safe)
 // ---------------------------------------------------------------------------
 
@@ -422,6 +528,11 @@ export default function Dashboard() {
         <div className="rounded-card border border-red-800/60 bg-red-900/20 px-4 py-3 text-sm text-severity-high">
           {error}
         </div>
+      )}
+
+      {/* M76: guided demo card (only when clean demo data exists) */}
+      {!loading && strategies.length > 0 && (
+        <DashboardGuidedDemo strategies={strategies} />
       )}
 
       {/* M74: compact cross-strategy action summary */}

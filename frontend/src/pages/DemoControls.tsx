@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { getDemoStatus, seedDemoData } from "@/lib/api";
 import type { DemoSeedResponse, DemoStatusResponse } from "@/types";
 import PageHeader from "@/components/PageHeader";
+import { startWalkthrough } from "@/lib/demoWalkthrough";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -210,6 +211,16 @@ export default function DemoControls() {
             {status.summary && (
               <p className="text-xs text-gray-400">{status.summary}</p>
             )}
+
+            {/* M76: start / restart the guided walkthrough at any time */}
+            {status.strategy_count > 0 && (
+              <button
+                onClick={() => startWalkthrough(true)}
+                className="mt-3 rounded border border-cyan-700 bg-cyan-950/40 px-3 py-1.5 font-mono text-xs text-cyan-300 hover:border-cyan-500 transition"
+              >
+                Start / Restart Demo Walkthrough →
+              </button>
+            )}
           </div>
         )}
 
@@ -303,6 +314,13 @@ export default function DemoControls() {
                   Alerts {cleanResult.warnings.length > 0 ? `(${cleanResult.warnings.length} warn)` : ""}
                 </Link>
               </div>
+              {/* M76: guided walkthrough */}
+              <button
+                onClick={() => startWalkthrough(true)}
+                className="mt-3 rounded border border-cyan-700 bg-cyan-950/40 px-3 py-1.5 font-mono text-xs text-cyan-300 hover:border-cyan-500 transition"
+              >
+                Start Demo Walkthrough →
+              </button>
             </div>
 
             {cleanResult.warnings.length > 0 && (

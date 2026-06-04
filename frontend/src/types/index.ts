@@ -4135,3 +4135,44 @@ export interface StrategyManagementSummary {
   archived: boolean;
   message: string;
 }
+
+// ---------------------------------------------------------------------------
+// M76: Strategy Lifecycle
+// ---------------------------------------------------------------------------
+
+export type LifecycleStageState = "completed" | "current" | "blocked" | "upcoming";
+
+export interface LifecycleStage {
+  key: string;
+  label: string;
+  index: number;
+  state: LifecycleStageState;
+}
+
+export interface LifecycleBlocker {
+  reason: string;
+  detail: string;
+  severity: string;
+  action_type: string;
+  action_label: string;
+  target_tab: string | null;
+  related_run_id: string | null;
+}
+
+export interface StrategyLifecycleResponse {
+  strategy_id: string;
+  strategy_name: string;
+  generated_at: string;
+  stages: LifecycleStage[];
+  current_stage: string;
+  current_stage_label: string;
+  next_stage: string | null;
+  next_stage_label: string | null;
+  blocked: boolean;
+  blocked_stage: string | null;
+  blocked_stage_label: string | null;
+  blockers: LifecycleBlocker[];
+  suggested_actions: string[];
+  deterministic_summary: string;
+  disclaimer: string;
+}

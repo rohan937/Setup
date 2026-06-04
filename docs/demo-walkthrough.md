@@ -2,6 +2,39 @@
 
 > **For product demonstrations, investor walkthroughs, and QA sessions.**
 > This guide assumes you have run the "Reset Clean Realistic Demo" seed.
+>
+> QuantFidelity is a deterministic strategy **reliability / governance** product.
+> Everything below describes evidence, instrumentation, and lifecycle readiness —
+> never trading advice, never a recommendation to buy or sell.
+
+---
+
+## 0. Guided Demo Walkthrough (M76)
+
+There is now an **in-app Guided Demo Walkthrough** that drives a presenter (or a
+new user) through the demo in six steps. It overlays the real product — each step
+explains the current view, lists what to look for, and gives a "Go there" button
+that navigates straight to the right page or strategy.
+
+**How to start it:**
+- From the **Dashboard**, click the **"Start guided demo"** card, **or**
+- Go to **Admin → Demo Controls → "Start Demo Walkthrough"**.
+
+**How to restart it:**
+- **Admin → Demo Controls → "Restart Demo Walkthrough"**, **or**
+- The Dashboard card (which offers Restart once the walkthrough has been started or completed).
+
+**Behavior:**
+- It is **dismissible** and **non-blocking** — you can close it at any time and keep
+  clicking around the product normally; reopen it to resume.
+- Progress (last step, dismissed, completed) is stored in **localStorage**
+  (`qf_demo_walkthrough_v1`), so it survives refreshes on the same browser.
+  Restart clears that state.
+- If the demo strategies are missing, the walkthrough shows
+  **"Run Clean Realistic Demo first."**, linking to **Admin → Demo Controls**.
+
+The six in-app steps map exactly to the [5-minute walkthrough script](#9-5-minute-walkthrough-script-matches-the-in-app-steps) below:
+Dashboard → Portfolio → AAPL → FX Carry → Crypto → KO/PEP.
 
 ---
 
@@ -141,12 +174,41 @@ Multiple high alerts and an open review case.
 
 ---
 
-## 5. Page-by-page walkthrough
+## 5. The improving strategy — KO/PEP Pairs Trade (Maya Test)
+
+### 🟠 KO/PEP Pairs Trade (Maya Test) — *Improving, but not promotion-clean*
+
+**Story:** A Coke/Pepsi pairs-trade strategy that has clearly **gotten better** —
+v2 improved its trust score, reduced turnover, and raised its reliability versus v1.
+But "improved" is **not** the same as "ready to progress." It still has open
+governance work: evidence linkage is incomplete and key assumptions haven't been
+reviewed. This is the canonical example of the difference between a strategy that
+has **improved** and one that is **clean enough to advance a lifecycle stage**.
+
+| Item | Value |
+|------|-------|
+| v2 vs v1 | improved trust, lower turnover, higher reliability |
+| Current lifecycle stage | **Backtest** |
+| Next stage | **Backtest Review** |
+| Blockers | assumption review pending, missing evidence links, no paper run |
+
+**What to show:**
+- Strategy Detail → v2 metrics improved over v1, but lifecycle still at Backtest
+- Lifecycle bar → next stage is **Backtest Review**, not yet reached
+- Blockers / readiness → assumption review and evidence-link gaps remain
+- **Action Queue** → concrete next steps: fix evidence links, review assumptions
+- Talking point: improvement is necessary but **not sufficient** to progress —
+  QuantFidelity gates on evidence and governance, not just better numbers.
+
+---
+
+## 6. Page-by-page walkthrough
 
 ### Dashboard
 - Total strategies: **3** · Total runs: **6**
 - Open alerts: **~11**
 - Recent runs visible with evidence status
+- "Start guided demo" card (M76) to launch or restart the in-app walkthrough
 
 ### Portfolio
 - AAPL = healthy bar color
@@ -179,7 +241,7 @@ Multiple high alerts and an open review case.
 
 ---
 
-## 6. Expected dashboard numbers at a glance
+## 7. Expected dashboard numbers at a glance
 
 After clean realistic demo seed:
 
@@ -197,9 +259,13 @@ After clean realistic demo seed:
 | Config snapshots | 4 |
 | Dataset snapshots | 3 |
 
+> Note: the KO/PEP (Maya Test) strategy may be seeded separately from the three
+> core demo strategies; when present it appears as an additional Portfolio row and
+> is the target of step 6 in the guided walkthrough.
+
 ---
 
-## 7. Re-seeding / idempotency
+## 8. Re-seeding / idempotency
 
 Running the seed again in `extend` mode won't duplicate data:
 
@@ -219,13 +285,65 @@ curl -s -X POST http://localhost:8000/api/admin/seed-demo \
 
 ---
 
-## 8. Security / demo notes
+## 9. 5-minute walkthrough script (matches the in-app steps)
+
+These six steps match the in-app Guided Demo Walkthrough (M76) exactly. Keep the
+language reliability/governance-focused. Never give trading advice. Never say "AI."
+
+### Step 1 — Start at the Dashboard
+- **Click:** "Open Dashboard" (or just land on `/`).
+- **Say:** "This is the workspace health view for the whole research portfolio —
+  strategy counts, reliability, open alerts, and the top actions that need attention first."
+- **Look for:** Total strategies and total runs; open alerts and reliability pillars;
+  the **Top Priority Actions** card.
+
+### Step 2 — Compare strategies in Portfolio
+- **Click:** "Open Portfolio".
+- **Say:** "The Portfolio answers one question — which strategies are ready, which
+  need review, and which are unsafe to progress. Each row shows health and lifecycle stage."
+- **Look for:** AAPL healthy and well-instrumented; FX Carry in review with stale
+  evidence; Crypto Momentum blocked and under-instrumented.
+
+### Step 3 — Open the healthy example: AAPL Mean Reversion
+- **Click:** "Open AAPL Mean Reversion".
+- **Say:** "AAPL is the mature, well-instrumented strategy — this is what good
+  evidence and full instrumentation look like."
+- **Look for:** High evidence coverage and high trust; low or no open alerts;
+  the lifecycle bar advanced furthest.
+
+### Step 4 — Open the review example: FX Carry Strategy
+- **Click:** "Open FX Carry Strategy".
+- **Say:** "FX Carry has decent research but its evidence is going stale — this shows
+  how QuantFidelity catches maintenance problems before they become risk."
+- **Look for:** Evidence freshness / SLA warnings; an open review case;
+  lifecycle blocked on evidence freshness.
+
+### Step 5 — Open the blocked example: Crypto Momentum
+- **Click:** "Open Crypto Momentum".
+- **Say:** "Crypto Momentum has an attractive headline Sharpe, but weak assumptions
+  and thin evidence — this is why we don't trust a Sharpe number on its own."
+- **Look for:** Config policy failures (zero costs, same-close fill); a low trust
+  score despite the high Sharpe; lifecycle blocked by assumptions / governance.
+
+### Step 6 — Open the improving example: KO/PEP Pairs Trade (Maya)
+- **Click:** "Open KO/PEP Pairs Trade".
+- **Say:** "KO/PEP v2 genuinely improved — better trust, lower turnover, higher
+  reliability — but it still isn't clean enough to advance. Improvement is necessary,
+  not sufficient: it still needs assumption review and evidence linkage."
+- **Look for:** Current lifecycle stage **Backtest**, next **Backtest Review**;
+  blockers for assumption review, missing evidence links, and no paper run; use the
+  **Action Queue** to fix evidence links and review assumptions.
+
+---
+
+## 10. Security / demo notes
 
 - Demo data is self-contained in the local SQLite database (`backend/quantfidelity.db`).
 - `workspace_members` and `auth_users` are preserved across clean resets.
 - No real market data, no external APIs, no secrets used.
+- Guided walkthrough progress lives only in browser localStorage (`qf_demo_walkthrough_v1`).
 - Evidence-based descriptions only — not investment advice.
 
 ---
 
-*Updated by demo data cleanup. Workspace: Alpha Reliability Lab.*
+*Updated for M76 Guided Demo Walkthrough. Workspace: Alpha Reliability Lab.*

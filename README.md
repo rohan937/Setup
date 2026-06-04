@@ -161,7 +161,25 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M75: Evidence Repair Flows + Basic Strategy Management v1
+## Current milestone — M76: Guided Demo Walkthrough + Strategy Lifecycle Visual v1
+
+**Status:** complete — *adds product comprehension: a guided demo walkthrough for first-time users/investors, and a deterministic strategy lifecycle visual that shows where each strategy is and what blocks it from progressing. No deployment was performed.*
+
+### What was built
+
+**Backend**
+- New `app/services/strategy_lifecycle.py` + `app/schemas/strategy_lifecycle.py` + endpoint `GET /api/strategies/{id}/lifecycle` (read-only, deterministic). Infers the current stage (Research → Backtest → Backtest Review → Paper Candidate → Shadow → Production Candidate) from run types + readiness verdict + promotion gates, and derives progression **blockers from the M74 action queue** (so blockers carry the same action types/targets the UI already handles). Tests in `tests/test_strategy_lifecycle_m76.py` (14 pass).
+
+**Frontend**
+- **StrategyLifecycleBar** — horizontal stepper with completed/current/blocked/upcoming states, a "What blocks progression?" list, and action buttons that reuse M74/M75 flows. Rendered on **Strategy Detail → Overview** and (compact) on the **Command Center**.
+- **DemoWalkthrough** — a dismissible, non-blocking floating panel (mounted in AppShell so it persists across navigation) with Next / Previous / Exit, step number, title, explanation, "What to look for", and a "Go there" button. 6 steps: Dashboard → Portfolio → AAPL (healthy) → FX Carry (review) → Crypto (blocked) → KO/PEP Maya (improving). Progress stored in localStorage; shows "Run Clean Realistic Demo first." when demo strategies are absent.
+- **Dashboard** — a "Guided demo" card (Start/Restart) + compact lifecycle summary of the three demo strategies. **Demo Controls** — Start / Restart Demo Walkthrough buttons. **Portfolio** — a lifecycle **Stage** column (lazy, fail-safe).
+
+All M73 tabs, the M74 Action Queue, and M75 repair/management flows are preserved. Product language only — no AI, no external APIs, no trading actions.
+
+See [`docs/strategy-lifecycle.md`](docs/strategy-lifecycle.md) and [`docs/demo-walkthrough.md`](docs/demo-walkthrough.md).
+
+### Previous milestone — M75: Evidence Repair Flows + Basic Strategy Management v1
 
 **Status:** complete — *makes QuantFidelity actionable: fix missing run evidence directly from the web UI, run governance/reporting actions in one click, and manage strategies (edit / archive). No deployment was performed.*
 
@@ -210,7 +228,7 @@ See [`docs/action-queue.md`](docs/action-queue.md) for the full design.
 - Tabbed Strategy Detail (Overview / Evidence / Runs / Governance / Lineage / Exports / Developer) with a first local Action Queue on the Overview tab.
 
 ### Next milestones
-- M76: TBD
+- M77: TBD
 
 ---
 

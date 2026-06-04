@@ -1,8 +1,27 @@
+import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import DemoWalkthrough from "./DemoWalkthrough";
+import { getStrategies } from "@/lib/api";
+import { onWalkthroughStart } from "@/lib/demoWalkthrough";
+import type { Strategy } from "@/types";
 
 export default function AppShell() {
+  // M76: the guided walkthrough panel is mounted once here so it persists as
+  // the user navigates between Dashboard / Portfolio / strategy pages.
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+
+  useEffect(() => {
+    return onWalkthroughStart(() => {
+      getStrategies()
+        .then(setStrategies)
+        .catch(() => setStrategies([]))
+        .finally(() => setWalkthroughOpen(true));
+    });
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden bg-bg-900">
       <Sidebar />
@@ -14,6 +33,12 @@ export default function AppShell() {
           </div>
         </main>
       </div>
+      {walkthroughOpen && (
+        <DemoWalkthrough
+          strategies={strategies}
+          onClose={() => setWalkthroughOpen(false)}
+        />
+      )}
     </div>
   );
 }
