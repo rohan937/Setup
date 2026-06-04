@@ -17,9 +17,10 @@
     @apply bg-bg-900 text-text-primary font-sans antialiased;
   }
 
-  /* Terminal-style section label — monospace, small caps, tracked */
+  /* Eyebrow / section label — small, medium-weight, calm caps.
+     Sans-serif and restrained tracking: institutional, not terminal. */
   .caption {
-    @apply font-mono text-2xs font-medium uppercase tracking-widest text-text-muted;
+    @apply font-sans text-2xs font-medium uppercase tracking-eyebrow text-text-secondary;
   }
 
   /* Tabular monospace numerics */
@@ -27,8 +28,9 @@
     @apply font-mono tabular-nums;
   }
 
-  /* Research terminal data label — used for field names in detail views */
+  /* Data field label — used for field names in detail views.
+     Monospace stays here since these label raw IDs/metrics. */
   .data-label {
-    @apply font-mono text-2xs uppercase tracking-widest text-text-muted;
+    @apply font-mono text-2xs uppercase tracking-eyebrow text-text-muted;
   }
 }

@@ -12,7 +12,7 @@ export default function Card({ label, children, className = "", accent = false }
   return (
     <div
       className={[
-        "rounded-card border border-border bg-bg-700",
+        "rounded-card border border-border bg-bg-700 shadow-card",
         accent ? "border-t-accent-500 border-t-2" : "",
         className,
       ]
@@ -20,11 +20,11 @@ export default function Card({ label, children, className = "", accent = false }
         .join(" ")}
     >
       {label ? (
-        <div className="border-b border-border px-4 py-2.5">
+        <div className="border-b border-border px-5 py-3">
           <p className="caption">{label}</p>
         </div>
       ) : null}
-      <div className="p-4">{children}</div>
+      <div className="p-5">{children}</div>
     </div>
   );
 }

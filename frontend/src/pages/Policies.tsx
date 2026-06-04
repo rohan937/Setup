@@ -7,11 +7,11 @@ import PageHeader from "@/components/PageHeader";
 
 function statusBadgeCls(status: string): string {
   switch (status) {
-    case "passed": return "bg-cyan-900/30 text-cyan-400 border-cyan-700/40";
+    case "passed":  return "bg-teal-900/30 text-teal-300 border-teal-700/40";
     case "warning": return "bg-amber-900/30 text-amber-400 border-amber-700/40";
-    case "failed": return "bg-red-900/30 text-red-400 border-red-700/40";
+    case "failed":  return "bg-red-900/30 text-red-400 border-red-700/40";
     case "skipped": return "bg-bg-600 text-text-muted border-border";
-    default: return "bg-bg-600 text-text-muted border-border";
+    default:        return "bg-bg-600 text-text-muted border-border";
   }
 }
 
@@ -30,13 +30,13 @@ function PolicyRuleRow({ label, description, exampleStatus, rationale }: PolicyR
   return (
     <div className="flex flex-col gap-1 py-2.5 border-b border-border last:border-b-0">
       <div className="flex items-start justify-between gap-3">
-        <span className="font-mono text-xs text-text-primary font-semibold">{label}</span>
-        <span className={`shrink-0 font-mono text-2xs border rounded px-1.5 py-0.5 ${statusBadgeCls(exampleStatus)}`}>
+        <span className="text-sm text-text-primary font-semibold">{label}</span>
+        <span className={`shrink-0 text-xs border rounded-chip px-1.5 py-0.5 ${statusBadgeCls(exampleStatus)}`}>
           {exampleStatus}
         </span>
       </div>
-      <p className="font-mono text-2xs text-text-secondary">{description}</p>
-      <p className="font-mono text-2xs text-text-muted italic">{rationale}</p>
+      <p className="text-sm text-text-secondary">{description}</p>
+      <p className="text-xs text-text-muted italic">{rationale}</p>
     </div>
   );
 }
@@ -92,7 +92,7 @@ export default function Policies() {
 
       {/* Description */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-xs text-text-secondary">
+        <p className="text-sm text-text-secondary">
           Config Policy Guardrails enforce deterministic assumption checks on strategy
           configuration. Policies identify assumption violations — incorrect cost models,
           fill assumptions, leverage limits, and liquidity constraints — before they
@@ -103,12 +103,10 @@ export default function Policies() {
 
       {/* Status reference */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-2">
-          Status Values
-        </p>
+        <p className="caption mb-2">Status values</p>
         <div className="flex flex-wrap gap-2">
           {["passed", "warning", "failed", "skipped"].map((s) => (
-            <span key={s} className={`font-mono text-2xs border rounded px-1.5 py-0.5 ${statusBadgeCls(s)}`}>
+            <span key={s} className={`text-xs border rounded-chip px-1.5 py-0.5 ${statusBadgeCls(s)}`}>
               {s}
             </span>
           ))}
@@ -118,9 +116,7 @@ export default function Policies() {
       {/* Default policy rules */}
       <div className="rounded-card border border-border bg-bg-700">
         <div className="border-b border-border px-4 py-2.5">
-          <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-            Default Policy Rules
-          </p>
+          <p className="caption">Default policy rules</p>
         </div>
         <div className="px-4">
           {POLICY_RULES.map((rule) => (
@@ -130,16 +126,16 @@ export default function Policies() {
       </div>
 
       {/* Access note */}
-      <div className="rounded-card border border-amber-700/40 bg-amber-900/10 px-4 py-3 flex items-center justify-between gap-4">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-3 flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
-          <p className="font-mono text-2xs text-amber-400 uppercase tracking-wider">Access</p>
-          <p className="font-mono text-xs text-text-secondary">
-            Access from Strategy Detail → Config Policy Guardrails.
+          <p className="caption mb-0.5">How to access</p>
+          <p className="text-sm text-text-secondary">
+            Available from Strategy Detail — Config Policy Guardrails.
           </p>
         </div>
         <Link
           to="/strategies"
-          className="shrink-0 font-mono text-2xs text-accent-500 hover:text-accent-300 transition-colors"
+          className="shrink-0 text-sm text-accent-500 hover:text-accent-300 transition-colors"
         >
           Open Strategies →
         </Link>
@@ -147,27 +143,25 @@ export default function Policies() {
 
       {/* Language note */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-1.5">
-          Terminology
-        </p>
-        <ul className="space-y-1">
+        <p className="caption mb-2">Terminology</p>
+        <ul className="space-y-1.5">
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
               A policy violation means an assumption guardrail was breached — not that the
               strategy is incorrect.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
               Skipped policies indicate missing config fields — the check could not be
               evaluated, not that the policy passed.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
               Custom policies can be added per-strategy in Strategy Detail.
             </span>
           </li>
@@ -176,10 +170,8 @@ export default function Policies() {
 
       {/* Milestone note */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-1.5">
-          Milestone Context
-        </p>
-        <p className="font-mono text-2xs text-text-secondary">
+        <p className="caption mb-1.5">Milestone context</p>
+        <p className="text-sm text-text-secondary">
           Config Policy Guardrails (M54) introduced deterministic enforcement of cost, fill,
           leverage, borrow, and liquidity assumptions. Policies evaluate against the strategy
           config snapshot — no external data required.
@@ -187,7 +179,7 @@ export default function Policies() {
       </div>
 
       {/* Footer note */}
-      <p className="font-mono text-2xs text-text-muted pb-2">
+      <p className="text-xs text-text-muted pb-2">
         Assumption guardrails only. Not investment compliance or regulatory review.
       </p>
     </div>

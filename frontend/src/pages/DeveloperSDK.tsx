@@ -7,7 +7,7 @@ import PageHeader from "@/components/PageHeader";
 
 function CodeBlock({ children, lang = "bash" }: { children: string; lang?: string }) {
   return (
-    <pre className="overflow-x-auto rounded border border-gray-700 bg-gray-950 p-4 text-xs font-mono text-gray-300 leading-relaxed">
+    <pre className="overflow-x-auto rounded-control border border-border bg-bg-800 p-4 text-xs font-mono text-text-secondary leading-relaxed">
       <code data-lang={lang}>{children}</code>
     </pre>
   );
@@ -15,9 +15,7 @@ function CodeBlock({ children, lang = "bash" }: { children: string; lang?: strin
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-cyan-400">
-      {children}
-    </h2>
+    <h2 className="mb-3 text-sm font-semibold text-text-primary">{children}</h2>
   );
 }
 
@@ -54,7 +52,7 @@ const ENV_VARS = [
 
 export default function DeveloperSDK() {
   return (
-    <div className="min-h-screen bg-gray-950 px-6 py-6 text-gray-200">
+    <div className="flex flex-col gap-4 px-6 py-6 max-w-3xl mx-auto">
       <PageHeader
         tag="DEVELOPER"
         title="SDK & CI Integration"
@@ -62,25 +60,27 @@ export default function DeveloperSDK() {
       />
 
       {/* Notice */}
-      <div className="mb-6 rounded-lg border border-cyan-700/40 bg-cyan-900/10 p-4 text-sm text-cyan-300">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-3 text-sm text-text-secondary">
         No external APIs required. This is a local development SDK — all ingestion goes directly to your
-        running QuantFidelity server at <span className="font-mono">localhost:8000</span>.
+        running QuantFidelity server at{" "}
+        <span className="font-mono text-text-primary text-xs">localhost:8000</span>.
       </div>
 
       {/* Installation */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
         <SectionHeader>Installation</SectionHeader>
         <CodeBlock lang="bash">{`cd sdk/python
 pip install -e .`}</CodeBlock>
-        <p className="mt-3 text-xs text-gray-500">
-          The SDK ships with the repo under <span className="font-mono text-gray-400">sdk/python/</span>.
+        <p className="mt-3 text-sm text-text-muted">
+          The SDK ships with the repo under{" "}
+          <span className="font-mono text-text-secondary text-xs">sdk/python/</span>.
           Install in editable mode during development.
         </p>
       </div>
 
       {/* Quick Start */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
-        <SectionHeader>Quick Start</SectionHeader>
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <SectionHeader>Quick start</SectionHeader>
         <CodeBlock lang="python">{`from quantfidelity import QuantFidelityClient, EvidenceBundle
 
 client = QuantFidelityClient(base_url="http://localhost:8000")
@@ -96,48 +96,49 @@ bundle = (
 
 result = client.ingest_evidence_bundle("<strategy-uuid>", bundle)
 print(result.summary)`}</CodeBlock>
-        <p className="mt-3 text-xs text-gray-500">
-          The client reads <span className="font-mono text-gray-400">QUANTFIDELITY_BASE_URL</span> and{" "}
-          <span className="font-mono text-gray-400">QUANTFIDELITY_API_KEY</span> from the environment
-          when not passed explicitly.
+        <p className="mt-3 text-sm text-text-muted">
+          The client reads{" "}
+          <span className="font-mono text-text-secondary text-xs">QUANTFIDELITY_BASE_URL</span> and{" "}
+          <span className="font-mono text-text-secondary text-xs">QUANTFIDELITY_API_KEY</span>{" "}
+          from the environment when not passed explicitly.
         </p>
       </div>
 
       {/* Environment variables */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
-        <SectionHeader>Environment Variables</SectionHeader>
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <SectionHeader>Environment variables</SectionHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-700 text-left">
-                <th className="pb-2 pr-6 font-semibold uppercase tracking-wider text-gray-500">Variable</th>
-                <th className="pb-2 pr-6 font-semibold uppercase tracking-wider text-gray-500">Default</th>
-                <th className="pb-2 font-semibold uppercase tracking-wider text-gray-500">Description</th>
+              <tr className="border-b border-border text-left">
+                <th className="pb-2 pr-6 caption font-medium">Variable</th>
+                <th className="pb-2 pr-6 caption font-medium">Default</th>
+                <th className="pb-2 caption font-medium">Description</th>
               </tr>
             </thead>
             <tbody>
               {ENV_VARS.map((v) => (
-                <tr key={v.name} className="border-b border-gray-800">
-                  <td className="py-2 pr-6 font-mono text-cyan-400">{v.name}</td>
-                  <td className="py-2 pr-6 font-mono text-gray-500">{v.default}</td>
-                  <td className="py-2 text-gray-400">{v.description}</td>
+                <tr key={v.name} className="border-b border-border last:border-b-0">
+                  <td className="py-2 pr-6 font-mono text-accent-500 text-xs">{v.name}</td>
+                  <td className="py-2 pr-6 font-mono text-text-muted text-xs">{v.default}</td>
+                  <td className="py-2 text-sm text-text-secondary">{v.description}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <p className="mt-3 text-xs text-gray-500">
+        <p className="mt-3 text-sm text-text-muted">
           API keys are created and managed in{" "}
-          <Link to="/settings" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">
-            Settings → API Keys
+          <Link to="/settings" className="text-accent-500 hover:text-accent-300 underline underline-offset-2">
+            Settings — API Keys
           </Link>
           .
         </p>
       </div>
 
       {/* CLI commands */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
-        <SectionHeader>CLI Commands</SectionHeader>
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <SectionHeader>CLI commands</SectionHeader>
         <CodeBlock lang="bash">{`# Ingest an evidence bundle from a JSON file
 qf ingest --strategy-id <uuid> --file bundle.json
 
@@ -149,16 +150,16 @@ qf buffer list
 
 # Flush all buffered bundles to the server
 qf buffer flush`}</CodeBlock>
-        <p className="mt-3 text-xs text-gray-500">
-          Run <span className="font-mono text-gray-400">qf --help</span> for full command reference.
-          Use <span className="font-mono text-gray-400">qf validate</span> in CI before ingesting to
+        <p className="mt-3 text-sm text-text-muted">
+          Run <span className="font-mono text-text-secondary text-xs">qf --help</span> for full command reference.
+          Use <span className="font-mono text-text-secondary text-xs">qf validate</span> in CI before ingesting to
           catch schema errors early.
         </p>
       </div>
 
       {/* CI example */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
-        <SectionHeader>CI Integration Example (GitHub Actions)</SectionHeader>
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <SectionHeader>CI integration example (GitHub Actions)</SectionHeader>
         <CodeBlock lang="yaml">{`- name: Ingest evidence bundle
   env:
     QUANTFIDELITY_BASE_URL: \${{ secrets.QF_BASE_URL }}
@@ -173,13 +174,13 @@ qf buffer flush`}</CodeBlock>
       <div className="flex flex-wrap gap-3">
         <Link
           to="/settings"
-          className="rounded border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:border-cyan-700 hover:text-cyan-400"
+          className="rounded-control border border-border bg-bg-700 px-4 py-2 text-sm text-text-secondary hover:border-accent-500/40 hover:text-accent-500 transition-colors"
         >
-          Settings → API Keys
+          Settings — API Keys
         </Link>
         <Link
           to="/developer/evidence-bundles"
-          className="rounded border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:border-cyan-700 hover:text-cyan-400"
+          className="rounded-control border border-border bg-bg-700 px-4 py-2 text-sm text-text-secondary hover:border-accent-500/40 hover:text-accent-500 transition-colors"
         >
           Evidence Bundle Reference
         </Link>

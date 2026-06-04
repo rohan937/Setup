@@ -146,9 +146,12 @@ export function getAuthHeaders(): Record<string, string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // Attach the Authorization bearer header when a token is present so that
+  // web ingestion and all calls are authenticated and RBAC applies.
+  // Backward compatible: no token => no Authorization header => unchanged.
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
+    headers: { ...getAuthHeaders(), ...init?.headers },
   });
   if (!res.ok) {
     let err: ApiError = { detail: `HTTP ${res.status}` };

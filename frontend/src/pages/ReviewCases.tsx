@@ -12,11 +12,11 @@ interface CapabilityRowProps {
 
 function CapabilityRow({ label, description }: CapabilityRowProps) {
   return (
-    <div className="flex items-start gap-3 py-2 border-b border-border last:border-b-0">
-      <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0 w-28 truncate">
+    <div className="flex items-start gap-3 py-2.5 border-b border-border last:border-b-0">
+      <span className="text-sm font-medium text-text-primary mt-0.5 shrink-0 w-28">
         {label}
       </span>
-      <span className="font-mono text-2xs text-text-secondary">{description}</span>
+      <span className="text-sm text-text-secondary">{description}</span>
     </div>
   );
 }
@@ -35,7 +35,7 @@ export default function ReviewCases() {
 
       {/* Description */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-xs text-text-secondary">
+        <p className="text-sm text-text-secondary">
           Review Cases group related alerts, drift findings, and regression failures into
           actionable research governance review packets. Each case aggregates related evidence
           issues for structured acknowledgment and resolution — keeping research governance
@@ -44,16 +44,16 @@ export default function ReviewCases() {
       </div>
 
       {/* Access note */}
-      <div className="rounded-card border border-amber-700/40 bg-amber-900/10 px-4 py-3 flex items-center justify-between gap-4">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-3 flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
-          <p className="font-mono text-2xs text-amber-400 uppercase tracking-wider">Access</p>
-          <p className="font-mono text-xs text-text-secondary">
-            Generate review cases from Strategy Detail → Research Review Cases.
+          <p className="caption mb-0.5">How to access</p>
+          <p className="text-sm text-text-secondary">
+            Generate review cases from Strategy Detail — Research Review Cases.
           </p>
         </div>
         <Link
           to="/strategies"
-          className="shrink-0 font-mono text-2xs text-accent-500 hover:text-accent-300 transition-colors"
+          className="shrink-0 text-sm text-accent-500 hover:text-accent-300 transition-colors"
         >
           Open Strategies →
         </Link>
@@ -62,9 +62,7 @@ export default function ReviewCases() {
       {/* Capabilities */}
       <div className="rounded-card border border-border bg-bg-700">
         <div className="border-b border-border px-4 py-2.5">
-          <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-            Capabilities
-          </p>
+          <p className="caption">Capabilities</p>
         </div>
         <div className="px-4">
           <CapabilityRow
@@ -88,17 +86,15 @@ export default function ReviewCases() {
 
       {/* Quick links */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-2">
-          Related Pages
-        </p>
+        <p className="caption mb-2">Related pages</p>
         <div className="flex flex-wrap gap-4">
-          <Link to="/strategies" className="font-mono text-2xs text-accent-500 hover:text-accent-300">
+          <Link to="/strategies" className="text-sm text-accent-500 hover:text-accent-300">
             Strategies →
           </Link>
-          <Link to="/alerts" className="font-mono text-2xs text-accent-500 hover:text-accent-300">
+          <Link to="/alerts" className="text-sm text-accent-500 hover:text-accent-300">
             Alerts →
           </Link>
-          <Link to="/regression-tests" className="font-mono text-2xs text-accent-500 hover:text-accent-300">
+          <Link to="/regression-tests" className="text-sm text-accent-500 hover:text-accent-300">
             Regression Tests →
           </Link>
         </div>
@@ -106,10 +102,8 @@ export default function ReviewCases() {
 
       {/* Milestone note */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-1.5">
-          Milestone Context
-        </p>
-        <p className="font-mono text-2xs text-text-secondary">
+        <p className="caption mb-1.5">Milestone context</p>
+        <p className="text-sm text-text-secondary">
           Research Review Cases (M55) introduced evidence grouping and structured case
           management for research governance. Cases are generated deterministically from
           existing alerts and findings — no manual categorization required.
@@ -117,8 +111,8 @@ export default function ReviewCases() {
       </div>
 
       {/* Footer note */}
-      <p className="font-mono text-2xs text-text-muted pb-2">
-        This is not an incident system. These are research governance review items.
+      <p className="text-xs text-text-muted pb-2">
+        Research governance review items only. Not an incident system.
       </p>
     </div>
   );

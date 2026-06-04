@@ -25,7 +25,7 @@ export default function Topbar() {
   }, []);
 
   return (
-    <header className="flex h-10 shrink-0 items-center justify-end border-b border-border bg-bg-800 px-5 gap-4">
+    <header className="flex h-12 shrink-0 items-center justify-end border-b border-border bg-bg-800 px-5 gap-4">
       <span className="font-mono text-2xs text-text-muted uppercase tracking-widest">
         ENV:&nbsp;
         <span className="text-text-secondary">

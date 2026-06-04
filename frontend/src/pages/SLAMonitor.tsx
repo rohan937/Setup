@@ -7,11 +7,11 @@ import PageHeader from "@/components/PageHeader";
 
 function statusBadgeCls(status: string): string {
   switch (status) {
-    case "passed": return "bg-cyan-900/30 text-cyan-400 border-cyan-700/40";
+    case "passed":  return "bg-teal-900/30 text-teal-300 border-teal-700/40";
     case "warning": return "bg-amber-900/30 text-amber-400 border-amber-700/40";
-    case "violated": return "bg-red-900/30 text-red-400 border-red-700/40";
+    case "violated":return "bg-red-900/30 text-red-400 border-red-700/40";
     case "skipped": return "bg-bg-600 text-text-muted border-border";
-    default: return "bg-bg-600 text-text-muted border-border";
+    default:        return "bg-bg-600 text-text-muted border-border";
   }
 }
 
@@ -31,16 +31,16 @@ function SLARuleRow({ label, threshold, description, exampleStatus }: SLARuleRow
     <div className="flex flex-col gap-1 py-2.5 border-b border-border last:border-b-0">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="font-mono text-xs text-text-primary font-semibold truncate">{label}</span>
-          <span className="font-mono text-2xs border border-border bg-bg-600 text-text-muted rounded px-1.5 py-0.5 shrink-0">
+          <span className="text-sm text-text-primary font-semibold truncate">{label}</span>
+          <span className="font-mono text-2xs border border-border bg-bg-600 text-text-muted rounded-chip px-1.5 py-0.5 shrink-0">
             {threshold}
           </span>
         </div>
-        <span className={`shrink-0 font-mono text-2xs border rounded px-1.5 py-0.5 ${statusBadgeCls(exampleStatus)}`}>
+        <span className={`shrink-0 text-xs border rounded-chip px-1.5 py-0.5 ${statusBadgeCls(exampleStatus)}`}>
           {exampleStatus}
         </span>
       </div>
-      <p className="font-mono text-2xs text-text-secondary">{description}</p>
+      <p className="text-sm text-text-secondary">{description}</p>
     </div>
   );
 }
@@ -90,7 +90,7 @@ export default function SLAMonitor() {
 
       {/* Description */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-xs text-text-secondary">
+        <p className="text-sm text-text-secondary">
           SLA policies define evidence freshness and quality obligations that a strategy
           must maintain. An SLA violation means an evidence obligation has not been met —
           the signal snapshot is stale, the dataset health has degraded, or blocking alerts
@@ -100,12 +100,10 @@ export default function SLAMonitor() {
 
       {/* Status reference */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-2">
-          Status Values
-        </p>
+        <p className="caption mb-2">Status values</p>
         <div className="flex flex-wrap gap-2">
           {["passed", "warning", "violated", "skipped"].map((s) => (
-            <span key={s} className={`font-mono text-2xs border rounded px-1.5 py-0.5 ${statusBadgeCls(s)}`}>
+            <span key={s} className={`text-xs border rounded-chip px-1.5 py-0.5 ${statusBadgeCls(s)}`}>
               {s}
             </span>
           ))}
@@ -115,9 +113,7 @@ export default function SLAMonitor() {
       {/* Default SLA rules */}
       <div className="rounded-card border border-border bg-bg-700">
         <div className="border-b border-border px-4 py-2.5">
-          <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-            Default SLA Rules
-          </p>
+          <p className="caption">Default SLA rules</p>
         </div>
         <div className="px-4">
           {SLA_RULES.map((rule) => (
@@ -127,16 +123,16 @@ export default function SLAMonitor() {
       </div>
 
       {/* Access note */}
-      <div className="rounded-card border border-amber-700/40 bg-amber-900/10 px-4 py-3 flex items-center justify-between gap-4">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-3 flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
-          <p className="font-mono text-2xs text-amber-400 uppercase tracking-wider">Access</p>
-          <p className="font-mono text-xs text-text-secondary">
-            Access from Strategy Detail → Evidence SLA Monitor.
+          <p className="caption mb-0.5">How to access</p>
+          <p className="text-sm text-text-secondary">
+            Available from Strategy Detail — Evidence SLA Monitor.
           </p>
         </div>
         <Link
           to="/strategies"
-          className="shrink-0 font-mono text-2xs text-accent-500 hover:text-accent-300 transition-colors"
+          className="shrink-0 text-sm text-accent-500 hover:text-accent-300 transition-colors"
         >
           Open Strategies →
         </Link>
@@ -144,27 +140,25 @@ export default function SLAMonitor() {
 
       {/* Language note */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-1.5">
-          Terminology
-        </p>
-        <ul className="space-y-1">
+        <p className="caption mb-2">Terminology</p>
+        <ul className="space-y-1.5">
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
               An SLA violation means an evidence obligation has not been met — not a system
               incident or trading failure.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
               Skipped SLAs indicate the required evidence artifact is missing — the check
               could not be evaluated.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
               Custom SLA policies can be configured per-strategy in Strategy Detail.
             </span>
           </li>
@@ -173,17 +167,15 @@ export default function SLAMonitor() {
 
       {/* Related pages */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-2">
-          Related Pages
-        </p>
+        <p className="caption mb-2">Related pages</p>
         <div className="flex flex-wrap gap-4">
-          <Link to="/alerts" className="font-mono text-2xs text-accent-500 hover:text-accent-300">
+          <Link to="/alerts" className="text-sm text-accent-500 hover:text-accent-300">
             Alerts →
           </Link>
-          <Link to="/data-health" className="font-mono text-2xs text-accent-500 hover:text-accent-300">
+          <Link to="/data-health" className="text-sm text-accent-500 hover:text-accent-300">
             Data Health →
           </Link>
-          <Link to="/evidence/coverage" className="font-mono text-2xs text-accent-500 hover:text-accent-300">
+          <Link to="/evidence/coverage" className="text-sm text-accent-500 hover:text-accent-300">
             Evidence Matrix →
           </Link>
         </div>
@@ -191,10 +183,8 @@ export default function SLAMonitor() {
 
       {/* Milestone note */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-1.5">
-          Milestone Context
-        </p>
-        <p className="font-mono text-2xs text-text-secondary">
+        <p className="caption mb-1.5">Milestone context</p>
+        <p className="text-sm text-text-secondary">
           Evidence SLA Monitor (M56) introduced freshness and quality obligation tracking.
           SLA evaluations are computed against the current evidence snapshot — signal
           freshness, dataset health, backtest trust, and open alert state.
@@ -202,7 +192,7 @@ export default function SLAMonitor() {
       </div>
 
       {/* Footer note */}
-      <p className="font-mono text-2xs text-text-muted pb-2">
+      <p className="text-xs text-text-muted pb-2">
         Evidence obligations only. Not an incident monitoring system.
       </p>
     </div>

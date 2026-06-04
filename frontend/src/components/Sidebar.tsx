@@ -21,25 +21,25 @@ const groups = groupNavItems(navItems);
 
 export default function Sidebar() {
   return (
-    <aside className="flex w-52 shrink-0 flex-col border-r border-border bg-bg-800">
+    <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-bg-800">
       {/* Logo mark */}
-      <div className="flex h-11 items-center gap-2.5 border-b border-border px-4">
-        <span className="font-mono text-xs font-bold tracking-tight text-accent-500">
-          [QF]
+      <div className="flex h-12 items-center gap-2.5 border-b border-border px-4">
+        <span className="flex h-6 w-6 items-center justify-center rounded-control bg-bg-600 font-mono text-[0.625rem] font-semibold tracking-tight text-accent-300">
+          QF
         </span>
-        <span className="text-xs font-semibold tracking-tight text-text-primary">
+        <span className="text-sm font-semibold tracking-tight text-text-primary">
           QuantFidelity
         </span>
       </div>
 
       {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto py-3">
+      <nav className="flex-1 overflow-y-auto py-4">
         {groups.map(({ section, items }) => (
-          <div key={section ?? "_root"} className="mb-1">
+          <div key={section ?? "_root"} className="mb-4">
             {section && (
-              <p className="caption mb-1 px-4 pt-2">{section}</p>
+              <p className="caption mb-1.5 px-4">{section}</p>
             )}
-            <ul className="space-y-px px-2">
+            <ul className="space-y-0.5 px-2.5">
               {items.map((item) => (
                 <li key={item.path}>
                   <NavLink
@@ -47,11 +47,10 @@ export default function Sidebar() {
                     end={item.path === "/"}
                     className={({ isActive }) =>
                       [
-                        "flex items-center rounded-control py-1.5 pl-[10px] pr-3 text-xs transition-colors",
-                        "border-l-2",
+                        "flex items-center rounded-control px-2.5 py-1.5 text-[0.8125rem] transition-colors",
                         isActive
-                          ? "border-accent-500 bg-bg-600 font-medium text-accent-300"
-                          : "border-transparent text-text-muted hover:bg-bg-600/60 hover:text-text-secondary",
+                          ? "bg-bg-600 font-medium text-text-primary"
+                          : "text-text-muted hover:bg-bg-700/70 hover:text-text-secondary",
                       ].join(" ")
                     }
                   >
@@ -64,11 +63,19 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
+      {/* Workspace footer */}
       <div className="border-t border-border px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted">
-          M3 · Strategy Lab
-        </p>
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-control bg-bg-600 font-mono text-2xs font-medium text-text-secondary">
+            QR
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium text-text-secondary">
+              Quant Research
+            </p>
+            <p className="caption mt-0.5 text-text-muted">Workspace</p>
+          </div>
+        </div>
       </div>
     </aside>
   );

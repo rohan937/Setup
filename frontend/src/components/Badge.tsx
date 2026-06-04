@@ -57,7 +57,7 @@ function colorFor(value: string, variant?: BadgeVariant): string {
 export default function Badge({ value, variant }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-chip border px-1.5 py-px font-mono text-2xs uppercase tracking-wide ${colorFor(value, variant)}`}
+      className={`inline-flex items-center rounded-chip border px-2 py-0.5 font-mono text-2xs font-medium uppercase tracking-eyebrow ${colorFor(value, variant)}`}
     >
       {value}
     </span>

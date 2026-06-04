@@ -161,7 +161,31 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M71: Frontend Deployment Prep / Vercel Readiness
+## Current milestone — M72A / M72B: Design System Refinement + Web Evidence Uploader
+
+**Status:** complete — *M72A refines the dark B2B design system, and M72B adds a reusable web evidence-bundle uploader. No deployment was performed.*
+
+### What was built
+
+**M72A — Design system refinement**
+- Refined dark B2B design system with **calmer accent colors** and a clearer **sans-serif typographic hierarchy**.
+- Polished shared components and a new reusable **`Button`** component for consistent actions across the app.
+
+**M72B — Web evidence-bundle uploader**
+- New reusable **Evidence Bundle uploader** (drag/drop + paste + validate + preview + ingest), surfaced on the **Evidence Bundles** page and on **Strategy Detail**.
+- Ships a sample **KO/PEP bundle template** to use as a starting point.
+- File safety: `.json` only, ≤ 1 MB, JSON treated as data (never executed).
+- RBAC: ingestion requires the **write-research** permission; a 403 surfaces *"You do not have permission to ingest evidence."*
+- **SDK/CLI ingestion preserved** — the web uploader is an additional manual/demo path, not a replacement.
+
+See [`docs/web-evidence-upload.md`](docs/web-evidence-upload.md) for the web upload flow and [`docs/ci-ingestion.md`](docs/ci-ingestion.md) for the SDK/CLI path.
+
+### Next milestones
+- M73: Demo Mode polish
+
+---
+
+## Previously completed — M71: Frontend Deployment Prep / Vercel Readiness
 
 **Status:** complete — *M71 prepares the QuantFidelity frontend for Vercel deployment without actually deploying. The API client is hardened with environment-variable-driven base URL, vercel.json SPA routing, build scripts, and a complete Vercel deployment guide are in place.*
 

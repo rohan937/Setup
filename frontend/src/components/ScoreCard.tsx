@@ -5,7 +5,7 @@ interface ScoreCardProps {
 
 export default function ScoreCard({ label, description }: ScoreCardProps) {
   return (
-    <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
+    <div className="rounded-card border border-border bg-bg-700 px-4 py-3.5 shadow-card">
       <p className="caption mb-2">{label}</p>
       <div className="flex items-baseline gap-2">
         <p className="mono-num text-2xl font-semibold text-text-muted">—</p>

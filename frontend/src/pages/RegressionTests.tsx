@@ -7,21 +7,21 @@ import PageHeader from "@/components/PageHeader";
 
 function statusColor(status: string): string {
   switch (status) {
-    case "passed": return "text-cyan-400";
-    case "warning": return "text-amber-400";
-    case "failed": return "text-red-400";
-    case "insufficient_evidence": return "text-gray-500";
-    default: return "text-text-muted";
+    case "passed":               return "text-teal-300";
+    case "warning":              return "text-amber-400";
+    case "failed":               return "text-red-400";
+    case "insufficient_evidence":return "text-text-muted";
+    default:                     return "text-text-muted";
   }
 }
 
 function statusBadgeCls(status: string): string {
   switch (status) {
-    case "passed": return "bg-cyan-900/30 text-cyan-400 border-cyan-700/40";
-    case "warning": return "bg-amber-900/30 text-amber-400 border-amber-700/40";
-    case "failed": return "bg-red-900/30 text-red-400 border-red-700/40";
-    case "insufficient_evidence": return "bg-bg-600 text-text-muted border-border";
-    default: return "bg-bg-600 text-text-muted border-border";
+    case "passed":               return "bg-teal-900/30 text-teal-300 border-teal-700/40";
+    case "warning":              return "bg-amber-900/30 text-amber-400 border-amber-700/40";
+    case "failed":               return "bg-red-900/30 text-red-400 border-red-700/40";
+    case "insufficient_evidence":return "bg-bg-600 text-text-muted border-border";
+    default:                     return "bg-bg-600 text-text-muted border-border";
   }
 }
 
@@ -41,12 +41,12 @@ function DefaultTestRow({ key_, label, description, exampleStatus }: DefaultTest
     <div className="flex items-start gap-3 py-2.5 border-b border-border last:border-b-0">
       <div className="flex flex-col gap-0.5 flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs text-text-primary">{label}</span>
+          <span className="text-sm text-text-primary font-medium">{label}</span>
           <span className="font-mono text-2xs text-text-muted">({key_})</span>
         </div>
-        <p className="font-mono text-2xs text-text-secondary">{description}</p>
+        <p className="text-sm text-text-secondary">{description}</p>
       </div>
-      <span className={`shrink-0 font-mono text-2xs border rounded px-1.5 py-0.5 ${statusBadgeCls(exampleStatus)}`}>
+      <span className={`shrink-0 text-xs border rounded-chip px-1.5 py-0.5 ${statusBadgeCls(exampleStatus)}`}>
         {exampleStatus.replace(/_/g, " ")}
       </span>
     </div>
@@ -112,7 +112,7 @@ export default function RegressionTests() {
 
       {/* Description */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-xs text-text-secondary">
+        <p className="text-sm text-text-secondary">
           The Regression Test Suite runs deterministic checks on strategy evidence quality
           and reliability signals. A regression is detected when evidence metrics fall below
           configured thresholds or degrade relative to a baseline run. Regressions require
@@ -122,12 +122,10 @@ export default function RegressionTests() {
 
       {/* Status reference */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-2">
-          Status Values
-        </p>
+        <p className="caption mb-2">Status values</p>
         <div className="flex flex-wrap gap-2">
           {["passed", "warning", "failed", "insufficient_evidence"].map((s) => (
-            <span key={s} className={`font-mono text-2xs border rounded px-1.5 py-0.5 ${statusBadgeCls(s)}`}>
+            <span key={s} className={`text-xs border rounded-chip px-1.5 py-0.5 ${statusBadgeCls(s)}`}>
               {s.replace(/_/g, " ")}
             </span>
           ))}
@@ -137,9 +135,7 @@ export default function RegressionTests() {
       {/* Default tests */}
       <div className="rounded-card border border-border bg-bg-700">
         <div className="border-b border-border px-4 py-2.5">
-          <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-            Default Test Checks
-          </p>
+          <p className="caption">Default test checks</p>
         </div>
         <div className="px-4">
           {DEFAULT_TESTS.map((t) => (
@@ -155,16 +151,16 @@ export default function RegressionTests() {
       </div>
 
       {/* Access note */}
-      <div className="rounded-card border border-amber-700/40 bg-amber-900/10 px-4 py-3 flex items-center justify-between gap-4">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-3 flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
-          <p className="font-mono text-2xs text-amber-400 uppercase tracking-wider">Access</p>
-          <p className="font-mono text-xs text-text-secondary">
-            Access from Strategy Detail → Regression Test Suite.
+          <p className="caption mb-0.5">How to access</p>
+          <p className="text-sm text-text-secondary">
+            Available from Strategy Detail — Regression Test Suite.
           </p>
         </div>
         <Link
           to="/strategies"
-          className="shrink-0 font-mono text-2xs text-accent-500 hover:text-accent-300 transition-colors"
+          className="shrink-0 text-sm text-accent-500 hover:text-accent-300 transition-colors"
         >
           Open Strategies →
         </Link>
@@ -172,27 +168,25 @@ export default function RegressionTests() {
 
       {/* Language note */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-2xs text-text-muted uppercase tracking-wider mb-1.5">
-          Terminology
-        </p>
-        <ul className="space-y-1">
+        <p className="caption mb-2">Terminology</p>
+        <ul className="space-y-1.5">
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
-              A test result of <span className={`${statusColor("failed")}`}>failed</span> means
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
+              A test result of <span className={statusColor("failed")}>failed</span> means
               a regression was detected — not that the strategy is unsuitable.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
-              <span className={`${statusColor("insufficient_evidence")}`}>Insufficient evidence</span>{" "}
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
+              <span className={statusColor("insufficient_evidence")}>Insufficient evidence</span>{" "}
               means the check could not run due to missing data — not a failure.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="font-mono text-2xs text-cyan-400 mt-0.5 shrink-0">·</span>
-            <span className="font-mono text-2xs text-text-secondary">
+            <span className="text-text-muted mt-0.5 shrink-0">·</span>
+            <span className="text-sm text-text-secondary">
               Regressions require review and may indicate data quality changes, parameter
               instability, or environment drift.
             </span>
@@ -201,8 +195,8 @@ export default function RegressionTests() {
       </div>
 
       {/* Footer note */}
-      <p className="font-mono text-2xs text-text-muted pb-2">
-        Not trading approval. Deterministic research governance only.
+      <p className="text-xs text-text-muted pb-2">
+        Deterministic research governance only. Not trading approval.
       </p>
     </div>
   );

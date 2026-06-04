@@ -1,0 +1,67 @@
+{
+  "strategy_version": {
+    "version_label": "v1.0",
+    "signal_name": "spy_ma_crossover_trend",
+    "signal_description": "Long SPY when 50d MA > 200d MA (golden cross), flat otherwise"
+  },
+  "config_snapshot": {
+    "label": "SPY Trend v1 config",
+    "config_json": {
+      "params": { "fast_ma": 50, "slow_ma": 200 },
+      "assumptions": {
+        "transaction_cost_bps": 3,
+        "slippage_bps": 2,
+        "fill_model": "next_bar_open",
+        "short_enabled": false,
+        "max_leverage": 1.0,
+        "execution_timing": "next_bar_open",
+        "liquidity_filter": "spy_only_highly_liquid"
+      }
+    }
+  },
+  "universe_snapshot": {
+    "label": "SPY only",
+    "symbols": ["SPY"]
+  },
+  "signal_snapshot": {
+    "label": "MA-spread trend signal",
+    "signal_name": "spy_ma_crossover_trend",
+    "rows": [
+      { "symbol": "SPY", "timestamp": "2026-05-28", "signal": 0.041 },
+      { "symbol": "SPY", "timestamp": "2026-05-29", "signal": 0.058 },
+      { "symbol": "SPY", "timestamp": "2026-06-01", "signal": 0.063 },
+      { "symbol": "SPY", "timestamp": "2026-06-02", "signal": 0.049 },
+      { "symbol": "SPY", "timestamp": "2026-06-03", "signal": 0.072 }
+    ]
+  },
+  "dataset": { "name": "SPY Daily OHLCV", "dataset_type": "ohlcv", "source_type": "manual" },
+  "dataset_snapshot": {
+    "snapshot_label": "v1",
+    "rows": [
+      { "symbol": "SPY", "timestamp": "2026-05-28", "open": 528.4, "high": 531.2, "low": 527.1, "close": 530.6, "volume": 71000000 },
+      { "symbol": "SPY", "timestamp": "2026-05-29", "open": 530.6, "high": 533.8, "low": 529.9, "close": 533.1, "volume": 68000000 },
+      { "symbol": "SPY", "timestamp": "2026-06-01", "open": 533.1, "high": 535.0, "low": 531.7, "close": 534.4, "volume": 65000000 },
+      { "symbol": "SPY", "timestamp": "2026-06-02", "open": 534.4, "high": 536.9, "low": 533.2, "close": 536.1, "volume": 63000000 },
+      { "symbol": "SPY", "timestamp": "2026-06-03", "open": 536.1, "high": 538.4, "low": 535.0, "close": 537.8, "volume": 66000000 }
+    ]
+  },
+  "strategy_run": {
+    "run_name": "SPY Trend Backtest v1",
+    "run_type": "backtest",
+    "params_json": { "fast_ma": 50, "slow_ma": 200 },
+    "assumptions_json": {
+      "transaction_cost_bps": 3,
+      "slippage_bps": 2,
+      "fill_model": "next_bar_open",
+      "short_enabled": false,
+      "max_leverage": 1.0,
+      "execution_timing": "next_bar_open"
+    },
+    "metrics_json": {
+      "sharpe": 0.82, "annual_return": 0.094, "volatility": 0.115,
+      "max_drawdown": -0.146, "turnover": 0.8, "trade_count": 24, "win_rate": 0.45
+    },
+    "notes": "Classic 50/200 trend follow on SPY. Low turnover, no shorting, honest costs."
+  },
+  "actions": { "run_backtest_audit": true, "compute_reliability_score": true }
+}

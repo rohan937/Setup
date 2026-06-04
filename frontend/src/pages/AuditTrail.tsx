@@ -21,7 +21,7 @@ const RESEARCH_PHASES = [
 
 export default function AuditTrail() {
   return (
-    <div className="min-h-screen bg-gray-950 px-6 py-6 text-gray-200">
+    <div className="flex flex-col gap-4 px-6 py-6 max-w-3xl mx-auto">
       <PageHeader
         tag="GOVERNANCE"
         title="Quant Research Audit Trail"
@@ -29,42 +29,38 @@ export default function AuditTrail() {
       />
 
       {/* Overview card */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-400">
-          About the Evidence Ledger
-        </h2>
-        <p className="mb-3 text-sm text-gray-400">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <h2 className="text-sm font-semibold text-text-primary mb-2">About the evidence ledger</h2>
+        <p className="text-sm text-text-secondary mb-2">
           The Audit Trail is a deterministic, append-only evidence ledger that records every
           significant event in a strategy's lifecycle. Each entry is enriched with category,
           importance, research phase, status transitions, and downstream context — providing a
           complete reconstruction of research decisions.
         </p>
-        <p className="text-sm text-gray-400">
-          Implemented in <span className="font-mono text-cyan-400">M63</span>: enriches{" "}
-          <span className="font-mono text-gray-300">AuditTimelineEvent</span> with category,
+        <p className="text-sm text-text-secondary">
+          Implemented in M63: enriches{" "}
+          <span className="font-mono text-text-primary">AuditTimelineEvent</span> with category,
           importance, research phase, status transitions, and downstream context fields.
         </p>
       </div>
 
       {/* Research phases */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-cyan-400">
-          Research Phases
-        </h2>
-        <div className="space-y-3">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <h2 className="text-sm font-semibold text-text-primary mb-4">Research phases</h2>
+        <div className="space-y-0">
           {RESEARCH_PHASES.map(({ phase, label, description }, idx) => (
             <div key={phase} className="flex gap-4">
               <div className="flex flex-col items-center">
-                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-gray-600 bg-gray-800 text-xs font-mono text-cyan-400">
+                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-border bg-bg-600 font-mono text-2xs text-text-secondary">
                   {idx + 1}
                 </div>
                 {idx < RESEARCH_PHASES.length - 1 && (
-                  <div className="mt-1 w-px flex-1 bg-gray-700" style={{ minHeight: "1rem" }} />
+                  <div className="mt-1 w-px flex-1 bg-border" style={{ minHeight: "1rem" }} />
                 )}
               </div>
-              <div className="pb-3">
-                <span className="font-mono text-sm text-gray-200">{label}</span>
-                <p className="mt-0.5 text-xs text-gray-500">{description}</p>
+              <div className="pb-3 min-w-0">
+                <span className="text-sm font-medium text-text-primary">{label}</span>
+                <p className="mt-0.5 text-sm text-text-muted">{description}</p>
               </div>
             </div>
           ))}
@@ -72,10 +68,8 @@ export default function AuditTrail() {
       </div>
 
       {/* Enriched fields */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-cyan-400">
-          Enriched Event Fields (M63)
-        </h2>
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <h2 className="text-sm font-semibold text-text-primary mb-3">Enriched event fields (M63)</h2>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {[
             ["category",           "Classification: setup, ingestion, validation, audit, report, governance"],
@@ -85,55 +79,55 @@ export default function AuditTrail() {
             ["downstream_context", "IDs of related artifacts created by this event"],
             ["event_source",       "Origin: api, ci_ingestion, scheduled, manual"],
           ].map(([field, desc]) => (
-            <div key={field} className="flex flex-col rounded border border-gray-800 bg-gray-950 p-3">
-              <span className="font-mono text-xs text-cyan-400">{field}</span>
-              <span className="mt-1 text-xs text-gray-500">{desc}</span>
+            <div key={field} className="flex flex-col rounded-control border border-border bg-bg-800 p-3">
+              <span className="font-mono text-xs text-accent-500">{field}</span>
+              <span className="mt-1 text-sm text-text-muted">{desc}</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* How to access */}
-      <div className="mb-6 rounded-lg border border-gray-700 bg-gray-900 p-5">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-cyan-400">
-          How to Access
-        </h2>
-        <ul className="space-y-2 text-sm text-gray-400">
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <h2 className="text-sm font-semibold text-text-primary mb-3">How to access</h2>
+        <ul className="space-y-2.5">
           <li className="flex items-start gap-2">
-            <span className="mt-0.5 font-mono text-cyan-400">→</span>
-            <span>
+            <span className="mt-0.5 text-text-muted shrink-0">→</span>
+            <span className="text-sm text-text-secondary">
               Open any strategy in{" "}
-              <Link to="/strategies" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">
+              <Link to="/strategies" className="text-accent-500 hover:text-accent-300 underline underline-offset-2">
                 Strategy Lab
               </Link>{" "}
-              and navigate to the <strong className="text-gray-300">Research Audit Trail</strong> tab
+              and navigate to the <strong className="text-text-primary font-medium">Research Audit Trail</strong> tab
               within the Strategy Detail view.
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="mt-0.5 font-mono text-cyan-400">→</span>
-            <span>
+            <span className="mt-0.5 text-text-muted shrink-0">→</span>
+            <span className="text-sm text-text-secondary">
               The cross-strategy event feed is available on the{" "}
-              <Link to="/timeline" className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300">
+              <Link to="/timeline" className="text-accent-500 hover:text-accent-300 underline underline-offset-2">
                 Timeline
               </Link>{" "}
               page (filterable by phase, category, and importance).
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="mt-0.5 font-mono text-cyan-400">→</span>
-            <span>
-              API: <span className="font-mono text-gray-300">GET /api/strategies/{"{id}"}/timeline</span> with{" "}
-              <span className="font-mono text-gray-300">research_phase</span>,{" "}
-              <span className="font-mono text-gray-300">category</span>, and{" "}
-              <span className="font-mono text-gray-300">importance</span> filter params.
+            <span className="mt-0.5 text-text-muted shrink-0">→</span>
+            <span className="text-sm text-text-secondary">
+              API:{" "}
+              <span className="font-mono text-text-primary text-xs">GET /api/strategies/{"{id}"}/timeline</span>
+              {" "}with{" "}
+              <span className="font-mono text-text-primary text-xs">research_phase</span>,{" "}
+              <span className="font-mono text-text-primary text-xs">category</span>, and{" "}
+              <span className="font-mono text-text-primary text-xs">importance</span> filter params.
             </span>
           </li>
         </ul>
       </div>
 
       {/* Footer note */}
-      <p className="text-xs text-gray-600">
+      <p className="text-xs text-text-muted pb-2">
         Audit entries are immutable. Each event is assigned a deterministic ID based on strategy, timestamp, and event type.
         The ledger is not an incident log — it is a complete research evidence record.
       </p>

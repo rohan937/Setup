@@ -290,6 +290,18 @@ See `sdk/python/examples/ci_ingest.py` for a standalone runnable script.
 
 ---
 
+## Web upload alternative
+
+This guide covers the terminal/SDK ingestion path, which is the right choice for
+CI, cron, and automated pipelines. For **manual ingestion, research, and demos**,
+the web app now offers an evidence-bundle uploader — drag/drop or paste JSON,
+validate, preview, then ingest — without the SDK or CLI.
+
+Both paths hit the same backend endpoint and produce identical results. See
+[`web-evidence-upload.md`](./web-evidence-upload.md) for the web flow.
+
+---
+
 ## Notes
 
 All computations are deterministic.  No AI, no live market data, no external API calls.

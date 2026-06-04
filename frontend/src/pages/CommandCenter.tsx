@@ -45,7 +45,7 @@ export default function CommandCenter() {
 
       {/* Description */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
-        <p className="font-mono text-xs text-text-secondary">
+        <p className="text-sm text-text-secondary">
           Open the Strategy Reliability Command Center from any strategy to see aggregated
           readiness, robustness, freeze recommendations, subsystem health, and prioritized
           action queue.
@@ -55,24 +55,24 @@ export default function CommandCenter() {
       {/* Strategy list */}
       <div className="rounded-card border border-border bg-bg-700">
         <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-          <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Strategies</p>
-          <Link to="/strategies" className="font-mono text-2xs text-accent-500 hover:text-accent-300">
-            all strategies →
+          <p className="caption">Strategies</p>
+          <Link to="/strategies" className="text-xs text-accent-500 hover:text-accent-300">
+            All strategies →
           </Link>
         </div>
 
         {loading && (
           <div className="px-4 py-4">
-            <p className="font-mono text-xs text-text-muted animate-pulse">Loading strategies...</p>
+            <p className="text-sm text-text-muted animate-pulse">Loading strategies…</p>
           </div>
         )}
 
         {error && (
           <div className="px-4 py-4 space-y-2">
-            <p className="font-mono text-xs text-amber-400">
+            <p className="text-sm text-amber-400">
               Could not load strategies: {error}
             </p>
-            <p className="font-mono text-xs text-text-muted">
+            <p className="text-sm text-text-muted">
               Open{" "}
               <Link to="/strategies" className="text-accent-500 hover:text-accent-300">
                 Strategies
@@ -83,11 +83,11 @@ export default function CommandCenter() {
         )}
 
         {!loading && !error && strategies && strategies.length === 0 && (
-          <div className="px-4 py-4">
-            <p className="font-mono text-xs text-text-muted">
-              No strategies found.{" "}
+          <div className="px-4 py-6 flex flex-col gap-1">
+            <p className="text-sm text-text-secondary">No strategies yet.</p>
+            <p className="text-sm text-text-muted">
               <Link to="/strategies" className="text-accent-500 hover:text-accent-300">
-                Create a strategy →
+                Create your first strategy →
               </Link>
             </p>
           </div>
@@ -101,7 +101,7 @@ export default function CommandCenter() {
                 className="flex items-center justify-between px-4 py-2.5 hover:bg-bg-600/30 transition-colors"
               >
                 <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                  <span className="font-mono text-xs text-text-primary truncate">
+                  <span className="text-sm text-text-primary font-medium truncate">
                     {strategy.name}
                   </span>
                   {strategy.slug && (
@@ -112,9 +112,9 @@ export default function CommandCenter() {
                 </div>
                 <Link
                   to={`/strategies/${strategy.id}`}
-                  className="shrink-0 ml-4 font-mono text-2xs border border-cyan-700/50 bg-cyan-900/20 text-cyan-400 hover:bg-cyan-900/40 rounded px-2.5 py-1 transition-colors"
+                  className="shrink-0 ml-4 text-xs border border-border bg-bg-600 text-text-secondary hover:text-accent-500 hover:border-accent-500/40 rounded-control px-2.5 py-1 transition-colors"
                 >
-                  Open Command Center
+                  Open
                 </Link>
               </div>
             ))}
@@ -123,21 +123,21 @@ export default function CommandCenter() {
       </div>
 
       {/* How to access */}
-      <div className="rounded-card border border-amber-700/40 bg-amber-900/10 px-4 py-3">
-        <p className="font-mono text-2xs text-amber-400 uppercase tracking-wider mb-1.5">Access</p>
-        <p className="font-mono text-xs text-text-secondary">
-          The full Command Center view is available inside each Strategy Detail page. Select a
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-3">
+        <p className="caption mb-1.5">How to access</p>
+        <p className="text-sm text-text-secondary">
+          The full Command Center is available inside each Strategy Detail page. Select a
           strategy above or navigate to{" "}
           <Link to="/strategies" className="text-accent-500 hover:text-accent-300">
             Strategies
           </Link>{" "}
-          to open the reliability command center for a specific strategy.
+          to open the reliability view for a specific strategy.
         </p>
       </div>
 
       {/* Footer note */}
-      <p className="font-mono text-2xs text-text-muted pb-2">
-        Not trading approval. Deterministic research governance only.
+      <p className="text-xs text-text-muted pb-2">
+        Deterministic research governance only. Not trading approval.
       </p>
     </div>
   );

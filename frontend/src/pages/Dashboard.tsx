@@ -10,10 +10,10 @@ import Badge from "@/components/Badge";
 
 function scoreColor(score: number | null): string {
   if (score === null) return "text-text-muted";
-  if (score >= 80) return "text-green-400";
-  if (score >= 60) return "text-yellow-400";
-  if (score >= 40) return "text-orange-400";
-  return "text-red-400";
+  if (score >= 80) return "text-fidelity-high";
+  if (score >= 60) return "text-fidelity-medium";
+  if (score >= 40) return "text-fidelity-low";
+  return "text-severity-critical";
 }
 
 function formatDate(iso: string | null): string {
@@ -46,14 +46,14 @@ function ScorePillar({
   score: number | null;
 }) {
   return (
-    <div className="flex flex-col gap-1 border-r border-border last:border-r-0 px-4 first:pl-0 last:pr-0 py-2">
+    <div className="flex flex-col gap-1.5 border-r border-border last:border-r-0 px-5 first:pl-0 last:pr-0 py-3">
       <p className="caption">{label}</p>
-      <p className={`mono-num text-2xl font-bold ${scoreColor(score)}`}>
+      <p className={`mono-num text-2xl font-bold leading-none ${scoreColor(score)}`}>
         {score !== null ? score.toFixed(1) : "—"}
       </p>
-      <p className="font-mono text-2xs text-text-muted leading-relaxed">{description}</p>
+      <p className="text-xs text-text-muted leading-relaxed">{description}</p>
       {score === null && (
-        <p className="font-mono text-2xs text-text-muted italic">No evidence yet</p>
+        <p className="text-xs text-text-muted italic">No evidence yet</p>
       )}
     </div>
   );
@@ -65,11 +65,9 @@ function ScorePillar({
 
 function CountChip({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded border border-border bg-bg-800 px-4 py-3 text-center">
+    <div className="rounded-card border border-border bg-bg-800 px-4 py-4 text-center">
       <p className="mono-num text-2xl font-semibold text-text-primary">{value}</p>
-      <p className="mt-0.5 font-mono text-2xs uppercase tracking-wider text-text-muted">
-        {label}
-      </p>
+      <p className="mt-1 caption">{label}</p>
     </div>
   );
 }
@@ -78,18 +76,39 @@ function CountChip({ label, value }: { label: string; value: number }) {
 // Recent evidence row
 // ---------------------------------------------------------------------------
 
+const STATUS_CHIP: Record<string, string> = {
+  pass: "bg-teal-900/30 text-teal-300 border-teal-700/30",
+  passed: "bg-teal-900/30 text-teal-300 border-teal-700/30",
+  fail: "bg-red-900/30 text-severity-high border-red-800/30",
+  failed: "bg-red-900/30 text-severity-high border-red-800/30",
+  warning: "bg-yellow-900/30 text-fidelity-medium border-yellow-800/30",
+  review: "bg-orange-900/30 text-fidelity-low border-orange-800/30",
+  pending: "bg-bg-600 text-text-muted border-border",
+  running: "bg-accent-600/10 text-accent-300 border-accent-600/30",
+};
+
 function RecentItem({ item }: { item: RecentEvidenceItem }) {
+  const statusKey = (item.status ?? "").toLowerCase();
+  const statusChip = STATUS_CHIP[statusKey];
   return (
-    <div className="flex items-start justify-between py-2 border-b border-border last:border-0">
-      <div className="min-w-0 flex-1 pr-2">
-        <p className="text-xs text-text-secondary truncate">{item.title}</p>
+    <div className="flex items-start justify-between py-2.5 border-b border-border last:border-0">
+      <div className="min-w-0 flex-1 pr-3">
+        <p className="text-sm text-text-secondary leading-snug truncate">{item.title}</p>
         {item.strategy_name && (
-          <p className="mt-px font-mono text-2xs text-text-muted truncate">
+          <p className="mt-0.5 text-xs text-text-muted truncate">
             {item.strategy_name}
           </p>
         )}
         {item.status && (
-          <p className="mt-px font-mono text-2xs text-text-muted">{item.status}</p>
+          statusChip ? (
+            <span
+              className={`mt-1 inline-flex items-center rounded border px-1.5 py-px text-xs font-medium ${statusChip}`}
+            >
+              {item.status}
+            </span>
+          ) : (
+            <p className="mt-0.5 text-xs text-text-muted">{item.status}</p>
+          )
         )}
       </div>
       <div className="flex flex-col items-end gap-0.5 shrink-0">
@@ -98,7 +117,7 @@ function RecentItem({ item }: { item: RecentEvidenceItem }) {
             {item.score.toFixed(0)}
           </span>
         )}
-        <span className="font-mono text-2xs text-text-muted">
+        <span className="text-xs text-text-muted">
           {formatShortDate(item.timestamp)}
         </span>
       </div>
@@ -110,18 +129,21 @@ function RecentItem({ item }: { item: RecentEvidenceItem }) {
 // Severity chip (for issue breakdowns)
 // ---------------------------------------------------------------------------
 
+const SEV_CHIP: Record<string, string> = {
+  critical: "bg-red-900/30 text-severity-critical border-red-800/30",
+  high: "bg-orange-900/30 text-severity-high border-orange-800/30",
+  medium: "bg-yellow-900/30 text-severity-medium border-yellow-800/30",
+  low: "bg-blue-900/30 text-severity-low border-blue-800/30",
+};
+
 function SevChip({ severity, count }: { severity: string; count: number }) {
-  const palette: Record<string, string> = {
-    critical: "bg-red-900/40 text-red-300",
-    high: "bg-orange-900/40 text-orange-300",
-    medium: "bg-yellow-900/40 text-yellow-200",
-    low: "bg-blue-900/40 text-blue-300",
-  };
+  const cls = SEV_CHIP[severity] ?? "bg-bg-600 text-text-muted border-border";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-2xs ${palette[severity] ?? "bg-bg-600 text-text-muted"}`}
+      className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-xs ${cls}`}
     >
-      {severity} <span className="font-semibold">{count}</span>
+      <span className="capitalize">{severity}</span>
+      <span className="font-semibold mono-num">{count}</span>
     </span>
   );
 }
@@ -131,10 +153,10 @@ function SevChip({ severity, count }: { severity: string; count: number }) {
 // ---------------------------------------------------------------------------
 
 const SEVERITY_DOT_MAP: Record<string, string> = {
-  low: "bg-blue-400",
-  medium: "bg-yellow-400",
-  high: "bg-orange-400",
-  critical: "bg-red-500",
+  low: "bg-severity-low",
+  medium: "bg-severity-medium",
+  high: "bg-severity-high",
+  critical: "bg-severity-critical",
 };
 
 const RULE_LABEL_MAP: Record<string, string> = {
@@ -148,20 +170,45 @@ const RULE_LABEL_MAP: Record<string, string> = {
 function AlertSignalRow({ alert }: { alert: DashboardAlertItem }) {
   const dot = SEVERITY_DOT_MAP[alert.severity] ?? "bg-bg-600";
   return (
-    <div className="flex items-start gap-2.5 py-2 border-b border-border last:border-0">
+    <div className="flex items-start gap-3 py-2.5 border-b border-border last:border-0">
       <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} />
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-text-secondary leading-snug truncate">{alert.title}</p>
-        <div className="mt-0.5 flex gap-2">
-          <span className="font-mono text-2xs text-text-muted">
+        <p className="text-sm text-text-secondary leading-snug truncate">{alert.title}</p>
+        <div className="mt-0.5 flex gap-2.5">
+          <span className="text-xs text-text-muted">
             {RULE_LABEL_MAP[alert.rule_type] ?? alert.rule_type.replace(/_/g, " ")}
           </span>
-          <span className="font-mono text-2xs text-text-muted">{alert.status}</span>
+          <span className="text-xs text-text-muted capitalize">{alert.status}</span>
         </div>
       </div>
-      <span className="shrink-0 font-mono text-2xs text-text-muted whitespace-nowrap">
+      <span className="shrink-0 text-xs text-text-muted whitespace-nowrap">
         {formatShortDate(alert.triggered_at)}
       </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared section-header row
+// ---------------------------------------------------------------------------
+
+function SectionHeader({
+  title,
+  linkTo,
+  linkLabel,
+}: {
+  title: string;
+  linkTo?: string;
+  linkLabel?: string;
+}) {
+  return (
+    <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
+      <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
+      {linkTo && linkLabel && (
+        <Link to={linkTo} className="text-xs text-accent-500 hover:text-accent-300">
+          {linkLabel}
+        </Link>
+      )}
     </div>
   );
 }
@@ -176,6 +223,24 @@ type HealthStatusCounts = {
   review: number;
   critical: number;
   insufficient_evidence: number;
+};
+
+// Reliability status chip palette (desaturated)
+const RELIABILITY_CHIP: Record<string, string> = {
+  excellent: "bg-teal-900/30 text-teal-300 border-teal-700/30",
+  good: "bg-blue-900/30 text-accent-300 border-accent-600/30",
+  review: "bg-yellow-900/30 text-fidelity-medium border-yellow-800/30",
+  weak: "bg-red-900/30 text-severity-high border-red-800/30",
+  insufficient_evidence: "bg-bg-600 text-text-muted border-border",
+};
+
+// Strategy / project health chip palette (desaturated)
+const HEALTH_CHIP: Record<string, string> = {
+  healthy: "bg-teal-900/30 text-teal-300 border-teal-700/30",
+  watch: "bg-yellow-900/30 text-fidelity-medium border-yellow-800/30",
+  review: "bg-orange-900/30 text-fidelity-low border-orange-800/30",
+  critical: "bg-red-900/30 text-severity-critical border-red-800/30",
+  insufficient_evidence: "bg-bg-600 text-text-muted border-border",
 };
 
 export default function Dashboard() {
@@ -234,7 +299,7 @@ export default function Dashboard() {
   const counts = summary?.counts ?? null;
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
       {/* ------------------------------------------------------------------ */}
       {/* Header                                                              */}
       {/* ------------------------------------------------------------------ */}
@@ -250,7 +315,7 @@ export default function Dashboard() {
       </div>
 
       {error && (
-        <div className="rounded border border-red-800 bg-red-900/20 px-4 py-3 font-mono text-xs text-red-300">
+        <div className="rounded-card border border-red-800/60 bg-red-900/20 px-4 py-3 text-sm text-severity-high">
           {error}
         </div>
       )}
@@ -258,23 +323,23 @@ export default function Dashboard() {
       {/* ------------------------------------------------------------------ */}
       {/* Reliability score strip                                             */}
       {/* ------------------------------------------------------------------ */}
-      <div className="rounded-card border border-border bg-bg-700">
+      <div className="rounded-card border border-border bg-bg-700 shadow-card">
         <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-          <p className="caption">Reliability Pillars</p>
+          <h2 className="text-sm font-semibold text-text-primary">Reliability Pillars</h2>
           {summary && (
-            <p className="font-mono text-2xs text-text-muted">
+            <span className="text-xs text-text-muted">
               as of {formatDate(summary.generated_at)}
-            </p>
+            </span>
           )}
         </div>
 
         {loading ? (
           <div className="px-4 py-6">
-            <p className="font-mono text-2xs text-text-muted">Loading…</p>
+            <p className="text-xs text-text-muted">Loading…</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-5 divide-x divide-border px-4 py-4">
+            <div className="grid grid-cols-5 divide-x divide-border px-5 py-4">
               <ScorePillar
                 label="Overall Reliability"
                 description="Avg of available dimension scores"
@@ -302,27 +367,19 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* M18: Reliability status breakdown chips */}
+            {/* Reliability status breakdown */}
             {scores && scores.strategies_by_reliability_status && Object.keys(scores.strategies_by_reliability_status).length > 0 && (
-              <div className="border-t border-border px-4 py-2.5 flex flex-wrap gap-2">
-                <p className="font-mono text-2xs text-text-muted mr-2 self-center">Reliability Status:</p>
-                {Object.entries(scores.strategies_by_reliability_status).map(([status, count]) => {
-                  const cls: Record<string, string> = {
-                    excellent: "bg-cyan-900/40 text-cyan-300 border-cyan-700/40",
-                    good: "bg-teal-900/40 text-teal-300 border-teal-700/40",
-                    review: "bg-yellow-900/40 text-yellow-200 border-yellow-700/40",
-                    weak: "bg-red-900/40 text-red-300 border-red-700/40",
-                    insufficient_evidence: "bg-bg-600 text-text-muted border-border",
-                  };
-                  return (
-                    <span
-                      key={status}
-                      className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 font-mono text-2xs ${cls[status] ?? cls.insufficient_evidence}`}
-                    >
-                      {status.replace("_", " ")} <span className="font-bold">{count}</span>
-                    </span>
-                  );
-                })}
+              <div className="border-t border-border px-4 py-2.5 flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-text-muted mr-1">By reliability:</span>
+                {Object.entries(scores.strategies_by_reliability_status).map(([status, count]) => (
+                  <span
+                    key={status}
+                    className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-xs ${RELIABILITY_CHIP[status] ?? RELIABILITY_CHIP.insufficient_evidence}`}
+                  >
+                    <span className="capitalize">{status.replace(/_/g, " ")}</span>
+                    <span className="font-semibold mono-num">{count}</span>
+                  </span>
+                ))}
               </div>
             )}
           </>
@@ -330,66 +387,70 @@ export default function Dashboard() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
+      {/* Evidence counters                                                   */}
+      {/* ------------------------------------------------------------------ */}
+      {!loading && counts && (
+        <div className="grid grid-cols-4 gap-3">
+          <CountChip label="Strategies" value={counts.total_strategies} />
+          <CountChip label="Total Runs" value={counts.total_runs} />
+          <CountChip label="Dataset Snapshots" value={counts.total_dataset_snapshots} />
+          <CountChip label="Backtest Audits" value={counts.total_backtest_audits} />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
       {/* Evidence Coverage quick card (M21)                                 */}
       {/* ------------------------------------------------------------------ */}
       {!loading && coverageSummary && coverageSummary.strategy_count > 0 && (
-        <div className="rounded-card border border-border bg-bg-700">
-          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-            <p className="caption">Instrumentation Coverage</p>
-            <Link
-              to="/evidence/coverage"
-              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
-            >
-              full matrix →
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 divide-x divide-border sm:grid-cols-4 px-0 py-0">
+        <div className="rounded-card border border-border bg-bg-700 shadow-card">
+          <SectionHeader
+            title="Instrumentation Coverage"
+            linkTo="/evidence/coverage"
+            linkLabel="Full matrix →"
+          />
+          <div className="grid grid-cols-2 divide-x divide-border sm:grid-cols-4">
             {[
               {
                 label: "Avg Coverage",
                 value: `${coverageSummary.average_coverage_score.toFixed(1)}`,
                 color:
                   coverageSummary.average_coverage_score >= 80
-                    ? "text-teal-400"
+                    ? "text-fidelity-high"
                     : coverageSummary.average_coverage_score >= 50
-                    ? "text-yellow-400"
-                    : "text-orange-400",
+                    ? "text-fidelity-medium"
+                    : "text-fidelity-low",
               },
               {
                 label: "Complete Cells",
                 value: coverageSummary.complete_cell_count,
-                color: "text-teal-400",
+                color: "text-fidelity-high",
               },
               {
                 label: "Missing Cells",
                 value: coverageSummary.missing_cell_count,
                 color:
-                  coverageSummary.missing_cell_count > 0 ? "text-text-muted" : "text-teal-400",
+                  coverageSummary.missing_cell_count > 0 ? "text-text-muted" : "text-fidelity-high",
               },
               {
                 label: "Review Cells",
                 value: coverageSummary.review_cell_count,
                 color:
-                  coverageSummary.review_cell_count > 0 ? "text-orange-400" : "text-teal-400",
+                  coverageSummary.review_cell_count > 0 ? "text-fidelity-low" : "text-fidelity-high",
               },
             ].map(({ label, value, color }) => (
-              <div key={label} className="px-4 py-3 text-center">
-                <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-                  {label}
-                </p>
-                <p className={`mono-num mt-1 text-xl font-bold ${color}`}>{value}</p>
+              <div key={label} className="px-4 py-3.5 text-center">
+                <p className="caption">{label}</p>
+                <p className={`mono-num mt-1.5 text-xl font-bold ${color}`}>{value}</p>
               </div>
             ))}
           </div>
           {coverageSummary.most_common_missing_evidence.length > 0 && (
-            <div className="border-t border-border px-4 py-2 flex flex-wrap gap-x-3 gap-y-1">
-              <p className="font-mono text-2xs text-text-muted self-center">
-                Most missing:
-              </p>
+            <div className="border-t border-border px-4 py-2.5 flex flex-wrap gap-x-2 gap-y-1 items-center">
+              <span className="text-xs text-text-muted">Most missing:</span>
               {coverageSummary.most_common_missing_evidence.slice(0, 4).map((label) => (
                 <span
                   key={label}
-                  className="font-mono text-2xs text-text-muted bg-bg-800 border border-border rounded px-1.5 py-0.5"
+                  className="text-xs text-text-muted bg-bg-800 border border-border rounded-chip px-1.5 py-0.5"
                 >
                   {label}
                 </span>
@@ -403,39 +464,39 @@ export default function Dashboard() {
       {/* Strategy Health summary (M27)                                      */}
       {/* ------------------------------------------------------------------ */}
       {!loading && healthSummary && strategies.length > 0 && (
-        <div className="rounded-card border border-border bg-bg-700">
-          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-            <p className="caption">Strategy Health</p>
-            <Link
-              to="/strategies"
-              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
-            >
-              all strategies →
-            </Link>
-          </div>
+        <div className="rounded-card border border-border bg-bg-700 shadow-card">
+          <SectionHeader
+            title="Strategy Health"
+            linkTo="/strategies"
+            linkLabel="All strategies →"
+          />
           <div className="px-4 py-3 flex flex-wrap gap-2">
             {(
               [
-                { key: "healthy",               label: "Healthy",              chip: "bg-teal-900/40 text-teal-300 border-teal-700/40" },
-                { key: "watch",                 label: "Watch",                chip: "bg-yellow-900/40 text-yellow-200 border-yellow-700/40" },
-                { key: "review",                label: "Review",               chip: "bg-orange-900/40 text-orange-300 border-orange-700/40" },
-                { key: "critical",              label: "Critical",             chip: "bg-red-900/40 text-red-300 border-red-700/40" },
-                { key: "insufficient_evidence", label: "Insufficient Evidence",chip: "bg-bg-600 text-text-muted border-border" },
+                { key: "healthy",               label: "Healthy" },
+                { key: "watch",                 label: "Watch" },
+                { key: "review",                label: "Review" },
+                { key: "critical",              label: "Critical" },
+                { key: "insufficient_evidence", label: "Insufficient Evidence" },
               ] as const
-            ).map(({ key, label, chip }) => (
+            ).map(({ key, label }) => (
               <span
                 key={key}
-                className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-2xs ${chip}`}
+                className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-xs ${HEALTH_CHIP[key]}`}
               >
                 {label}
-                <span className="font-bold">{healthSummary[key]}</span>
+                <span className="font-semibold mono-num">{healthSummary[key]}</span>
               </span>
             ))}
           </div>
           {(healthSummary.critical + healthSummary.review) > 0 && (
             <div className="border-t border-border px-4 py-2">
-              <span className="font-mono text-2xs text-orange-400">
-                {healthSummary.critical + healthSummary.review} {healthSummary.critical + healthSummary.review === 1 ? "strategy requires" : "strategies require"} attention
+              <span className="text-xs text-fidelity-low">
+                {healthSummary.critical + healthSummary.review}{" "}
+                {healthSummary.critical + healthSummary.review === 1
+                  ? "strategy requires"
+                  : "strategies require"}{" "}
+                attention
               </span>
             </div>
           )}
@@ -446,37 +507,26 @@ export default function Dashboard() {
       {/* Project Health summary (M28)                                       */}
       {/* ------------------------------------------------------------------ */}
       {!loading && projectsHealth.length > 0 && (
-        <div className="rounded-card border border-border bg-bg-700">
-          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-            <p className="caption">Project Health</p>
-            <Link
-              to="/strategies"
-              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
-            >
-              all strategies →
-            </Link>
-          </div>
+        <div className="rounded-card border border-border bg-bg-700 shadow-card">
+          <SectionHeader
+            title="Project Health"
+            linkTo="/strategies"
+            linkLabel="All strategies →"
+          />
           <div className="divide-y divide-border">
             {projectsHealth.map((p) => {
-              const statusChip: Record<string, string> = {
-                healthy: "text-teal-300 bg-teal-900/30 border-teal-700/30",
-                watch: "text-yellow-300 bg-yellow-900/30 border-yellow-700/30",
-                review: "text-orange-300 bg-orange-900/30 border-orange-700/30",
-                critical: "text-red-300 bg-red-900/30 border-red-700/30",
-                insufficient_evidence: "text-text-muted bg-bg-600 border-border",
-              };
-              const chip = statusChip[p.health_status] ?? statusChip.insufficient_evidence;
+              const chip = HEALTH_CHIP[p.health_status] ?? HEALTH_CHIP.insufficient_evidence;
               return (
                 <div key={p.project_id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="min-w-0 flex-1 font-mono text-xs text-text-primary truncate">
+                  <span className="min-w-0 flex-1 text-sm text-text-primary truncate">
                     {p.project_name}
                   </span>
                   <span
-                    className={`shrink-0 inline-flex items-center rounded border px-2 py-0.5 font-mono text-2xs ${chip}`}
+                    className={`shrink-0 inline-flex items-center rounded border px-2 py-0.5 text-xs capitalize ${chip}`}
                   >
-                    {p.health_status.replace("_", " ")}
+                    {p.health_status.replace(/_/g, " ")}
                   </span>
-                  <span className="shrink-0 font-mono text-2xs text-text-muted">
+                  <span className="shrink-0 text-xs text-text-muted">
                     {p.strategy_count} {p.strategy_count === 1 ? "strategy" : "strategies"}
                   </span>
                   {p.health_score !== null && (
@@ -485,7 +535,7 @@ export default function Dashboard() {
                     </span>
                   )}
                   {p.primary_concern && (
-                    <span className="hidden sm:block shrink-0 max-w-[180px] truncate font-mono text-2xs text-text-muted">
+                    <span className="hidden sm:block shrink-0 max-w-[180px] truncate text-xs text-text-muted">
                       {p.primary_concern}
                     </span>
                   )}
@@ -500,52 +550,42 @@ export default function Dashboard() {
       {/* Portfolio Overview panel (M32)                                     */}
       {/* ------------------------------------------------------------------ */}
       {!loading && portfolioOverview && (
-        <div className="rounded-card border border-border bg-bg-700">
-          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-            <p className="caption">Portfolio Overview</p>
-            <Link
-              to="/portfolio"
-              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
-            >
-              full view →
-            </Link>
-          </div>
-          <div className="grid grid-cols-4 divide-x divide-border px-0 py-0">
-            <div className="px-4 py-3 text-center">
-              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-                Strategies
-              </p>
-              <p className="mono-num mt-1 text-xl font-bold text-text-primary">
+        <div className="rounded-card border border-border bg-bg-700 shadow-card">
+          <SectionHeader
+            title="Portfolio Overview"
+            linkTo="/portfolio"
+            linkLabel="Full view →"
+          />
+          <div className="grid grid-cols-4 divide-x divide-border">
+            <div className="px-4 py-3.5 text-center">
+              <p className="caption">Strategies</p>
+              <p className="mono-num mt-1.5 text-xl font-bold text-text-primary">
                 {portfolioOverview.active_strategy_count}
               </p>
             </div>
-            <div className="px-4 py-3 text-center">
-              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-                Review
-              </p>
+            <div className="px-4 py-3.5 text-center">
+              <p className="caption">Review</p>
               <p
-                className={`mono-num mt-1 text-xl font-bold ${
+                className={`mono-num mt-1.5 text-xl font-bold ${
                   portfolioOverview.top_review_strategies.length > 0
-                    ? "text-orange-400"
+                    ? "text-fidelity-low"
                     : "text-text-primary"
                 }`}
               >
                 {portfolioOverview.top_review_strategies.length}
               </p>
             </div>
-            <div className="px-4 py-3 text-center">
-              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-                Avg Health
-              </p>
+            <div className="px-4 py-3.5 text-center">
+              <p className="caption">Avg Health</p>
               <p
-                className={`mono-num mt-1 text-xl font-bold ${
+                className={`mono-num mt-1.5 text-xl font-bold ${
                   portfolioOverview.average_health_score === null
                     ? "text-text-muted"
                     : portfolioOverview.average_health_score >= 80
-                    ? "text-teal-400"
+                    ? "text-fidelity-high"
                     : portfolioOverview.average_health_score >= 60
-                    ? "text-yellow-400"
-                    : "text-red-400"
+                    ? "text-fidelity-medium"
+                    : "text-severity-critical"
                 }`}
               >
                 {portfolioOverview.average_health_score !== null
@@ -553,19 +593,17 @@ export default function Dashboard() {
                   : "—"}
               </p>
             </div>
-            <div className="px-4 py-3 text-center">
-              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">
-                Avg Coverage
-              </p>
+            <div className="px-4 py-3.5 text-center">
+              <p className="caption">Avg Coverage</p>
               <p
-                className={`mono-num mt-1 text-xl font-bold ${
+                className={`mono-num mt-1.5 text-xl font-bold ${
                   portfolioOverview.average_evidence_coverage_score === null
                     ? "text-text-muted"
                     : portfolioOverview.average_evidence_coverage_score >= 80
-                    ? "text-teal-400"
+                    ? "text-fidelity-high"
                     : portfolioOverview.average_evidence_coverage_score >= 60
-                    ? "text-yellow-400"
-                    : "text-red-400"
+                    ? "text-fidelity-medium"
+                    : "text-severity-critical"
                 }`}
               >
                 {portfolioOverview.average_evidence_coverage_score !== null
@@ -577,7 +615,7 @@ export default function Dashboard() {
           <div className="border-t border-border px-4 py-2">
             <Link
               to="/portfolio"
-              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+              className="text-xs text-accent-500 hover:text-accent-300"
             >
               View full portfolio overview →
             </Link>
@@ -589,46 +627,42 @@ export default function Dashboard() {
       {/* System Health card (M45)                                           */}
       {/* ------------------------------------------------------------------ */}
       {!loading && systemHealth && (
-        <div className="rounded-card border border-border bg-bg-700">
-          <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-            <p className="caption">System Health</p>
-            <Link
-              to="/admin/system-health"
-              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
-            >
-              ops →
-            </Link>
-          </div>
+        <div className="rounded-card border border-border bg-bg-700 shadow-card">
+          <SectionHeader
+            title="System Health"
+            linkTo="/admin/system-health"
+            linkLabel="Ops dashboard →"
+          />
           <div className="grid grid-cols-4 divide-x divide-border">
-            <div className="px-4 py-3 text-center">
-              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Score</p>
-              <p className={`mono-num mt-1 text-xl font-bold ${scoreColor(systemHealth.system_score)}`}>
+            <div className="px-4 py-3.5 text-center">
+              <p className="caption">Score</p>
+              <p className={`mono-num mt-1.5 text-xl font-bold ${scoreColor(systemHealth.system_score)}`}>
                 {systemHealth.system_score !== null ? systemHealth.system_score.toFixed(1) : "—"}
               </p>
             </div>
-            <div className="px-4 py-3 text-center">
-              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Strategies</p>
-              <p className="mono-num mt-1 text-xl font-bold text-text-primary">
+            <div className="px-4 py-3.5 text-center">
+              <p className="caption">Strategies</p>
+              <p className="mono-num mt-1.5 text-xl font-bold text-text-primary">
                 {systemHealth.entity_counts.active_strategies}
               </p>
             </div>
-            <div className="px-4 py-3 text-center">
-              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Ingestion</p>
-              <p className={`mono-num mt-1 text-sm font-semibold ${
-                systemHealth.ingestion_health.ingestion_status === "healthy" ? "text-teal-400" :
-                systemHealth.ingestion_health.ingestion_status === "watch" ? "text-yellow-400" :
-                systemHealth.ingestion_health.ingestion_status === "degraded" ? "text-red-400" :
+            <div className="px-4 py-3.5 text-center">
+              <p className="caption">Ingestion</p>
+              <p className={`mono-num mt-1.5 text-sm font-semibold capitalize ${
+                systemHealth.ingestion_health.ingestion_status === "healthy" ? "text-fidelity-high" :
+                systemHealth.ingestion_health.ingestion_status === "watch" ? "text-fidelity-medium" :
+                systemHealth.ingestion_health.ingestion_status === "degraded" ? "text-severity-critical" :
                 "text-text-muted"
               }`}>
                 {systemHealth.ingestion_health.ingestion_status.replace(/_/g, " ")}
               </p>
             </div>
-            <div className="px-4 py-3 text-center">
-              <p className="font-mono text-2xs text-text-muted uppercase tracking-wider">Activity</p>
-              <p className={`mono-num mt-1 text-sm font-semibold ${
-                systemHealth.evidence_activity.activity_status === "healthy" ? "text-teal-400" :
-                systemHealth.evidence_activity.activity_status === "watch" ? "text-yellow-400" :
-                systemHealth.evidence_activity.activity_status === "degraded" ? "text-red-400" :
+            <div className="px-4 py-3.5 text-center">
+              <p className="caption">Activity</p>
+              <p className={`mono-num mt-1.5 text-sm font-semibold capitalize ${
+                systemHealth.evidence_activity.activity_status === "healthy" ? "text-fidelity-high" :
+                systemHealth.evidence_activity.activity_status === "watch" ? "text-fidelity-medium" :
+                systemHealth.evidence_activity.activity_status === "degraded" ? "text-severity-critical" :
                 "text-text-muted"
               }`}>
                 {systemHealth.evidence_activity.activity_status.replace(/_/g, " ")}
@@ -637,7 +671,7 @@ export default function Dashboard() {
           </div>
           {(systemHealth.system_status === "degraded" || systemHealth.system_status === "review") && (
             <div className="border-t border-border px-4 py-2">
-              <span className="font-mono text-2xs text-orange-400">
+              <span className="text-xs text-fidelity-low capitalize">
                 System status: {systemHealth.system_status.replace(/_/g, " ")} — review ops dashboard
               </span>
             </div>
@@ -646,45 +680,25 @@ export default function Dashboard() {
       )}
 
       {/* ------------------------------------------------------------------ */}
-      {/* Evidence counters                                                   */}
-      {/* ------------------------------------------------------------------ */}
-      {!loading && counts && (
-        <div className="grid grid-cols-4 gap-3">
-          <CountChip label="Strategies" value={counts.total_strategies} />
-          <CountChip label="Total Runs" value={counts.total_runs} />
-          <CountChip
-            label="Dataset Snapshots"
-            value={counts.total_dataset_snapshots}
-          />
-          <CountChip
-            label="Backtest Audits"
-            value={counts.total_backtest_audits}
-          />
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
       {/* Active strategies table                                             */}
       {/* ------------------------------------------------------------------ */}
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <p className="caption">Active Strategies</p>
+          <h2 className="text-sm font-semibold text-text-primary">Active Strategies</h2>
           <Link
             to="/strategies"
-            className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+            className="text-xs text-accent-500 hover:text-accent-300"
           >
-            all strategies →
+            All strategies →
           </Link>
         </div>
 
         {!loading && strategies.length === 0 && (
-          <div className="rounded-card border border-dashed border-border bg-bg-800 px-5 py-8 text-center">
-            <p className="font-mono text-2xs text-text-muted">
-              No strategies registered.
-            </p>
+          <div className="rounded-card border border-dashed border-border bg-bg-800 px-5 py-10 text-center">
+            <p className="text-sm text-text-muted">No strategies registered yet.</p>
             <Link
               to="/strategies"
-              className="mt-2 inline-block font-mono text-2xs text-accent-500 hover:text-accent-300"
+              className="mt-2 inline-block text-xs text-accent-500 hover:text-accent-300"
             >
               Register a strategy →
             </Link>
@@ -692,7 +706,7 @@ export default function Dashboard() {
         )}
 
         {!loading && strategies.length > 0 && (
-          <div className="overflow-hidden rounded-card border border-border">
+          <div className="overflow-hidden rounded-card border border-border shadow-card">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-bg-800">
@@ -700,7 +714,7 @@ export default function Dashboard() {
                     (h) => (
                       <th
                         key={h}
-                        className="px-4 py-2 text-left font-mono text-2xs uppercase tracking-widest text-text-muted"
+                        className="px-4 py-2.5 text-left text-xs font-medium tracking-eyebrow text-text-muted"
                       >
                         {h}
                       </th>
@@ -712,33 +726,33 @@ export default function Dashboard() {
                 {strategies.slice(0, 6).map((s, i) => (
                   <tr
                     key={s.id}
-                    className={`hover:bg-bg-600 ${
+                    className={`hover:bg-bg-600 transition-colors ${
                       i < Math.min(strategies.length, 6) - 1
                         ? "border-b border-border"
                         : ""
                     }`}
                   >
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-3">
                       <Link
                         to={`/strategies/${s.id}`}
-                        className="text-sm font-medium text-text-primary hover:text-accent-300"
+                        className="text-sm font-medium text-text-primary hover:text-accent-300 transition-colors"
                       >
                         {s.name}
                       </Link>
-                      <p className="mt-px font-mono text-2xs text-text-muted">
+                      <p className="mt-0.5 text-xs text-text-muted">
                         {s.project_name}
                       </p>
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-3">
                       <Badge value={s.asset_class} variant="asset_class" />
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-3">
                       <Badge value={s.status} variant="status" />
                     </td>
-                    <td className="mono-num px-4 py-2.5 text-sm text-text-secondary">
+                    <td className="mono-num px-4 py-3 text-sm text-text-secondary">
                       {s.run_count}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-text-muted">
+                    <td className="px-4 py-3 text-xs text-text-muted">
                       {formatDate(s.latest_run_at)}
                     </td>
                   </tr>
@@ -753,31 +767,31 @@ export default function Dashboard() {
       {/* Reliability Signals (M11 alerts)                                   */}
       {/* ------------------------------------------------------------------ */}
       {!loading && counts && (
-        <div className="rounded-card border border-border bg-bg-700">
+        <div className="rounded-card border border-border bg-bg-700 shadow-card">
           <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <p className="caption">Reliability Signals</p>
+              <h2 className="text-sm font-semibold text-text-primary">Reliability Signals</h2>
               {counts.open_alert_count > 0 && (
-                <span className="inline-flex items-center gap-1 rounded border border-red-700/40 bg-red-900/30 px-2 py-0.5 font-mono text-2xs text-red-300">
-                  {counts.open_alert_count} open
+                <span className="inline-flex items-center gap-1.5 rounded border border-red-800/40 bg-red-900/20 px-2 py-0.5 text-xs text-severity-high">
+                  <span className="mono-num font-semibold">{counts.open_alert_count}</span> open
                 </span>
               )}
               {counts.high_critical_alert_count > 0 && (
-                <span className="inline-flex items-center gap-1 rounded border border-orange-700/40 bg-orange-900/30 px-2 py-0.5 font-mono text-2xs text-orange-300">
-                  {counts.high_critical_alert_count} high/critical
+                <span className="inline-flex items-center gap-1.5 rounded border border-orange-800/40 bg-orange-900/20 px-2 py-0.5 text-xs text-severity-high">
+                  <span className="mono-num font-semibold">{counts.high_critical_alert_count}</span> high/critical
                 </span>
               )}
             </div>
             <Link
               to="/alerts"
-              className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+              className="text-xs text-accent-500 hover:text-accent-300"
             >
-              all alerts →
+              All alerts →
             </Link>
           </div>
-          <div className="px-4 py-2">
+          <div className="px-4 py-1">
             {!summary || summary.recent_alerts.length === 0 ? (
-              <p className="py-4 font-mono text-2xs text-text-muted">
+              <p className="py-4 text-sm text-text-muted">
                 No alerts yet.{" "}
                 <Link to="/alerts" className="text-accent-500 hover:text-accent-300">
                   Run an alert check →
@@ -798,54 +812,41 @@ export default function Dashboard() {
       {!loading && counts && scores && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Data health panel */}
-          <div className="rounded-card border border-border bg-bg-700">
+          <div className="rounded-card border border-border bg-bg-700 shadow-card">
             <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-              <p className="caption">Data Health</p>
+              <h2 className="text-sm font-semibold text-text-primary">Data Health</h2>
               {scores.data_health_score !== null && (
-                <span
-                  className={`mono-num font-semibold text-sm ${scoreColor(scores.data_health_score)}`}
-                >
+                <span className={`mono-num font-semibold text-sm ${scoreColor(scores.data_health_score)}`}>
                   {scores.data_health_score.toFixed(1)}
                 </span>
               )}
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-4">
               {counts.total_dataset_snapshots === 0 ? (
-                <p className="font-mono text-2xs text-text-muted">
+                <p className="text-sm text-text-muted">
                   No dataset snapshots uploaded yet.{" "}
-                  <Link
-                    to="/datasets"
-                    className="text-accent-500 hover:text-accent-300"
-                  >
+                  <Link to="/datasets" className="text-accent-500 hover:text-accent-300">
                     Upload a snapshot →
                   </Link>
                 </p>
               ) : (
                 <>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <p className="font-mono text-2xs text-text-muted">
-                        Snapshots
-                      </p>
-                      <p className="mono-num text-lg font-semibold text-text-primary">
+                      <p className="caption">Snapshots</p>
+                      <p className="mono-num mt-1 text-lg font-semibold text-text-primary">
                         {counts.total_dataset_snapshots}
                       </p>
                     </div>
                     <div>
-                      <p className="font-mono text-2xs text-text-muted">
-                        With Issues
-                      </p>
-                      <p className="mono-num text-lg font-semibold text-text-primary">
+                      <p className="caption">With Issues</p>
+                      <p className="mono-num mt-1 text-lg font-semibold text-text-primary">
                         {counts.snapshots_with_issues}
                       </p>
                     </div>
                     <div>
-                      <p className="font-mono text-2xs text-text-muted">
-                        Lowest Score
-                      </p>
-                      <p
-                        className={`mono-num text-lg font-semibold ${scoreColor(scores.lowest_data_health_score ?? null)}`}
-                      >
+                      <p className="caption">Lowest Score</p>
+                      <p className={`mono-num mt-1 text-lg font-semibold ${scoreColor(scores.lowest_data_health_score ?? null)}`}>
                         {scores.lowest_data_health_score ?? "—"}
                       </p>
                     </div>
@@ -853,9 +854,7 @@ export default function Dashboard() {
 
                   {Object.keys(counts.data_issues_by_severity).length > 0 && (
                     <div>
-                      <p className="font-mono text-2xs text-text-muted mb-1.5">
-                        Issues by severity
-                      </p>
+                      <p className="caption mb-2">Issues by severity</p>
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(counts.data_issues_by_severity).map(
                           ([sev, cnt]) => (
@@ -871,54 +870,41 @@ export default function Dashboard() {
           </div>
 
           {/* Backtest trust panel */}
-          <div className="rounded-card border border-border bg-bg-700">
+          <div className="rounded-card border border-border bg-bg-700 shadow-card">
             <div className="border-b border-border px-4 py-2.5 flex items-center justify-between">
-              <p className="caption">Backtest Trust</p>
+              <h2 className="text-sm font-semibold text-text-primary">Backtest Trust</h2>
               {scores.backtest_trust_score !== null && (
-                <span
-                  className={`mono-num font-semibold text-sm ${scoreColor(scores.backtest_trust_score)}`}
-                >
+                <span className={`mono-num font-semibold text-sm ${scoreColor(scores.backtest_trust_score)}`}>
                   {scores.backtest_trust_score.toFixed(1)}
                 </span>
               )}
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-4">
               {counts.total_backtest_audits === 0 ? (
-                <p className="font-mono text-2xs text-text-muted">
+                <p className="text-sm text-text-muted">
                   No backtest audits yet.{" "}
-                  <Link
-                    to="/backtests"
-                    className="text-accent-500 hover:text-accent-300"
-                  >
+                  <Link to="/backtests" className="text-accent-500 hover:text-accent-300">
                     Run an audit →
                   </Link>
                 </p>
               ) : (
                 <>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <p className="font-mono text-2xs text-text-muted">
-                        Audits
-                      </p>
-                      <p className="mono-num text-lg font-semibold text-text-primary">
+                      <p className="caption">Audits</p>
+                      <p className="mono-num mt-1 text-lg font-semibold text-text-primary">
                         {counts.total_backtest_audits}
                       </p>
                     </div>
                     <div>
-                      <p className="font-mono text-2xs text-text-muted">
-                        Issues Found
-                      </p>
-                      <p className="mono-num text-lg font-semibold text-text-primary">
+                      <p className="caption">Issues Found</p>
+                      <p className="mono-num mt-1 text-lg font-semibold text-text-primary">
                         {counts.total_backtest_issues}
                       </p>
                     </div>
                     <div>
-                      <p className="font-mono text-2xs text-text-muted">
-                        Lowest Trust
-                      </p>
-                      <p
-                        className={`mono-num text-lg font-semibold ${scoreColor(scores.lowest_backtest_trust_score ?? null)}`}
-                      >
+                      <p className="caption">Lowest Trust</p>
+                      <p className={`mono-num mt-1 text-lg font-semibold ${scoreColor(scores.lowest_backtest_trust_score ?? null)}`}>
                         {scores.lowest_backtest_trust_score ?? "—"}
                       </p>
                     </div>
@@ -926,18 +912,16 @@ export default function Dashboard() {
 
                   {Object.keys(counts.audits_by_status).length > 0 && (
                     <div>
-                      <p className="font-mono text-2xs text-text-muted mb-1.5">
-                        Audits by status
-                      </p>
+                      <p className="caption mb-2">Audits by status</p>
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(counts.audits_by_status).map(
                           ([status, cnt]) => (
                             <span
                               key={status}
-                              className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-2xs bg-bg-600 text-text-secondary"
+                              className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-0.5 text-xs bg-bg-600 text-text-secondary capitalize"
                             >
-                              {status}{" "}
-                              <span className="font-semibold">{cnt}</span>
+                              {status}
+                              <span className="font-semibold mono-num">{cnt}</span>
                             </span>
                           ),
                         )}
@@ -945,18 +929,15 @@ export default function Dashboard() {
                     </div>
                   )}
 
-                  {Object.keys(counts.backtest_issues_by_severity).length >
-                    0 && (
+                  {Object.keys(counts.backtest_issues_by_severity).length > 0 && (
                     <div>
-                      <p className="font-mono text-2xs text-text-muted mb-1.5">
-                        Issues by severity
-                      </p>
+                      <p className="caption mb-2">Issues by severity</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {Object.entries(
-                          counts.backtest_issues_by_severity,
-                        ).map(([sev, cnt]) => (
-                          <SevChip key={sev} severity={sev} count={cnt} />
-                        ))}
+                        {Object.entries(counts.backtest_issues_by_severity).map(
+                          ([sev, cnt]) => (
+                            <SevChip key={sev} severity={sev} count={cnt} />
+                          ),
+                        )}
                       </div>
                     </div>
                   )}
@@ -972,18 +953,14 @@ export default function Dashboard() {
       {/* ------------------------------------------------------------------ */}
       {!loading && summary && (
         <div>
-          <p className="caption mb-3">Recent Activity</p>
+          <h2 className="text-sm font-semibold text-text-primary mb-3">Recent Activity</h2>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
             {/* Recent runs */}
-            <div className="rounded-card border border-border bg-bg-700">
-              <div className="border-b border-border px-4 py-2.5">
-                <p className="caption">Recent Runs</p>
-              </div>
-              <div className="p-4">
+            <div className="rounded-card border border-border bg-bg-700 shadow-card">
+              <SectionHeader title="Recent Runs" />
+              <div className="px-4 py-1">
                 {summary.recent_runs.length === 0 ? (
-                  <p className="font-mono text-2xs text-text-muted">
-                    No runs yet.
-                  </p>
+                  <p className="py-4 text-sm text-text-muted">No runs yet.</p>
                 ) : (
                   summary.recent_runs.map((item) => (
                     <RecentItem key={item.id} item={item} />
@@ -993,15 +970,11 @@ export default function Dashboard() {
             </div>
 
             {/* Recent snapshots */}
-            <div className="rounded-card border border-border bg-bg-700">
-              <div className="border-b border-border px-4 py-2.5">
-                <p className="caption">Recent Snapshots</p>
-              </div>
-              <div className="p-4">
+            <div className="rounded-card border border-border bg-bg-700 shadow-card">
+              <SectionHeader title="Recent Snapshots" />
+              <div className="px-4 py-1">
                 {summary.recent_snapshots.length === 0 ? (
-                  <p className="font-mono text-2xs text-text-muted">
-                    No snapshots yet.
-                  </p>
+                  <p className="py-4 text-sm text-text-muted">No snapshots yet.</p>
                 ) : (
                   summary.recent_snapshots.map((item) => (
                     <RecentItem key={item.id} item={item} />
@@ -1011,15 +984,11 @@ export default function Dashboard() {
             </div>
 
             {/* Recent audits */}
-            <div className="rounded-card border border-border bg-bg-700">
-              <div className="border-b border-border px-4 py-2.5">
-                <p className="caption">Recent Audits</p>
-              </div>
-              <div className="p-4">
+            <div className="rounded-card border border-border bg-bg-700 shadow-card">
+              <SectionHeader title="Recent Audits" />
+              <div className="px-4 py-1">
                 {summary.recent_audits.length === 0 ? (
-                  <p className="font-mono text-2xs text-text-muted">
-                    No audits yet.
-                  </p>
+                  <p className="py-4 text-sm text-text-muted">No audits yet.</p>
                 ) : (
                   summary.recent_audits.map((item) => (
                     <RecentItem key={item.id} item={item} />
@@ -1029,15 +998,11 @@ export default function Dashboard() {
             </div>
 
             {/* Recent timeline events */}
-            <div className="rounded-card border border-border bg-bg-700">
-              <div className="border-b border-border px-4 py-2.5">
-                <p className="caption">Timeline</p>
-              </div>
-              <div className="p-4">
+            <div className="rounded-card border border-border bg-bg-700 shadow-card">
+              <SectionHeader title="Timeline" />
+              <div className="px-4 py-1">
                 {summary.recent_timeline_events.length === 0 ? (
-                  <p className="font-mono text-2xs text-text-muted">
-                    No events yet.
-                  </p>
+                  <p className="py-4 text-sm text-text-muted">No events yet.</p>
                 ) : (
                   summary.recent_timeline_events.map((item) => (
                     <RecentItem key={item.id} item={item} />

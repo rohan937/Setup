@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key_if_enabled
+from app.core.rbac import require_workspace_write_access
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.organization import Organization
@@ -237,6 +238,10 @@ def ingest_bundle(
     db: Session = Depends(get_db),
     api_key: ApiKey | None = Depends(require_api_key_if_enabled),
     idempotency_key_header: str | None = Header(default=None, alias="Idempotency-Key"),
+    # M72: enforce M69 RBAC write-access for web/JWT users (viewer -> 403).
+    # SDK/CI callers authenticate with an API key (no JWT) and resolve to a
+    # permissive local pseudo-owner, so this does not break SDK ingestion.
+    _member=Depends(require_workspace_write_access),
 ) -> EvidenceBundleResponse:
     """Ingest a structured evidence bundle for a strategy in a single transaction.
 

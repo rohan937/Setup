@@ -153,6 +153,7 @@ import {
 } from "@/lib/api";
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
+import EvidenceBundleUploader from "@/components/EvidenceBundleUploader";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
 import SignalSnapshotDrawer from "@/components/SignalSnapshotDrawer";
@@ -1926,21 +1927,37 @@ function IngestionPanel({
         className="flex w-full items-center justify-between px-5 py-3.5 text-left"
       >
         <div className="flex items-center gap-2.5">
-          <span className="font-mono text-xs font-semibold uppercase tracking-widest text-cyan-400">
+          <span className="text-sm font-medium text-text-primary">
             Evidence Bundle Ingestion
           </span>
-          <span className="rounded border border-cyan-700/40 bg-cyan-900/30 px-1.5 py-0.5 font-mono text-2xs text-cyan-400/70">
-            DEV TOOL
+          <span className="rounded-chip border border-border-strong bg-bg-700 px-1.5 py-0.5 text-2xs text-text-muted">
+            Upload &amp; SDK
           </span>
         </div>
-        <span className="font-mono text-xs text-text-muted">{open ? "▲" : "▼"}</span>
+        <span className="text-xs text-text-muted">{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
         <div className="border-t border-border px-5 pb-5 pt-4">
-          <p className="mb-3 font-mono text-2xs text-text-muted">
-            POST a single JSON payload to ingest all evidence layers at once (version, config,
-            universe, signal, dataset, run, audit, reliability, report).
+          {/* Primary: polished web uploader scoped to this strategy */}
+          <p className="mb-3 text-xs text-text-secondary">
+            Upload or paste a JSON evidence bundle to ingest all layers at once
+            (version, config, universe, signal, dataset, run) and trigger audit,
+            reliability, and report actions.
+          </p>
+          <EvidenceBundleUploader strategyId={strategyId} onIngested={onSuccess} />
+
+          {/* Advanced: raw payload + idempotency key (SDK/CI parity) */}
+          <details className="group mt-6 border-t border-border pt-4">
+            <summary className="cursor-pointer list-none text-xs font-medium text-text-secondary hover:text-text-primary">
+              Advanced — raw payload &amp; idempotency key
+              <span className="ml-1 text-text-muted group-open:hidden">▾</span>
+              <span className="ml-1 hidden text-text-muted group-open:inline">▴</span>
+            </summary>
+            <div className="mt-3">
+          <p className="mb-3 text-2xs text-text-muted">
+            POST a single JSON payload directly, matching the SDK/CI contract. Use an
+            idempotency key for safe retries.
           </p>
 
           {/* Textarea */}
@@ -2106,6 +2123,8 @@ function IngestionPanel({
               </p>
             </div>
           )}
+            </div>
+          </details>
         </div>
       )}
     </div>
