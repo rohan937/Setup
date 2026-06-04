@@ -6,6 +6,9 @@ import PageHeader from "@/components/PageHeader";
 import Badge from "@/components/Badge";
 import EmptyState from "@/components/EmptyState";
 import StrategyCreateDrawer from "@/components/StrategyCreateDrawer";
+import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
+
+type StatusFilter = "active" | "archived" | "all";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -83,12 +86,16 @@ export default function Strategies() {
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [healthMap, setHealthMap] = useState<Record<string, StrategyHealth>>({});
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<Strategy | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<Strategy | null>(null);
   const navigate = useNavigate();
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    getStrategies()
+    getStrategies(statusFilter)
       .then(setStrategies)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load."))
       .finally(() => setLoading(false));
@@ -100,7 +107,7 @@ export default function Strategies() {
         setHealthMap(map);
       })
       .catch(() => {});
-  }, []);
+  }, [statusFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -156,10 +163,33 @@ export default function Strategies() {
         </div>
       )}
 
+      {/* M75: archive status filter */}
+      {!error && (
+        <div className="mb-3 flex items-center gap-1">
+          {(["active", "archived", "all"] as StatusFilter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setStatusFilter(f)}
+              className={`rounded-control px-3 py-1 text-xs capitalize transition-colors ${
+                statusFilter === f
+                  ? "bg-bg-700 font-medium text-text-primary shadow-card"
+                  : "text-text-muted hover:bg-bg-700/50 hover:text-text-secondary"
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+
       {!loading && !error && strategies.length === 0 && (
         <EmptyState
-          title="No strategies registered"
-          description="Register your first strategy to begin tracking run evidence and reliability metrics."
+          title={statusFilter === "archived" ? "No archived strategies" : "No strategies registered"}
+          description={
+            statusFilter === "archived"
+              ? "Archived strategies will appear here."
+              : "Register your first strategy to begin tracking run evidence and reliability metrics."
+          }
         />
       )}
 
@@ -177,6 +207,7 @@ export default function Strategies() {
                 <th className={TH}>Reliability</th>
                 <th className={TH}>Last Run</th>
                 <th className={TH}>Registered</th>
+                <th className={`${TH} text-right`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -222,6 +253,49 @@ export default function Strategies() {
                   <td className="px-4 py-3 font-mono text-xs text-text-muted">
                     {formatDate(s.created_at)}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="relative inline-block text-left">
+                      <button
+                        onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
+                        className="rounded-control border border-border px-2 py-1 text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpenId === s.id}
+                      >
+                        ⋯
+                      </button>
+                      {menuOpenId === s.id && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-30"
+                            aria-hidden="true"
+                            onClick={() => setMenuOpenId(null)}
+                          />
+                          <div className="absolute right-0 z-40 mt-1 w-36 rounded-card border border-border bg-bg-800 py-1 text-left shadow-panel">
+                            <button
+                              onClick={() => { setMenuOpenId(null); navigate(`/strategies/${s.id}`); }}
+                              className="block w-full px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                            >
+                              Open
+                            </button>
+                            <button
+                              onClick={() => { setMenuOpenId(null); setEditTarget(s); }}
+                              className="block w-full px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                            >
+                              Edit
+                            </button>
+                            {s.status !== "archived" && (
+                              <button
+                                onClick={() => { setMenuOpenId(null); setArchiveTarget(s); }}
+                                className="block w-full px-3 py-1.5 text-left text-xs text-fidelity-medium hover:bg-bg-600"
+                              >
+                                Archive
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -234,6 +308,31 @@ export default function Strategies() {
         onClose={() => setDrawerOpen(false)}
         onCreated={load}
       />
+
+      {/* M75: edit + archive management modals */}
+      {editTarget && (
+        <StrategyEditModal
+          open={editTarget !== null}
+          strategyId={editTarget.id}
+          initial={{
+            name: editTarget.name,
+            description: editTarget.description,
+            asset_class: editTarget.asset_class,
+            status: editTarget.status,
+          }}
+          onClose={() => setEditTarget(null)}
+          onSaved={load}
+        />
+      )}
+      {archiveTarget && (
+        <StrategyArchiveModal
+          open={archiveTarget !== null}
+          strategyId={archiveTarget.id}
+          strategyName={archiveTarget.name}
+          onClose={() => setArchiveTarget(null)}
+          onArchived={load}
+        />
+      )}
     </>
   );
 }

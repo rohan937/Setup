@@ -161,7 +161,32 @@ the backend alongside the frontend to see it connected.
 
 ---
 
-## Current milestone — M74: Strategy Action Queue v1
+## Current milestone — M75: Evidence Repair Flows + Basic Strategy Management v1
+
+**Status:** complete — *makes QuantFidelity actionable: fix missing run evidence directly from the web UI, run governance/reporting actions in one click, and manage strategies (edit / archive). No deployment was performed.*
+
+### What was built
+
+**Backend**
+- New service `app/services/evidence_repair.py` + schema `app/schemas/evidence_repair.py` + router `app/api/routes/evidence_repair.py`:
+  - `GET /api/strategies/{id}/repair-options` — linkable dataset/signal/universe snapshots + strategy versions + runs missing links, with quality/row/symbol annotations and a *recommended* flag.
+  - `PATCH /api/strategies/{id}/runs/{run_id}/links` — partial, validated evidence linking (rejects cross-strategy / cross-project links), writes a `run_evidence_linked` timeline event, best-effort refreshes the reliability snapshot cache. Write permission required.
+  - `PATCH /api/strategies/{id}` — update name/description/status/asset_class.
+  - `DELETE /api/strategies/{id}?confirm=true` — **archive (soft delete)**; hard delete is intentionally avoided due to cascade complexity.
+- `GET /api/strategies?status=active|archived|all` filter added (non-breaking).
+- Report / audit / alert / regression / config-policy / SLA "create defaults" actions **reuse existing endpoints** — no duplicate routes.
+
+**Frontend**
+- **EvidenceRepairModal** — per-run modal that loads compatible evidence and links it; refreshes Strategy Detail + Action Queue on success.
+- **Action Queue buttons are now actionable**: `link_evidence` opens the repair modal; `generate_report` / `create_*` / `run_alert_check` call the existing endpoints and refresh; `upload_bundle` switches to the Developer tab.
+- **Strategy management**: a **Manage ▾** menu on the Strategy Detail header and a **⋯** row menu on the Strategies list (Open / Edit / Archive), with reusable Edit and Archive-confirmation modals; an **Active / Archived / All** filter on the Strategies list.
+- **Quick fix**: a **Link evidence** button on every run row that is missing a link.
+
+All M73 tabs and the M74 Action Queue are preserved. Product language only — no AI, no external APIs, no trading actions.
+
+See [`docs/evidence-repair-flows.md`](docs/evidence-repair-flows.md) for the full design.
+
+### Previous milestone — M74: Strategy Action Queue v1
 
 **Status:** complete — *a unified, deterministic, backend-driven action queue that consolidates "what to do next" across the strategy evidence lifecycle. No deployment was performed.*
 
@@ -185,7 +210,7 @@ See [`docs/action-queue.md`](docs/action-queue.md) for the full design.
 - Tabbed Strategy Detail (Overview / Evidence / Runs / Governance / Lineage / Exports / Developer) with a first local Action Queue on the Overview tab.
 
 ### Next milestones
-- M75: TBD
+- M76: TBD
 
 ---
 

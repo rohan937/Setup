@@ -54,6 +54,8 @@ class RunStatus(StrEnum):
 class EventType(StrEnum):
     strategy_created = "strategy_created"
     strategy_updated = "strategy_updated"
+    strategy_archived = "strategy_archived"
+    run_evidence_linked = "run_evidence_linked"
     strategy_version_created = "strategy_version_created"
     strategy_run_logged = "strategy_run_logged"
     backtest_run_logged = "backtest_run_logged"

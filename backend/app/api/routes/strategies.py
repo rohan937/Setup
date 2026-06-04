@@ -518,13 +518,23 @@ def create_strategy(
 # ---------------------------------------------------------------------------
 
 @router.get("/strategies", response_model=list[StrategyListItemOut])
-def list_strategies(db: Session = Depends(get_db)) -> list[StrategyListItemOut]:
-    strategies = (
-        db.query(Strategy)
-        .options(selectinload(Strategy.project))
-        .order_by(Strategy.created_at)
-        .all()
-    )
+def list_strategies(
+    status: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[StrategyListItemOut]:
+    """List strategies.
+
+    Optional ``status`` filter (M75):
+      - ``active``   → everything except archived (the default working view)
+      - ``archived`` → archived strategies only
+      - ``all`` / omitted → every strategy (preserves prior behavior)
+    """
+    query = db.query(Strategy).options(selectinload(Strategy.project))
+    if status == "active":
+        query = query.filter(Strategy.status != "archived")
+    elif status == "archived":
+        query = query.filter(Strategy.status == "archived")
+    strategies = query.order_by(Strategy.created_at).all()
 
     if not strategies:
         return []

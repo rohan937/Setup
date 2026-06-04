@@ -84,6 +84,11 @@ import type {
   StrategyDriftResponse,
   StrategyEvidenceFreshnessResponse,
   ActionQueueResponse,
+  RepairOptionsResponse,
+  RunLinkUpdateRequest,
+  RunLinkSummary,
+  StrategyUpdateRequest,
+  StrategyManagementSummary,
   StrategyReadinessResponse,
   StrategyShadowMonitorResponse,
   StrategyPromotionGateResponse,
@@ -178,12 +183,53 @@ export async function getProjects(): Promise<Project[]> {
   return request<Project[]>("/api/projects");
 }
 
-export async function getStrategies(): Promise<Strategy[]> {
-  return request<Strategy[]>("/api/strategies");
+export async function getStrategies(
+  status?: "active" | "archived" | "all",
+): Promise<Strategy[]> {
+  const qs = status && status !== "all" ? `?status=${status}` : "";
+  return request<Strategy[]>(`/api/strategies${qs}`);
 }
 
 export async function getStrategy(id: string): Promise<StrategyDetail> {
   return request<StrategyDetail>(`/api/strategies/${id}`);
+}
+
+// M75: Evidence Repair + Strategy Management ---------------------------------
+
+export async function getStrategyRepairOptions(
+  id: string,
+): Promise<RepairOptionsResponse> {
+  return request<RepairOptionsResponse>(`/api/strategies/${id}/repair-options`);
+}
+
+export async function linkRunEvidence(
+  strategyId: string,
+  runId: string,
+  links: RunLinkUpdateRequest,
+): Promise<RunLinkSummary> {
+  return request<RunLinkSummary>(
+    `/api/strategies/${strategyId}/runs/${runId}/links`,
+    { method: "PATCH", body: JSON.stringify(links) },
+  );
+}
+
+export async function updateStrategy(
+  id: string,
+  data: StrategyUpdateRequest,
+): Promise<StrategyManagementSummary> {
+  return request<StrategyManagementSummary>(`/api/strategies/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function archiveStrategy(
+  id: string,
+): Promise<StrategyManagementSummary> {
+  return request<StrategyManagementSummary>(
+    `/api/strategies/${id}?confirm=true`,
+    { method: "DELETE" },
+  );
 }
 
 export async function createStrategy(

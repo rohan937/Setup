@@ -4053,3 +4053,85 @@ export interface ActionQueueResponse {
   deterministic_summary: string;
   disclaimer: string;
 }
+
+// ---------------------------------------------------------------------------
+// M75: Evidence Repair + Strategy Management
+// ---------------------------------------------------------------------------
+
+export interface RepairOptionItem {
+  id: string;
+  label: string;
+  created_at: string | null;
+  quality_score: number | null;
+  row_count: number | null;
+  symbol_count: number | null;
+  linked_run_count: number | null;
+  recommended: boolean;
+  detail: string | null;
+}
+
+export interface RunMissingLinks {
+  run_id: string;
+  run_name: string;
+  run_type: string;
+  created_at: string | null;
+  missing: string[];
+  dataset_snapshot_id: string | null;
+  signal_snapshot_id: string | null;
+  universe_snapshot_id: string | null;
+  strategy_version_id: string | null;
+}
+
+export interface RepairOptionsResponse {
+  strategy_id: string;
+  strategy_name: string;
+  dataset_snapshots: RepairOptionItem[];
+  signal_snapshots: RepairOptionItem[];
+  universe_snapshots: RepairOptionItem[];
+  strategy_versions: RepairOptionItem[];
+  runs_missing_links: RunMissingLinks[];
+}
+
+export interface RunLinkUpdateRequest {
+  dataset_snapshot_id?: string | null;
+  signal_snapshot_id?: string | null;
+  universe_snapshot_id?: string | null;
+  strategy_version_id?: string | null;
+}
+
+export interface RunLinkSummary {
+  run_id: string;
+  strategy_id: string;
+  run_name: string;
+  run_type: string;
+  status: string;
+  dataset_snapshot_id: string | null;
+  signal_snapshot_id: string | null;
+  universe_snapshot_id: string | null;
+  strategy_version_id: string | null;
+  dataset_snapshot_label: string | null;
+  signal_snapshot_label: string | null;
+  universe_snapshot_label: string | null;
+  strategy_version_label: string | null;
+  linked_fields: string[];
+  updated_at: string | null;
+  message: string;
+}
+
+export interface StrategyUpdateRequest {
+  name?: string | null;
+  description?: string | null;
+  status?: string | null;
+  asset_class?: string | null;
+}
+
+export interface StrategyManagementSummary {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  asset_class: string;
+  status: string;
+  archived: boolean;
+  message: string;
+}

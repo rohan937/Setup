@@ -119,6 +119,7 @@ import {
   getStrategyDrift,
   getStrategyEvidenceFreshness,
   getStrategyActionQueue,
+  generateAlerts,
   getStrategyReadiness,
   getStrategyShadowMonitor,
   getStrategyPromotionGates,
@@ -157,6 +158,8 @@ import {
 import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import EvidenceBundleUploader from "@/components/EvidenceBundleUploader";
+import EvidenceRepairModal from "@/components/EvidenceRepairModal";
+import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
 import RunLogDrawer from "@/components/RunLogDrawer";
 import RunComparisonPanel from "@/components/RunComparisonPanel";
 import SignalSnapshotDrawer from "@/components/SignalSnapshotDrawer";
@@ -9026,10 +9029,14 @@ const VALID_TABS: StrategyTab[] = [
 
 function BackendActionQueue({
   data,
-  onNavigate,
+  onAction,
+  busyId,
+  message,
 }: {
   data: ActionQueueResponse;
-  onNavigate: (t: StrategyTab) => void;
+  onAction: (item: BackendActionItem) => void;
+  busyId: string | null;
+  message: string | null;
 }) {
   const items = data.items;
   const headerCount =
@@ -9051,6 +9058,12 @@ function BackendActionQueue({
         )}
       </div>
 
+      {message && (
+        <div className="border-b border-border bg-accent-500/10 px-4 py-2">
+          <p className="text-2xs text-accent-200">{message}</p>
+        </div>
+      )}
+
       <div className="divide-y divide-border">
         {items.length === 0 ? (
           <div className="px-4 py-6">
@@ -9060,10 +9073,7 @@ function BackendActionQueue({
           </div>
         ) : (
           items.map((item: BackendActionItem) => {
-            const tab =
-              item.target_tab && VALID_TABS.includes(item.target_tab as StrategyTab)
-                ? (item.target_tab as StrategyTab)
-                : null;
+            const busy = busyId === item.id;
             return (
               <div key={item.id} className="flex items-start gap-3 px-4 py-3">
                 <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-2xs text-text-muted">
@@ -9091,15 +9101,16 @@ function BackendActionQueue({
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  {tab ? (
-                    <button
-                      onClick={() => onNavigate(tab)}
-                      className="rounded-control border border-border px-2.5 py-1 text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-                    >
-                      {item.action_label}
-                    </button>
-                  ) : (
+                  {item.action_type === "no_action" ? (
                     <span className="text-2xs text-text-muted">{item.action_label}</span>
+                  ) : (
+                    <button
+                      onClick={() => onAction(item)}
+                      disabled={busy}
+                      className="rounded-control border border-border px-2.5 py-1 text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:opacity-40"
+                    >
+                      {busy ? "Working…" : item.action_label}
+                    </button>
                   )}
                 </div>
               </div>
@@ -9175,6 +9186,15 @@ export default function StrategyDetail() {
   // M74: backend-driven action queue (null = not loaded / failed → fallback to local)
   const [actionQueue, setActionQueue] = useState<ActionQueueResponse | null>(null);
   const [actionQueueFailed, setActionQueueFailed] = useState(false);
+
+  // M75: evidence repair + action execution + strategy management
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [repairOpen, setRepairOpen] = useState(false);
+  const [repairRunId, setRepairRunId] = useState<string | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   // M29: run history and timeline drilldown
   const [runHistory, setRunHistory] = useState<StrategyRunHistoryResponse | null>(null);
@@ -9403,6 +9423,78 @@ export default function StrategyDetail() {
       .catch(() => {});
   }, [id, refreshKey]);
 
+  // M75: reload all strategy data (also refreshes the action queue).
+  function reloadAll() {
+    setRefreshKey((k) => k + 1);
+  }
+
+  // M75: execute an action-queue item. Many actions call an existing endpoint
+  // and refresh; link_evidence opens the repair modal.
+  async function handleActionItem(item: BackendActionItem) {
+    if (!id) return;
+    const tab =
+      item.target_tab && VALID_TABS.includes(item.target_tab as StrategyTab)
+        ? (item.target_tab as StrategyTab)
+        : null;
+    setActionMessage(null);
+
+    // Navigation-only actions need no spinner.
+    if (item.action_type === "link_evidence") {
+      if (item.related_object_id && item.related_object_type === "strategy_run") {
+        setRepairRunId(item.related_object_id);
+        setRepairOpen(true);
+      } else {
+        setActiveTab("runs");
+        setActionMessage("Open a run in the Runs tab to link its evidence.");
+      }
+      return;
+    }
+    if (item.action_type === "upload_bundle") {
+      setActiveTab("developer");
+      setActionMessage("Use the Evidence Bundle uploader to add evidence.");
+      return;
+    }
+    if (item.action_type === "navigate" || item.action_type === "no_action") {
+      if (tab) setActiveTab(tab);
+      return;
+    }
+
+    // Endpoint-backed actions.
+    setActionBusyId(item.id);
+    try {
+      switch (item.action_type) {
+        case "generate_report":
+          await generateStrategyReport(id);
+          setActionMessage("Reliability report generated.");
+          break;
+        case "create_regression_tests":
+          await createDefaultRegressionTests(id);
+          setActionMessage("Default regression tests created.");
+          break;
+        case "create_policy":
+          await createDefaultConfigPolicy(id);
+          setActionMessage("Config guardrails created.");
+          break;
+        case "create_sla":
+          await createDefaultEvidenceSLAPolicy(id);
+          setActionMessage("Evidence SLA policy created.");
+          break;
+        case "run_alert_check":
+          await generateAlerts();
+          setActionMessage("Alert check complete.");
+          break;
+        default:
+          if (tab) setActiveTab(tab);
+          break;
+      }
+      reloadAll();
+    } catch (e) {
+      setActionMessage(e instanceof Error ? e.message : "Action failed.");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
   async function handleComputeReliabilityScore() {
     if (!id) return;
     setComputingReliability(true);
@@ -9505,6 +9597,40 @@ export default function StrategyDetail() {
           >
             + Log Run
           </button>
+          {/* M75: strategy management menu */}
+          <div className="relative">
+            <button
+              onClick={() => setManageOpen((o) => !o)}
+              className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+              aria-haspopup="menu"
+              aria-expanded={manageOpen}
+            >
+              Manage ▾
+            </button>
+            {manageOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  aria-hidden="true"
+                  onClick={() => setManageOpen(false)}
+                />
+                <div className="absolute right-0 z-40 mt-1 w-44 rounded-card border border-border bg-bg-800 py-1 shadow-panel">
+                  <button
+                    onClick={() => { setManageOpen(false); setEditOpen(true); }}
+                    className="block w-full px-3 py-2 text-left text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                  >
+                    Edit strategy details
+                  </button>
+                  <button
+                    onClick={() => { setManageOpen(false); setArchiveOpen(true); }}
+                    className="block w-full px-3 py-2 text-left text-xs text-fidelity-medium hover:bg-bg-600"
+                  >
+                    Archive strategy
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -9522,7 +9648,12 @@ export default function StrategyDetail() {
         <>
           {/* M74: backend-driven Action Queue; M73 local queue is the graceful fallback */}
           {actionQueue ? (
-            <BackendActionQueue data={actionQueue} onNavigate={setActiveTab} />
+            <BackendActionQueue
+              data={actionQueue}
+              onAction={handleActionItem}
+              busyId={actionBusyId}
+              message={actionMessage}
+            />
           ) : (
             <>
               {actionQueueFailed && (
@@ -9602,6 +9733,37 @@ export default function StrategyDetail() {
         universeSnapshots={strategy.universe_snapshots}
         onClose={() => setSignalSnapshotDrawerOpen(false)}
         onCreated={() => setRefreshKey((k) => k + 1)}
+      />
+
+      {/* M75: evidence repair + strategy management modals */}
+      <EvidenceRepairModal
+        open={repairOpen}
+        strategyId={id!}
+        runId={repairRunId}
+        onClose={() => setRepairOpen(false)}
+        onLinked={() => {
+          setActionMessage("Evidence linked. Refreshing…");
+          reloadAll();
+        }}
+      />
+      <StrategyEditModal
+        open={editOpen}
+        strategyId={id!}
+        initial={{
+          name: strategy.name,
+          description: strategy.description,
+          asset_class: strategy.asset_class,
+          status: strategy.status,
+        }}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => reloadAll()}
+      />
+      <StrategyArchiveModal
+        open={archiveOpen}
+        strategyId={id!}
+        strategyName={strategy.name}
+        onClose={() => setArchiveOpen(false)}
+        onArchived={() => navigate("/strategies")}
       />
 
       {/* Stat strip — always-visible context */}
@@ -9795,6 +9957,17 @@ export default function StrategyDetail() {
                     <div className="flex items-center gap-2">
                       <Badge value={r.run_type} variant="run_type" />
                       <Badge value={r.status} variant="run_status" />
+                      {(!r.dataset_snapshot_id ||
+                        !r.signal_snapshot_id ||
+                        !r.universe_snapshot_id ||
+                        !r.strategy_version_id) && (
+                        <button
+                          onClick={() => { setRepairRunId(r.id); setRepairOpen(true); }}
+                          className="rounded-control border border-accent-500/40 bg-accent-500/10 px-2.5 py-1 text-2xs text-accent-200 hover:bg-accent-500/20"
+                        >
+                          Link evidence
+                        </button>
+                      )}
                     </div>
                   </div>
 
