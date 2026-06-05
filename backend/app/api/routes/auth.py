@@ -53,7 +53,7 @@ def register(payload: UserRegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=msg)
     settings = get_settings()
     token = create_access_token(
-        str(user.id), user.email, settings.QF_ACCESS_TOKEN_EXPIRE_MINUTES
+        str(user.id), user.email, settings.access_token_expire_minutes
     )
     return AuthTokenResponse(
         access_token=token, user=UserRead.model_validate(user)
@@ -72,7 +72,7 @@ def login(payload: UserLoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     settings = get_settings()
     token = create_access_token(
-        str(user.id), user.email, settings.QF_ACCESS_TOKEN_EXPIRE_MINUTES
+        str(user.id), user.email, settings.access_token_expire_minutes
     )
     return AuthTokenResponse(
         access_token=token, user=UserRead.model_validate(user)
@@ -203,7 +203,7 @@ def auth_status(db: Session = Depends(get_db)):
     settings = get_settings()
     has_users = db.query(AuthUser).count() > 0
     return AuthStatusResponse(
-        auth_enabled=settings.QF_AUTH_ENABLED,
+        auth_enabled=settings.auth_enabled,
         has_users=has_users,
         registration_enabled=True,
     )

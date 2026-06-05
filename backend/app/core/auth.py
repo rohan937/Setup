@@ -32,7 +32,7 @@ async def get_optional_api_key(
         return None
 
     settings = get_settings()
-    key_hash = hash_api_key(raw_key, settings.qf_api_key_hash_secret)
+    key_hash = hash_api_key(raw_key, settings.api_key_hash_secret)
 
     key = db.query(ApiKey).filter(
         ApiKey.key_hash == key_hash,
@@ -61,7 +61,7 @@ async def require_api_key_if_enabled(
     from fastapi import HTTPException
 
     settings = get_settings()
-    if settings.qf_require_api_key_for_ingestion and api_key is None:
+    if settings.require_api_key_for_ingestion and api_key is None:
         raise HTTPException(
             status_code=401,
             detail=(

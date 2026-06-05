@@ -156,7 +156,7 @@ def get_current_workspace_member(db: Session, current_user) -> MemberContext:
     settings = get_settings()
 
     # (1) RBAC disabled — fully permissive.
-    if not settings.QF_RBAC_ENABLED:
+    if not settings.rbac_enabled:
         return MemberContext.pseudo_owner()
 
     # (2) No authenticated user.

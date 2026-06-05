@@ -77,8 +77,8 @@ def create_api_key(
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
 
-    raw_key, key_prefix = generate_api_key(env=settings.qf_api_key_env)
-    key_hash = hash_api_key(raw_key, settings.qf_api_key_hash_secret)
+    raw_key, key_prefix = generate_api_key(env=settings.api_key_env)
+    key_hash = hash_api_key(raw_key, settings.api_key_hash_secret)
 
     # Use org.id.hex (32-char hex, no hyphens) — not str(org.id) (36-char with
     # hyphens) — because SQLAlchemy's Uuid(as_uuid=True) stores the PK in that

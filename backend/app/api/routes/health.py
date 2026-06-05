@@ -79,7 +79,7 @@ def deployment_health(
             warnings.append(
                 "QF_DEBUG=true in production — set to false to suppress debug output."
             )
-        if not settings.qf_require_api_key_for_ingestion:
+        if not settings.require_api_key_for_ingestion:
             warnings.append(
                 "QF_REQUIRE_API_KEY_FOR_INGESTION=false — consider enabling in production."
             )
@@ -92,9 +92,10 @@ def deployment_health(
         database_reachable=database_reachable,
         database_driver=database_driver,
         migrations_note="Run 'alembic upgrade head' before first start and after schema changes.",
-        auth_enabled=settings.QF_AUTH_ENABLED,
-        rbac_enabled=settings.QF_RBAC_ENABLED,
+        auth_enabled=settings.auth_enabled,
+        rbac_enabled=settings.rbac_enabled,
         cors_configured=cors_configured,
+        database_persistent_safe=settings.database_persistent_safe,
         jwt_secret_safe=jwt_secret_safe,
         production_warnings=warnings,
     )

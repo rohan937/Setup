@@ -60,8 +60,8 @@ def create_access_token(
     }
     return jwt.encode(
         payload,
-        settings.QF_JWT_SECRET_KEY,
-        algorithm=settings.QF_JWT_ALGORITHM,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
     )
 
 
@@ -75,8 +75,8 @@ def decode_access_token(token: str) -> dict | None:
     try:
         payload = jwt.decode(
             token,
-            settings.QF_JWT_SECRET_KEY,
-            algorithms=[settings.QF_JWT_ALGORITHM],
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
         )
         if payload.get("type") != "access":
             return None

@@ -363,7 +363,7 @@ class TestRBACEdgeCases:
 
         token = _make_user(client, rbac_db, "viewer")
         settings = get_settings()
-        with patch.object(settings, "QF_RBAC_ENABLED", False):
+        with patch.object(settings, "rbac_enabled", False):
             resp = client.patch(
                 "/api/workspace/settings",
                 json={"display_name": "FlagOff"},

@@ -38,8 +38,11 @@ class DeploymentHealthResponse(BaseModel):
     auth_enabled: bool
     rbac_enabled: bool
     cors_configured: bool
-    # True when running in production with an unsafe (dev-default) JWT secret.
-    # Never exposes the secret itself.
+    # True when the database persists across restarts/redeploys (i.e. not SQLite).
+    # SQLite on Render's ephemeral filesystem loses ALL data on every deploy —
+    # every account and strategy is permanently destroyed.
+    database_persistent_safe: bool
+    # True when a strong JWT secret is set (not the insecure dev default).
     jwt_secret_safe: bool
     # Production-safety note for operators.
     production_warnings: list[str]

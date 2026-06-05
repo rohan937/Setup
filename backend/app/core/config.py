@@ -77,24 +77,33 @@ class Settings(BaseSettings):
 
     # M24: API Key authentication
     # Set to True to require valid API keys for evidence bundle ingestion.
-    qf_require_api_key_for_ingestion: bool = False
+    # Env var: QF_REQUIRE_API_KEY_FOR_INGESTION
+    require_api_key_for_ingestion: bool = False
     # Optional secret pepper for HMAC-SHA256 key hashing. Leave empty for local dev.
-    qf_api_key_hash_secret: str = ""
+    # Env var: QF_API_KEY_HASH_SECRET
+    api_key_hash_secret: str = ""
     # API key prefix environment token: "local" or "live"
-    qf_api_key_env: str = "local"
+    # Env var: QF_API_KEY_ENV
+    api_key_env: str = "local"
 
     # M68: JWT / User Auth
-    QF_AUTH_ENABLED: bool = True
-    QF_JWT_SECRET_KEY: str = _DEV_JWT_SECRET
-    QF_JWT_ALGORITHM: str = "HS256"
-    QF_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    # Env vars: QF_AUTH_ENABLED, QF_JWT_SECRET_KEY, QF_JWT_ALGORITHM,
+    #           QF_ACCESS_TOKEN_EXPIRE_MINUTES
+    # Note: field names omit the "QF_" prefix because pydantic-settings
+    # prepends env_prefix="QF_" automatically. Using QF_ in the field name
+    # would produce the double-prefixed env var QF_QF_* (incorrect).
+    auth_enabled: bool = True
+    jwt_secret_key: str = _DEV_JWT_SECRET
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 1440
 
     # M69: RBAC + Workspace/Project Access Control
+    # Env var: QF_RBAC_ENABLED
     # When True, workspace role is enforced for authenticated callers.
     # When False, enforcement is skipped (permissive local dev).
     # Note: even when True, requests with no bearer token are treated as a
     # local-dev pseudo-owner so existing unauthenticated flows keep working.
-    QF_RBAC_ENABLED: bool = True
+    rbac_enabled: bool = True
 
     # ---------------------------------------------------------------------------
     # Validators
@@ -137,12 +146,67 @@ class Settings(BaseSettings):
     @property
     def jwt_secret_is_dev_default(self) -> bool:
         """True when the JWT secret has not been changed from the insecure dev value."""
-        return self.QF_JWT_SECRET_KEY == _DEV_JWT_SECRET
+        return self.jwt_secret_key == _DEV_JWT_SECRET
 
     @property
     def production_jwt_secret_unsafe(self) -> bool:
         """True when running in production with an unsafe (dev-default) JWT secret."""
         return self.is_production and self.jwt_secret_is_dev_default
+
+    @property
+    def database_persistent_safe(self) -> bool:
+        """True when the database will persist data across restarts/redeploys.
+
+        SQLite on Render's ephemeral filesystem loses all data on every deploy.
+        PostgreSQL (and any non-SQLite URL) is considered persistent-safe.
+        """
+        return not self.is_sqlite
+
+    def assert_production_safe(self) -> None:
+        """Raise RuntimeError if critical production config guards are not met.
+
+        Called at application startup. Two hard failures are enforced:
+
+        1. SQLite in production — Render's ephemeral disk destroys SQLite
+           files on every deploy. Every user account, strategy, and piece of
+           evidence would be permanently lost. Require a real database URL.
+
+        2. Dev-default JWT secret in production — anyone who knows the default
+           value can forge tokens and impersonate any user. Require a strong
+           secret before serving real traffic.
+
+        Deliberately raises RuntimeError (not a soft warning) so the process
+        exits and Render shows the error in deploy logs, making the fix obvious.
+        """
+        if not self.is_production:
+            return  # Only enforce in production mode
+
+        errors: list[str] = []
+
+        if self.is_sqlite:
+            errors.append(
+                "QF_DATABASE_URL is SQLite, which uses Render's ephemeral "
+                "filesystem. All accounts and data are destroyed on every "
+                "deploy. Set QF_DATABASE_URL to your Render Postgres internal "
+                "URL (e.g. postgresql://user:pass@host/db) before starting."
+            )
+
+        if self.jwt_secret_is_dev_default:
+            errors.append(
+                "QF_JWT_SECRET_KEY is the insecure dev default. Anyone who "
+                "knows this value can forge authentication tokens and "
+                "impersonate any user. Generate a strong random secret "
+                "(e.g. openssl rand -hex 32) and set it as QF_JWT_SECRET_KEY "
+                "before starting in production."
+            )
+
+        if errors:
+            header = (
+                f"[QuantFidelity] Production startup blocked — "
+                f"{len(errors)} configuration error(s) must be fixed:\n"
+            )
+            body = "\n".join(f"  {i+1}. {e}" for i, e in enumerate(errors))
+            raise RuntimeError(header + body)
 
 
 @lru_cache
