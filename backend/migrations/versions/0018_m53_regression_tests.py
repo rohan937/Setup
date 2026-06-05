@@ -3,6 +3,14 @@
 Revision ID: f5a6b7c8d9e0
 Revises: e4f5a6b7c8d9
 Create Date: 2026-06-02
+
+Fix (2026-06-05): All id / FK columns changed from sa.Uuid(as_uuid=True) to
+sa.String(36) to match the VARCHAR(36) convention used by every other migration.
+The original sa.Uuid type caused a PostgreSQL FK mismatch:
+  "strategy_id" uuid REFERENCES strategies(id) VARCHAR — incompatible types.
+SQLite tolerated the mismatch; Postgres rejects it at CREATE TABLE time.
+The ORM models (regression.py) retain Mapped[uuid.UUID] / Uuid(as_uuid=True)
+because SQLAlchemy's Uuid adapter round-trips correctly against VARCHAR columns.
 """
 
 from __future__ import annotations
@@ -19,10 +27,10 @@ depends_on: str | None = None
 def upgrade() -> None:
     op.create_table(
         "strategy_regression_tests",
-        sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
+        sa.Column("id", sa.String(36), primary_key=True, nullable=False),
         sa.Column(
             "strategy_id",
-            sa.Uuid(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey("strategies.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
@@ -44,10 +52,10 @@ def upgrade() -> None:
 
     op.create_table(
         "strategy_regression_test_runs",
-        sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
+        sa.Column("id", sa.String(36), primary_key=True, nullable=False),
         sa.Column(
             "strategy_id",
-            sa.Uuid(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey("strategies.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
@@ -56,14 +64,14 @@ def upgrade() -> None:
         sa.Column("mode", sa.String(50), nullable=False),
         sa.Column(
             "baseline_run_id",
-            sa.Uuid(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey("strategy_runs.id", ondelete="SET NULL"),
             nullable=True,
             index=True,
         ),
         sa.Column(
             "comparison_run_id",
-            sa.Uuid(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey("strategy_runs.id", ondelete="SET NULL"),
             nullable=True,
             index=True,
@@ -87,17 +95,17 @@ def upgrade() -> None:
 
     op.create_table(
         "strategy_regression_test_results",
-        sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
+        sa.Column("id", sa.String(36), primary_key=True, nullable=False),
         sa.Column(
             "test_run_id",
-            sa.Uuid(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey("strategy_regression_test_runs.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
         ),
         sa.Column(
             "regression_test_id",
-            sa.Uuid(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey("strategy_regression_tests.id", ondelete="SET NULL"),
             nullable=True,
             index=True,
