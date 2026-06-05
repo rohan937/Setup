@@ -358,7 +358,7 @@ class TestApiKeyAuth:
         strategy = self._create_temp_strategy(db)
         try:
             orig_settings = _config_mod.get_settings()
-            with patch.object(orig_settings, "qf_require_api_key_for_ingestion", True):
+            with patch.object(orig_settings, "require_api_key_for_ingestion", True):
                 resp = client.post(
                     f"/api/strategies/{strategy.id}/evidence-bundles",
                     json=_INGESTION_BUNDLE,
@@ -374,7 +374,7 @@ class TestApiKeyAuth:
         strategy = self._create_temp_strategy(db)
         try:
             orig_settings = _config_mod.get_settings()
-            with patch.object(orig_settings, "qf_require_api_key_for_ingestion", True):
+            with patch.object(orig_settings, "require_api_key_for_ingestion", True):
                 resp = client.post(
                     f"/api/strategies/{strategy.id}/evidence-bundles",
                     json=_INGESTION_BUNDLE,
@@ -391,7 +391,7 @@ class TestApiKeyAuth:
         try:
             client.patch(f"/api/api-keys/{key_id}/revoke")
             orig_settings = _config_mod.get_settings()
-            with patch.object(orig_settings, "qf_require_api_key_for_ingestion", True):
+            with patch.object(orig_settings, "require_api_key_for_ingestion", True):
                 resp = client.post(
                     f"/api/strategies/{strategy.id}/evidence-bundles",
                     json=_INGESTION_BUNDLE,

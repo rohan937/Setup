@@ -29,15 +29,13 @@ def _default_org(db: Session) -> Organization | None:
 
 
 def _org_id_str(org_id: uuid.UUID) -> str:
-    """Return the organization ID in the format used for ``workspace_members.organization_id``.
+    """Return org_id in the exact format stored in ``organizations.id``.
 
-    SQLAlchemy 2.0's ``Uuid(as_uuid=True)`` stores UUIDs on SQLite as a
-    32-char hex string (no hyphens), e.g. ``0437a06aff484208b894f6e2a425f92d``.
-    Python's ``str(uuid.UUID(...))`` returns the 36-char hyphenated form.
-    Using ``uuid.UUID.hex`` matches the stored format and avoids SQLite FK
-    constraint failures on ``workspace_members.organization_id``.
+    Delegates to ``auth_users._uuid_to_fk_str`` so the dialect-detection
+    logic lives in one place.  See that function for the full explanation.
     """
-    return org_id.hex  # 32-char hex without hyphens
+    from app.services.auth_users import _uuid_to_fk_str
+    return _uuid_to_fk_str(org_id)
 
 
 def _create_timeline_event(

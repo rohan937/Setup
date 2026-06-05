@@ -80,14 +80,15 @@ def create_api_key(
     raw_key, key_prefix = generate_api_key(env=settings.api_key_env)
     key_hash = hash_api_key(raw_key, settings.api_key_hash_secret)
 
-    # Use org.id.hex (32-char hex, no hyphens) — not str(org.id) (36-char with
-    # hyphens) — because SQLAlchemy's Uuid(as_uuid=True) stores the PK in that
-    # format.  Using str() produces a hyphenated string that fails the FK
-    # constraint on PostgreSQL where VARCHAR equality is exact.  Every other
-    # String(36) FK reference in the codebase consistently uses .hex.
+    # Use _uuid_to_fk_str() to get the dialect-correct format for String(36) FK
+    # columns referencing Uuid(as_uuid=True) PKs:
+    #   SQLite  → 32-char hex  (e.g. 747d9ecdc0a4...)
+    #   Postgres → 36-char str (e.g. 747d9ecd-c0a4-...)
+    # See auth_users._uuid_to_fk_str for the full explanation.
+    from app.services.auth_users import _uuid_to_fk_str
     api_key = ApiKey(
-        organization_id=org.id.hex,
-        project_id=body.project_id.hex if body.project_id is not None else None,
+        organization_id=_uuid_to_fk_str(org.id),
+        project_id=_uuid_to_fk_str(body.project_id) if body.project_id is not None else None,
         name=body.name,
         key_prefix=key_prefix,
         key_hash=key_hash,
@@ -137,22 +138,24 @@ def list_api_keys(
     _member=Depends(require_can_manage_api_keys),
 ) -> ApiKeyListResponse:
     """List API keys (never returns the raw key or key hash). RBAC: Owner/Admin only."""
-    # Normalise the filter values to the .hex format used for storage so that
-    # both the 36-char hyphenated (str(uuid)) and 32-char hex (uuid.hex) forms
-    # accepted as query params produce correct results.
-    def _to_hex(value: str | None) -> str | None:
+    # Normalise filter values to the dialect-correct format so that both
+    # 36-char hyphenated (str(uuid)) and 32-char hex (uuid.hex) query params
+    # match the stored format regardless of database.
+    from app.services.auth_users import _uuid_to_fk_str
+
+    def _to_fk(value: str | None) -> str | None:
         if value is None:
             return None
         try:
-            return uuid.UUID(value).hex
+            return _uuid_to_fk_str(uuid.UUID(value))
         except (ValueError, AttributeError):
-            return value  # pass through as-is and let the DB return empty
+            return value  # pass through as-is; DB will return empty result
 
     q = db.query(ApiKey)
     if organization_id is not None:
-        q = q.filter(ApiKey.organization_id == _to_hex(organization_id))
+        q = q.filter(ApiKey.organization_id == _to_fk(organization_id))
     if project_id is not None:
-        q = q.filter(ApiKey.project_id == _to_hex(project_id))
+        q = q.filter(ApiKey.project_id == _to_fk(project_id))
     if status is not None:
         q = q.filter(ApiKey.status == status)
 

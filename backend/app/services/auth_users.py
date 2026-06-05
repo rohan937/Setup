@@ -88,26 +88,29 @@ def authenticate_user(db: Session, email: str, password: str) -> AuthUser:
     return user
 
 
-def _org_id_for_member(org: Organization) -> str:
-    """Return the organization ID in the format SQLAlchemy stores it on SQLite.
+def _uuid_to_fk_str(u: uuid.UUID) -> str:
+    """Convert a UUID to the string format used when storing it in a String(36)
+    FK column that references a Uuid(as_uuid=True) primary-key column.
 
-    Root cause of the registration FK bug
-    --------------------------------------
-    SQLAlchemy 2.0's ``Uuid(as_uuid=True)`` stores UUIDs on SQLite as a
-    32-char hex string **without hyphens** (e.g. ``0437a06aff484208...``).
-    Python's ``str(uuid.UUID(...))`` returns a 36-char hyphenated string
-    (e.g. ``0437a06a-ff48-4208-...``).  ``workspace_members.organization_id``
-    is a plain ``String`` column with a FK to ``organizations.id``.  SQLite
-    enforces FK constraints via a byte-exact string comparison, so passing
-    ``str(org.id)`` (36-char) against a 32-char stored value raises::
+    Storage formats differ by dialect:
 
-        sqlite3.IntegrityError: FOREIGN KEY constraint failed
+    * **SQLite** — ``Uuid(as_uuid=True)`` stores via its non-native path using
+      ``uuid.hex`` (32-char, no hyphens, e.g. ``747d9ecdc0a44b5c9b5098fcf5c46dc5``).
+    * **PostgreSQL** — the migration creates ``VARCHAR(36)`` columns; psycopg2's
+      UUID adapter serialises ``uuid.UUID`` objects via ``str(uuid)`` (36-char
+      hyphenated, e.g. ``747d9ecd-c0a4-4b5c-9b50-98fcf5c46dc5``).
 
-    Using ``org.id.hex`` (32-char, no hyphens) matches the stored format and
-    fixes the constraint failure in production.  Tests use the same engine
-    and ``Uuid`` type, so ``org.id.hex`` is consistent across environments.
+    Using ``org.id.hex`` on PostgreSQL causes the FK to reference a value that
+    does not exist in the parent table → ``ForeignKeyViolation`` → 500 during
+    first-user registration.  This helper picks the correct format per dialect.
     """
-    return org.id.hex  # 32-char hex, no hyphens — matches Uuid storage format
+    from app.core.config import get_settings
+    return u.hex if get_settings().is_sqlite else str(u)
+
+
+def _org_id_for_member(org: Organization) -> str:
+    """Return org.id in the exact format stored in ``organizations.id``."""
+    return _uuid_to_fk_str(org.id)
 
 
 def _link_or_create_member(db: Session, user: AuthUser) -> None:
