@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Project, StrategyCreateRequest } from "@/types";
-import { createStrategy, getProjects } from "@/lib/api";
+import { createProject, createStrategy, getProjects } from "@/lib/api";
 
 const ASSET_CLASSES = [
   "equity", "etf", "future", "option", "fx", "crypto", "rate", "commodity", "other",
@@ -22,6 +22,9 @@ interface Props {
 export default function StrategyCreateDrawer({ open, onClose, onCreated }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [creatingProject, setCreatingProject] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
@@ -30,15 +33,38 @@ export default function StrategyCreateDrawer({ open, onClose, onCreated }: Props
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
+  function loadProjects() {
+    setLoadingProjects(true);
+    setProjectsError(null);
     getProjects()
       .then((ps) => {
         setProjects(ps);
-        if (ps.length > 0 && !projectId) setProjectId(ps[0].id);
+        if (ps.length > 0) setProjectId((cur) => cur || ps[0].id);
       })
-      .catch(() => setError("Failed to load projects."));
+      .catch(() => setProjectsError("Failed to load projects."))
+      .finally(() => setLoadingProjects(false));
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    loadProjects();
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleCreateDefaultProject() {
+    setCreatingProject(true);
+    setProjectsError(null);
+    try {
+      const p = await createProject({ name: "Default Project" });
+      setProjects((prev) => [...prev, p]);
+      setProjectId(p.id);
+    } catch (err) {
+      setProjectsError(
+        err instanceof Error ? err.message : "Failed to create project.",
+      );
+    } finally {
+      setCreatingProject(false);
+    }
+  }
 
   function reset() {
     setName(""); setSlug(""); setDescription("");
@@ -105,10 +131,44 @@ export default function StrategyCreateDrawer({ open, onClose, onCreated }: Props
           {/* Project */}
           <div>
             <label className="caption mb-1.5 block">Project</label>
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={selectCls}>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              {projects.length === 0 && <option value="" disabled>Loading…</option>}
-            </select>
+            {loadingProjects ? (
+              <div className={`${selectCls} text-text-muted`}>Loading projects…</div>
+            ) : projects.length > 0 ? (
+              <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={selectCls}>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            ) : (
+              <div className="rounded-control border border-border bg-bg-600 px-3 py-2.5">
+                <p className="font-mono text-2xs text-text-muted">
+                  {projectsError
+                    ? projectsError
+                    : "No projects found. Create one to register a strategy."}
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCreateDefaultProject}
+                    disabled={creatingProject}
+                    className="rounded-control bg-accent-500 px-3 py-1.5 text-2xs font-medium text-text-inverse hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {creatingProject ? "Creating…" : "Create default project"}
+                  </button>
+                  {projectsError && (
+                    <button
+                      type="button"
+                      onClick={loadProjects}
+                      disabled={creatingProject}
+                      className="rounded-control border border-border px-3 py-1.5 text-2xs font-medium text-text-secondary hover:bg-bg-500 hover:text-text-primary disabled:opacity-50"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {projectsError && projects.length > 0 && (
+              <p className="mt-1 font-mono text-2xs text-fidelity-low">{projectsError}</p>
+            )}
           </div>
 
           {/* Name */}

@@ -14,9 +14,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.rbac import require_workspace_write_access
+from app.core.utils import slugify
 from app.db.session import get_db
+from app.models.organization import Organization
 from app.models.project import Project
-from app.schemas.project import ProjectOut
+from app.schemas.project import ProjectCreate, ProjectOut
 from app.schemas.project_health import ProjectHealthListResponse, ProjectHealthRead
 from app.services.project_health import (
     ProjectHealthSnapshot,
@@ -56,6 +59,58 @@ def _snap_to_schema(snap: ProjectHealthSnapshot) -> ProjectHealthRead:
 @router.get("/projects", response_model=list[ProjectOut])
 def list_projects(db: Session = Depends(get_db)) -> list[Project]:
     return db.query(Project).order_by(Project.created_at).all()
+
+
+@router.post("/projects", response_model=ProjectOut, status_code=201)
+def create_project(
+    body: ProjectCreate,
+    db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
+) -> Project:
+    """Create a project. RBAC: Owner/Admin/Member (viewers read-only).
+
+    Resolves the organization from ``body.organization_id`` or falls back to the
+    default (earliest) organization, mirroring the single-workspace product.
+    Used by the "Register Strategy" empty state so an account with no project
+    yet can create one before registering a strategy.
+    """
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Project name is required")
+
+    if body.organization_id is not None:
+        org = (
+            db.query(Organization)
+            .filter(Organization.id == body.organization_id)
+            .first()
+        )
+        if org is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+    else:
+        org = db.query(Organization).order_by(Organization.created_at).first()
+        if org is None:
+            raise HTTPException(status_code=400, detail="No organization exists yet")
+
+    slug = (body.slug or slugify(name)).strip() or str(uuid.uuid4())[:8]
+    existing = (
+        db.query(Project).filter_by(organization_id=org.id, slug=slug).first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A project with slug '{slug}' already exists",
+        )
+
+    project = Project(
+        organization_id=org.id,
+        name=name,
+        slug=slug,
+        description=body.description,
+    )
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 # IMPORTANT: /projects/health MUST be declared before /projects/{project_id}

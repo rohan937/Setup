@@ -185,6 +185,22 @@ export async function getProjects(): Promise<Project[]> {
   return request<Project[]>("/api/projects");
 }
 
+export interface ProjectCreateRequest {
+  name: string;
+  slug?: string;
+  description?: string;
+  organization_id?: string;
+}
+
+export async function createProject(
+  data: ProjectCreateRequest,
+): Promise<Project> {
+  return request<Project>("/api/projects", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function getStrategies(
   status?: "active" | "archived" | "all",
 ): Promise<Strategy[]> {

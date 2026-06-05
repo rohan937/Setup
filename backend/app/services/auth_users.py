@@ -11,11 +11,17 @@ from app.core.security import hash_password, verify_password
 from app.models.audit_timeline_event import AuditTimelineEvent
 from app.models.auth_user import AuthUser
 from app.models.organization import Organization
+from app.models.project import Project
 from app.models.workspace_member import WorkspaceMember
 
 # Default workspace created for the very first user on a fresh deployment.
 DEFAULT_WORKSPACE_NAME = "Quant Research Workspace"
 DEFAULT_WORKSPACE_SLUG = "quant-research-workspace"
+
+# Strategies must belong to a project, so a default project is created alongside
+# the default workspace for the very first user on a fresh deployment.
+DEFAULT_PROJECT_NAME = "Default Project"
+DEFAULT_PROJECT_SLUG = "default-project"
 
 
 def get_or_create_default_org(db: Session) -> Organization:
@@ -34,6 +40,31 @@ def get_or_create_default_org(db: Session) -> Organization:
     db.add(org)
     db.flush()
     return org
+
+
+def get_or_create_default_project(db: Session, org: Organization) -> Project:
+    """Return the earliest project for *org*, creating a default one if none exists.
+
+    Strategies require a ``project_id``; without at least one project the
+    "Register Strategy" UI has nothing to select.  Idempotent: reuses any
+    existing project for the organization.
+    """
+    project = (
+        db.query(Project)
+        .filter(Project.organization_id == org.id)
+        .order_by(Project.created_at)
+        .first()
+    )
+    if project is not None:
+        return project
+    project = Project(
+        organization_id=org.id,
+        name=DEFAULT_PROJECT_NAME,
+        slug=DEFAULT_PROJECT_SLUG,
+    )
+    db.add(project)
+    db.flush()
+    return project
 
 
 def get_user_by_email(db: Session, email: str) -> AuthUser | None:
@@ -128,6 +159,11 @@ def _link_or_create_member(db: Session, user: AuthUser) -> None:
             # An org should exist but doesn't, and this is not a bootstrap case;
             # leave the user unlinked. The UI shows "ask an owner to invite you".
             return
+    # Strategies must belong to a project. Ensure the bootstrapping first user
+    # has a default project so the "Register Strategy" modal has a selectable
+    # option immediately after sign-up.
+    if is_first_user:
+        get_or_create_default_project(db, org)
     # WorkspaceMember.organization_id is String(36) — use the exact stored
     # format (32-char hex) to pass the SQLite FK constraint.
     org_id_str = _org_id_for_member(org)
@@ -210,6 +246,9 @@ def bootstrap_owner(
         db.add(org)
         db.flush()
         created_org = True
+
+    # Ensure the workspace has at least one project so strategies can be created.
+    get_or_create_default_project(db, org)
 
     org_id_str = _org_id_for_member(org)
 

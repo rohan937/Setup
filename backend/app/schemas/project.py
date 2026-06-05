@@ -16,3 +16,16 @@ class ProjectOut(BaseModel):
     description: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ProjectCreate(BaseModel):
+    """Request body for creating a project.
+
+    ``organization_id`` is optional: when omitted the server resolves the
+    default (earliest) organization, matching the single-workspace product.
+    """
+
+    name: str
+    slug: str | None = None
+    description: str | None = None
+    organization_id: uuid.UUID | None = None
