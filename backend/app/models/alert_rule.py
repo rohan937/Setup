@@ -9,7 +9,7 @@ from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.base import GUIDString, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -26,7 +26,7 @@ class AlertRule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "alert_rules"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
-        String(36),
+        GUIDString(),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

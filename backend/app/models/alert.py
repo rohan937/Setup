@@ -10,7 +10,7 @@ from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.base import GUIDString, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -28,7 +28,7 @@ class Alert(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "alerts"
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
-        String(36),
+        GUIDString(),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -47,7 +47,7 @@ class Alert(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # Optional link to the strategy this alert concerns
     strategy_id: Mapped[uuid.UUID | None] = mapped_column(
-        String(36),
+        GUIDString(),
         ForeignKey("strategies.id", ondelete="SET NULL"),
         nullable=True,
         index=True,

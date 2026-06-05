@@ -56,8 +56,9 @@ def register_user(
         raise ValueError("duplicate email")
     hashed = hash_password(password)
     now = datetime.now(timezone.utc)
-    # AuthUser.id comes from UUIDPrimaryKeyMixin (Uuid as_uuid=True).
-    # Pass a real uuid.UUID, not a string.
+    # AuthUser.id comes from UUIDPrimaryKeyMixin (now the GUID type, stored as
+    # VARCHAR). Passing a uuid.UUID is fine — GUID accepts it and serialises it
+    # to the dialect-correct string (hex on SQLite, str(uuid) on PostgreSQL).
     user = AuthUser(
         id=uuid.uuid4(),
         email=email,

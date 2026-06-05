@@ -97,7 +97,9 @@ async def get_current_user(
     sub = payload.get("sub")
     if sub is None:
         raise HTTPException(status_code=401, detail="Invalid token payload")
-    # AuthUser.id is Uuid(as_uuid=True) — convert string sub to uuid.UUID
+    # AuthUser.id is the GUID type (stored as VARCHAR). Parse the subject to a
+    # uuid.UUID for validation; GUID binds it to the dialect-correct string with
+    # no ::UUID cast, so the comparison works on both SQLite and PostgreSQL.
     try:
         user_uuid = _uuid.UUID(sub)
     except (ValueError, AttributeError):

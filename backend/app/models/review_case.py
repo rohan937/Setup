@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import String, Text, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import Uuid
+from app.models.base import GUID as Uuid
+from app.models.base import GUIDString
 
 from app.db.base import Base
 from app.models.base import UUIDPrimaryKeyMixin
@@ -23,7 +24,7 @@ class ResearchReviewCase(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "research_review_cases"
 
     strategy_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("strategies.id"), nullable=False, index=True
+        GUIDString(), ForeignKey("strategies.id"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     case_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)

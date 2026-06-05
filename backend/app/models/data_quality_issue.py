@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import Uuid
+from app.models.base import GUID as Uuid
 
 from app.db.base import Base
 from app.models.base import UUIDPrimaryKeyMixin

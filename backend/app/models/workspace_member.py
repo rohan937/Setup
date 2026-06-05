@@ -6,14 +6,14 @@ from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.models.base import UUIDPrimaryKeyMixin
+from app.models.base import GUIDString, UUIDPrimaryKeyMixin
 
 
 class WorkspaceMember(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "workspace_members"
 
     organization_id: Mapped[str] = mapped_column(
-        String(36),
+        GUIDString(),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
