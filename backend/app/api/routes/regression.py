@@ -54,6 +54,7 @@ def create_defaults(
 ) -> list[StrategyRegressionTestRead]:
     _get_strategy_or_404(strategy_id, db)
     tests = create_default_regression_tests(strategy_id, db)
+    db.commit()   # persist — was missing; without this the flush was rolled back on session close
     return [StrategyRegressionTestRead.model_validate(t) for t in tests]
 
 
