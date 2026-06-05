@@ -64,6 +64,13 @@ def deployment_health(
     cors_configured = bool(settings.cors_origin_list)
     jwt_secret_safe = not settings.jwt_secret_is_dev_default
 
+    # True when at least one non-localhost origin is allowed (i.e. a real frontend).
+    _non_local_origins = [
+        o for o in settings.cors_origin_list
+        if "localhost" not in o and "127.0.0.1" not in o
+    ]
+    cors_has_public_origin = bool(_non_local_origins)
+
     # Collect production warnings without revealing secrets.
     warnings: list[str] = []
     if settings.is_production:
@@ -82,6 +89,15 @@ def deployment_health(
         if not settings.require_api_key_for_ingestion:
             warnings.append(
                 "QF_REQUIRE_API_KEY_FOR_INGESTION=false — consider enabling in production."
+            )
+        if not cors_has_public_origin:
+            # Only localhost origins are allowed — the deployed frontend will be
+            # blocked by CORS on every request. Set QF_FRONTEND_URL (or
+            # QF_CORS_ORIGINS) to include the Vercel / production URL.
+            warnings.append(
+                "CORS origins only include localhost. "
+                "Set QF_FRONTEND_URL=https://your-app.vercel.app (or QF_CORS_ORIGINS) "
+                "so the deployed frontend can reach the API."
             )
 
     return DeploymentHealthResponse(

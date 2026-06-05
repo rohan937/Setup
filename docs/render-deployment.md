@@ -184,3 +184,57 @@ cd backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port
 
 The app does **not** auto-migrate on startup — run migrations explicitly before or
 after deployment.
+
+---
+
+## Vercel Frontend Deployment
+
+The frontend is deployed to Vercel at `https://quantfidelity.vercel.app`. It is a
+Vite/React single-page app; Vercel serves it as a static build. All API calls go to
+the Render backend via `VITE_API_BASE_URL`.
+
+### Required Vercel environment variable
+
+| Variable | Value |
+|----------|-------|
+| `VITE_API_BASE_URL` | `https://quantfidelity-api.onrender.com` |
+
+**Critical:** if `VITE_API_BASE_URL` is not set in the Vercel project settings, the
+production build defaults to `http://localhost:8000` and every API call fails silently
+in the browser. Set this variable in the Vercel dashboard under
+**Project → Settings → Environment Variables** before deploying.
+
+### Setting VITE_API_BASE_URL in Vercel
+
+1. Open the Vercel project dashboard.
+2. Go to **Settings → Environment Variables**.
+3. Add `VITE_API_BASE_URL` = `https://quantfidelity-api.onrender.com` for the
+   **Production** environment.
+4. Redeploy (Vercel bakes env vars into the JS bundle at build time).
+
+### Vercel configuration (vercel.json)
+
+The `frontend/vercel.json` rewrites all routes to `/index.html` for client-side
+routing:
+```json
+{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+```
+No other Vercel configuration is required.
+
+---
+
+## Full deployment checklist
+
+Before going live, verify:
+
+| Check | How |
+|-------|-----|
+| `QF_ENVIRONMENT=production` set on Render | Render dashboard → Environment |
+| `QF_DATABASE_URL` set to Postgres internal URL | Render dashboard → Environment |
+| `QF_JWT_SECRET_KEY` set to a strong secret | `openssl rand -hex 32` |
+| `QF_FRONTEND_URL=https://quantfidelity.vercel.app` | Render dashboard → Environment |
+| `QF_DEBUG=false` | Render dashboard → Environment |
+| `VITE_API_BASE_URL=https://quantfidelity-api.onrender.com` | Vercel dashboard → Environment Variables |
+| Alembic migrations run | `alembic upgrade head` from Render shell |
+| Health endpoint returns green | `GET /api/health/deployment` → `production_warnings: []` |
+| Login works from Vercel | Open https://quantfidelity.vercel.app, sign in |

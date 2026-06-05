@@ -36,8 +36,9 @@ services:
         sync: false   # prompts for manual entry in the Render dashboard
 
       # Set to your exact Vercel frontend URL (no wildcard).
-      - key: QF_CORS_ORIGINS
-        value: https://<YOUR_FRONTEND>.vercel.app   # replace before use
+      # Alternatively use QF_FRONTEND_URL which auto-appends to the localhost defaults.
+      - key: QF_FRONTEND_URL
+        value: https://quantfidelity.vercel.app   # replace with your actual Vercel URL
 
       - key: QF_DEBUG
         value: "false"
@@ -57,8 +58,9 @@ services:
       - key: QF_LOG_LEVEL
         value: info
 
+      # Default 7 days (10080 min). Lower for stricter security if needed.
       - key: QF_ACCESS_TOKEN_EXPIRE_MINUTES
-        value: "1440"
+        value: "10080"
 
 databases:
   - name: quantfidelity-db
