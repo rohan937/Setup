@@ -100,6 +100,49 @@ class TestFirstUserBootstrap:
         assert p["can_manage_members"] is True
         assert p["can_seed_demo"] is True
 
+    def test_me_resolves_workspace_name_for_bootstrapped_owner(self, boot_client):
+        token = _register(boot_client, "owner@x.com", "Owner").json()["access_token"]
+        data = boot_client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {token}"}
+        ).json()
+        assert len(data["workspace_memberships"]) >= 1
+        ws = data["workspace_memberships"][0]["workspace_name"]
+        assert ws == "Quant Research Workspace"
+        assert ws != "Unknown"
+
+    def test_me_workspace_name_with_32char_hex_org_id(self, boot_client, boot_db):
+        """The production case: workspace_members.organization_id stored as a
+        32-char hex string while Organization.id stringifies to 36-char UUID."""
+        from app.models.organization import Organization
+        from app.models.workspace_member import WorkspaceMember
+
+        token = _register(boot_client, "owner@x.com", "Owner").json()["access_token"]
+        org = boot_db.query(Organization).first()
+        member = boot_db.query(WorkspaceMember).filter_by(email="owner@x.com").first()
+        # Sanity: the membership stores the 32-char hex form (no hyphens).
+        assert member.organization_id == org.id.hex
+        assert len(member.organization_id) == 32 and "-" not in member.organization_id
+        # Give the org a distinct display_name to confirm it is preferred.
+        org.display_name = "Acme Research"
+        boot_db.commit()
+
+        data = boot_client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {token}"}
+        ).json()
+        assert data["workspace_memberships"][0]["workspace_name"] == "Acme Research"
+
+    def test_me_falls_back_to_name_when_no_display_name(self, boot_client, boot_db):
+        from app.models.organization import Organization
+
+        token = _register(boot_client, "owner@x.com", "Owner").json()["access_token"]
+        org = boot_db.query(Organization).first()
+        org.display_name = None  # force fallback to name
+        boot_db.commit()
+        data = boot_client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {token}"}
+        ).json()
+        assert data["workspace_memberships"][0]["workspace_name"] == org.name
+
     def test_second_user_not_owner_and_no_duplicate_org(self, boot_client, boot_db):
         from app.models.organization import Organization
         from app.models.workspace_member import WorkspaceMember

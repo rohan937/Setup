@@ -90,20 +90,39 @@ def get_me(
         .filter(WorkspaceMember.user_id == str(current_user.id))
         .all()
     )
+    # workspace_members.organization_id is stored as a 32-char hex string, while
+    # Organization.id stringifies to a 36-char hyphenated UUID. Normalize both to
+    # the canonical hex form so the lookup matches regardless of source format.
+    def _norm_org_id(value) -> str | None:
+        if not value:
+            return None
+        try:
+            return _uuid_module.UUID(str(value)).hex
+        except (ValueError, AttributeError, TypeError):
+            return None
+
     org_id_strs = {m.organization_id for m in memberships}
     # Organization.id is Uuid(as_uuid=True) — convert strings to uuid.UUID for query
-    org_uuids = [_uuid_module.UUID(s) for s in org_id_strs if s]
+    org_uuids = [_uuid_module.UUID(s) for s in org_id_strs if s and _norm_org_id(s)]
+    # Key the org map by the normalized (hex) id so lookups by member.organization_id
+    # (32-char hex) succeed even though str(Organization.id) is 36-char hyphenated.
     orgs = {
-        str(o.id): o
+        _norm_org_id(o.id): o
         for o in db.query(Organization)
         .filter(Organization.id.in_(org_uuids))
         .all()
     }
+
+    def _workspace_name(org) -> str:
+        if org is None:
+            return "Unknown"
+        return getattr(org, "display_name", None) or getattr(org, "name", None) or "Unknown"
+
     membership_list = [
         CurrentUserWorkspaceMembership(
             member_id=str(m.id),
             organization_id=str(m.organization_id),
-            workspace_name=getattr(orgs.get(str(m.organization_id)), "name", "Unknown"),
+            workspace_name=_workspace_name(orgs.get(_norm_org_id(m.organization_id))),
             role=m.role,
             status=m.status,
             linked=True,
