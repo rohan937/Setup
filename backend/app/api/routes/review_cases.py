@@ -7,6 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.rbac import require_workspace_write_access
 from app.db.session import get_db
 from app.services import review_cases as svc
 from app.schemas.review_cases import (
@@ -129,6 +130,7 @@ def get_review_case(
 def acknowledge_review_case(
     case_id: str,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> ResearchReviewCaseRead:
     """Acknowledge an open review case."""
     case = svc.acknowledge_research_review_case(db, case_id)
@@ -149,6 +151,7 @@ def acknowledge_review_case(
 def resolve_review_case(
     case_id: str,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> ResearchReviewCaseRead:
     """Resolve a review case."""
     case = svc.resolve_research_review_case(db, case_id)

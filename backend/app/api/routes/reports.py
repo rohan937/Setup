@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.constants import EventType, Severity
+from app.core.rbac import require_workspace_write_access
 from app.db.session import get_db
 from app.models.audit_timeline_event import AuditTimelineEvent
 from app.models.backtest_audit import BacktestAudit
@@ -119,6 +120,7 @@ def _emit_timeline_event(
 def generate_strategy_report(
     strategy_id: uuid.UUID,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> ReportDetail:
     """Generate and store a strategy reliability report.
 
@@ -171,6 +173,7 @@ def generate_strategy_report(
 def generate_backtest_report(
     audit_id: uuid.UUID,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> ReportDetail:
     """Generate and store a backtest audit reliability report.
 
@@ -216,6 +219,7 @@ def generate_backtest_report(
 def generate_snapshot_report(
     snapshot_id: uuid.UUID,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> ReportDetail:
     """Generate and store a dataset health report for a snapshot.
 

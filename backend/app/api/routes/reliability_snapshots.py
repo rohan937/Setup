@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.core.rbac import require_workspace_write_access
 from app.db.session import get_db
 from app.models.strategy import Strategy
 from app.schemas.reliability_snapshot import (
@@ -70,6 +71,7 @@ def refresh_snapshot(
     strategy_id: str,
     force: bool = Query(default=False),
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> StrategyReliabilitySnapshotRead:
     """Refresh (or reuse) the reliability snapshot for a strategy.
 

@@ -337,6 +337,22 @@ def update_workspace_member(
         role = payload["role"]
         if role not in VALID_ROLES:
             raise ValueError(f"invalid role: {role!r}")
+        # Last-owner guard: prevent demoting the only owner to a lower role.
+        # Mirrors the check in remove_workspace_member so the workspace always
+        # has at least one active owner.
+        if member.role == "owner" and role != "owner":
+            other_active_owners = (
+                db.query(WorkspaceMember)
+                .filter(
+                    WorkspaceMember.organization_id == member.organization_id,
+                    WorkspaceMember.role == "owner",
+                    WorkspaceMember.id != member.id,
+                    WorkspaceMember.status != "disabled",
+                )
+                .count()
+            )
+            if other_active_owners == 0:
+                raise ValueError("cannot demote the last owner")
         member.role = role
     if "status" in payload and payload["status"] is not None:
         status = payload["status"]

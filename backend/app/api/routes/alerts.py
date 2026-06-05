@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.constants import AlertStatus
+from app.core.rbac import require_workspace_write_access
 from app.db.session import get_db
 from app.models.alert import Alert
 from app.models.organization import Organization
@@ -55,7 +56,10 @@ def _get_total_open(db: Session, org_id: str) -> int:
 # ---------------------------------------------------------------------------
 
 @router.post("/alerts/generate", response_model=AlertGenerateResponse)
-def trigger_alert_generation(db: Session = Depends(get_db)) -> AlertGenerateResponse:
+def trigger_alert_generation(
+    db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
+) -> AlertGenerateResponse:
     """Run the deterministic alert-generation service and return a summary.
 
     Idempotent: duplicate detection prevents re-creating open alerts for the
@@ -131,6 +135,7 @@ def update_alert_status(
     alert_id: uuid.UUID,
     body: AlertUpdateRequest,
     db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
 ) -> AlertRead:
     """Update the status of an alert (open → acknowledged / resolved / snoozed).
 

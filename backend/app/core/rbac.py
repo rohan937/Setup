@@ -159,8 +159,19 @@ def get_current_workspace_member(db: Session, current_user) -> MemberContext:
     if not settings.QF_RBAC_ENABLED:
         return MemberContext.pseudo_owner()
 
-    # (2) No authenticated user — local-dev permissive pseudo-owner.
+    # (2) No authenticated user.
+    # Local dev / non-production: permissive pseudo-owner so scripts and tests
+    # work without a token.  In production the fallback is disabled so that an
+    # anonymous caller cannot inherit owner-level access via this shortcut.
     if current_user is None:
+        if settings.is_production:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Authentication required. "
+                    "Include 'Authorization: Bearer <token>' in your request."
+                ),
+            )
         return MemberContext.pseudo_owner()
 
     # (3) Authenticated user — resolve their real membership.
