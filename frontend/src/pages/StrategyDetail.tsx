@@ -521,12 +521,14 @@ function ReliabilityPanel({
   trend,
   onCompute,
   computing,
+  computeError,
 }: {
   score: StrategyReliabilityScore | null;
   history: StrategyReliabilityScore[];
   trend: ReliabilityScoreTrendResponse | null;
   onCompute: () => void;
   computing: boolean;
+  computeError?: string | null;
 }) {
   // Sparkline uses up to the last 10 scores in chronological order.
   const sparkScores = [...history].reverse().map((s) => s.overall_score);
@@ -543,6 +545,12 @@ function ReliabilityPanel({
           {computing ? "Computing…" : score ? "Refresh Score" : "Compute Score"}
         </button>
       </div>
+
+      {computeError && (
+        <div className="border-b border-fidelity-low/20 bg-fidelity-low/5 px-4 py-2">
+          <p className="font-mono text-2xs text-fidelity-low">{computeError}</p>
+        </div>
+      )}
 
       {score === null ? (
         <div className="px-4 py-6 text-center">
@@ -9197,6 +9205,7 @@ export default function StrategyDetail() {
   const [reliabilityScore, setReliabilityScore] = useState<StrategyReliabilityScore | null>(null);
   const [scoreHistory, setScoreHistory] = useState<StrategyReliabilityScore[]>([]);
   const [scoreTrend, setScoreTrend] = useState<ReliabilityScoreTrendResponse | null>(null);
+  const [scoreComputeError, setScoreComputeError] = useState<string | null>(null);
 
   // M8: backtest audit state — keyed by run id.
   const [audits, setAudits] = useState<Record<string, BacktestAudit>>({});
@@ -9258,6 +9267,7 @@ export default function StrategyDetail() {
   // M40: config diff
   const [configDiff, setConfigDiff] = useState<ConfigSnapshotComparisonV2Response | null>(null);
   const [configDiffLoading, setConfigDiffLoading] = useState(false);
+  const [configDiffError, setConfigDiffError] = useState<string | null>(null);
   const [configDiffSnapshotA, setConfigDiffSnapshotA] = useState<string>("");
   const [configDiffSnapshotB, setConfigDiffSnapshotB] = useState<string>("");
 
@@ -9314,11 +9324,12 @@ export default function StrategyDetail() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
     setConfigDiffLoading(true);
     setConfigDiff(null);
+    setConfigDiffError(null);
     try {
       const result = await compareConfigSnapshotsV2(id, configDiffSnapshotA, configDiffSnapshotB);
       setConfigDiff(result);
-    } catch {
-      // silently fail — could add error state later
+    } catch (err) {
+      setConfigDiffError(err instanceof Error ? err.message : "Config comparison failed.");
     } finally {
       setConfigDiffLoading(false);
     }
@@ -9563,13 +9574,16 @@ export default function StrategyDetail() {
   async function handleComputeReliabilityScore() {
     if (!id) return;
     setComputingReliability(true);
+    setScoreComputeError(null);
     try {
       const score = await computeStrategyReliabilityScore(id);
       setReliabilityScore(score);
       // M19: refresh history + trend after every new computation.
       loadReliabilityHistory(id);
-    } catch (_err) {
-      // silently ignore; panel will show last known score
+    } catch (err) {
+      setScoreComputeError(
+        err instanceof Error ? err.message : "Score computation failed.",
+      );
     } finally {
       setComputingReliability(false);
     }
@@ -9686,6 +9700,16 @@ export default function StrategyDetail() {
                   >
                     Edit strategy details
                   </button>
+                  <button
+                    onClick={() => {
+                      setManageOpen(false);
+                      if (id) navigator.clipboard.writeText(id);
+                    }}
+                    className="block w-full px-3 py-2 text-left text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                  >
+                    Copy strategy ID
+                  </button>
+                  <div className="my-1 border-t border-border" />
                   <button
                     onClick={() => { setManageOpen(false); setArchiveOpen(true); }}
                     className="block w-full px-3 py-2 text-left text-xs text-fidelity-medium hover:bg-bg-600"
@@ -9912,6 +9936,7 @@ export default function StrategyDetail() {
         trend={scoreTrend}
         onCompute={handleComputeReliabilityScore}
         computing={computingReliability}
+        computeError={scoreComputeError}
       />
         </>
       )}
@@ -10001,6 +10026,11 @@ export default function StrategyDetail() {
       {configDiff && <ConfigDiffPanel diff={configDiff} />}
       {configDiffLoading && (
         <p className="text-sm text-text-muted">Comparing configs…</p>
+      )}
+      {configDiffError && !configDiffLoading && (
+        <p className="rounded-card border border-fidelity-low/30 bg-fidelity-low/5 px-3 py-2 font-mono text-2xs text-fidelity-low">
+          Config comparison failed: {configDiffError}
+        </p>
       )}
 
       {/* M41: Assumption Health */}

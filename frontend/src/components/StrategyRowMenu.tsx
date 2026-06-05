@@ -218,6 +218,16 @@ export default function StrategyRowMenu({
             >
               Promotion gates
             </button>
+            <button
+              className={itemCls}
+              onClick={() => {
+                onClose();
+                navigator.clipboard.writeText(strategy.id);
+              }}
+              role="menuitem"
+            >
+              Copy strategy ID
+            </button>
 
             <div className="my-1 border-t border-border" />
 
