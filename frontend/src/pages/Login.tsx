@@ -1,15 +1,20 @@
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, authMessage, clearAuthMessage } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Display and then clear the auth message (e.g. "session expired") once.
+  useEffect(() => {
+    return () => { clearAuthMessage(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -43,6 +48,13 @@ export default function Login() {
           <h2 className="font-mono text-sm font-semibold text-text-primary mb-5">
             Sign in to QuantFidelity
           </h2>
+
+          {/* Session-expired banner (e.g. token expired while away) */}
+          {authMessage && !error && (
+            <div className="mb-4 rounded border border-amber-700/40 bg-amber-900/15 px-3 py-2">
+              <p className="font-mono text-xs text-amber-300">{authMessage}</p>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 rounded border border-fidelity-low/40 bg-fidelity-low/10 px-3 py-2">

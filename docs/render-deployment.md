@@ -92,6 +92,23 @@ If you have multiple frontend origins, list them comma-separated. `QF_FRONTEND_U
 adds one URL automatically; `QF_CORS_ORIGINS` replaces the full list (including the
 localhost defaults). For most deployments, setting `QF_FRONTEND_URL` alone is enough.
 
+### `QF_ACCESS_TOKEN_EXPIRE_MINUTES`
+```
+QF_ACCESS_TOKEN_EXPIRE_MINUTES=10080
+```
+How long a JWT access token stays valid, in minutes. Default: **10080 (7 days)**.
+Users who don't visit the app for longer than this period will be signed out and
+must log in again — they will see a "session expired" message on the login page.
+Their account and data are unaffected; only the browser session is invalidated.
+
+If `QF_JWT_SECRET_KEY` is rotated (e.g. after a security incident), **all existing
+tokens are immediately invalidated** regardless of their expiry time. Users will see
+"session expired" on next page load; their accounts and data remain intact.
+
+To prevent unexpected sign-outs on Render redeploys, ensure `QF_JWT_SECRET_KEY` is
+set as a persistent environment variable in the Render dashboard, not left as the
+insecure dev default (the app refuses to start with the default in production anyway).
+
 ### `QF_REQUIRE_API_KEY_FOR_INGESTION`
 ```
 QF_REQUIRE_API_KEY_FOR_INGESTION=true

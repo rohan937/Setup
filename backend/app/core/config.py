@@ -95,7 +95,12 @@ class Settings(BaseSettings):
     auth_enabled: bool = True
     jwt_secret_key: str = _DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 1440
+    # Default: 7 days (10080 minutes). A demo SaaS app should keep users logged
+    # in across typical usage gaps. Set QF_ACCESS_TOKEN_EXPIRE_MINUTES on Render
+    # (or locally) to override — e.g. 1440 (24 h) for stricter production.
+    # Previous default was 1440 (24 h) which caused auto-sign-out for users who
+    # didn't revisit the app daily.
+    access_token_expire_minutes: int = 10080
 
     # M69: RBAC + Workspace/Project Access Control
     # Env var: QF_RBAC_ENABLED

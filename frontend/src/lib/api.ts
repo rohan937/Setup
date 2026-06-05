@@ -153,6 +153,24 @@ export function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+/**
+ * Structured HTTP error — carries the HTTP status code so callers can
+ * distinguish auth failures (401) from server errors (5xx) or network
+ * problems, rather than treating every failure as identical.
+ *
+ * Used by AuthContext.refreshCurrentUser() to only clear the stored token
+ * on a genuine 401 (token expired/invalid), NOT on transient 5xx errors or
+ * network failures that would otherwise permanently sign the user out.
+ */
+export class HttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // Attach the Authorization bearer header when a token is present so that
   // web ingestion and all calls are authenticated and RBAC applies.
@@ -172,7 +190,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       typeof err.detail === "string"
         ? err.detail
         : err.detail.map((e) => e.msg).join(", ");
-    throw new Error(message);
+    throw new HttpError(res.status, message);
   }
   return (await res.json()) as T;
 }
@@ -1689,8 +1707,15 @@ export async function loginUser(payload: UserLoginRequest): Promise<AuthTokenRes
 
 export async function getCurrentUser(): Promise<CurrentUserResponse> {
   const res = await fetch(API_BASE_URL + "/api/auth/me", { headers: getAuthHeaders() });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (typeof body.detail === "string") message = body.detail;
+    } catch { /* ignore */ }
+    throw new HttpError(res.status, message);
+  }
+  return res.json() as Promise<CurrentUserResponse>;
 }
 
 export async function logoutUser(): Promise<void> {
