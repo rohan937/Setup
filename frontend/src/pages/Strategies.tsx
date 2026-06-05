@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Strategy, StrategyHealth, StrategyReliabilityScore } from "@/types";
 import { getStrategies, getStrategiesHealth } from "@/lib/api";
@@ -8,6 +8,7 @@ import EmptyState from "@/components/EmptyState";
 import PanelEmptyState from "@/components/PanelEmptyState";
 import StrategyCreateDrawer from "@/components/StrategyCreateDrawer";
 import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
+import StrategyRowMenu from "@/components/StrategyRowMenu";
 import { useAuth } from "@/context/AuthContext";
 import { canSeedDemo } from "@/lib/permissions";
 
@@ -93,8 +94,17 @@ export default function Strategies() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<Strategy | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Strategy | null>(null);
+  // Auto-dismissing action feedback banner
+  const [feedback, setFeedback] = useState<{ msg: string; isError: boolean } | null>(null);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
   const auth = useAuth();
+
+  function showFeedback(msg: string, isError = false) {
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    setFeedback({ msg, isError });
+    feedbackTimer.current = setTimeout(() => setFeedback(null), 5000);
+  }
 
   const load = useCallback(() => {
     setLoading(true);
@@ -163,6 +173,32 @@ export default function Strategies() {
           <p className="font-mono text-xs text-fidelity-low">{error}</p>
           <button onClick={load} className="mt-1.5 font-mono text-2xs text-accent-500 hover:text-accent-300">
             retry
+          </button>
+        </div>
+      )}
+
+      {/* Action feedback banner (auto-dismisses after 5 s) */}
+      {feedback && (
+        <div
+          className={`mb-3 flex items-start gap-3 rounded-card border px-4 py-2.5 ${
+            feedback.isError
+              ? "border-fidelity-low/30 bg-fidelity-low/10"
+              : "border-teal-700/30 bg-teal-900/10"
+          }`}
+        >
+          <span
+            className={`font-mono text-xs leading-relaxed ${
+              feedback.isError ? "text-fidelity-low" : "text-teal-300"
+            }`}
+          >
+            {feedback.msg}
+          </span>
+          <button
+            onClick={() => setFeedback(null)}
+            className="ml-auto shrink-0 text-text-muted hover:text-text-primary"
+            aria-label="Dismiss"
+          >
+            ×
           </button>
         </div>
       )}
@@ -268,47 +304,17 @@ export default function Strategies() {
                     {formatDate(s.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="relative inline-block text-left">
-                      <button
-                        onClick={() => setMenuOpenId(menuOpenId === s.id ? null : s.id)}
-                        className="rounded-control border border-border px-2 py-1 text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpenId === s.id}
-                      >
-                        ⋯
-                      </button>
-                      {menuOpenId === s.id && (
-                        <>
-                          <div
-                            className="fixed inset-0 z-30"
-                            aria-hidden="true"
-                            onClick={() => setMenuOpenId(null)}
-                          />
-                          <div className="absolute right-0 z-40 mt-1 w-36 rounded-card border border-border bg-bg-800 py-1 text-left shadow-panel">
-                            <button
-                              onClick={() => { setMenuOpenId(null); navigate(`/strategies/${s.id}`); }}
-                              className="block w-full px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-                            >
-                              Open
-                            </button>
-                            <button
-                              onClick={() => { setMenuOpenId(null); setEditTarget(s); }}
-                              className="block w-full px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-                            >
-                              Edit
-                            </button>
-                            {s.status !== "archived" && (
-                              <button
-                                onClick={() => { setMenuOpenId(null); setArchiveTarget(s); }}
-                                className="block w-full px-3 py-1.5 text-left text-xs text-fidelity-medium hover:bg-bg-600"
-                              >
-                                Archive
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    <StrategyRowMenu
+                      strategy={s}
+                      auth={auth}
+                      isOpen={menuOpenId === s.id}
+                      onOpen={() => setMenuOpenId(s.id)}
+                      onClose={() => setMenuOpenId(null)}
+                      onEdit={() => setEditTarget(s)}
+                      onArchive={() => setArchiveTarget(s)}
+                      onFeedback={showFeedback}
+                      onRefreshed={load}
+                    />
                   </td>
                 </tr>
               ))}
