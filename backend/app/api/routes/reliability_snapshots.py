@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -18,6 +19,7 @@ from app.schemas.reliability_snapshot import (
     StrategyReliabilitySnapshotListResponse,
     StrategyReliabilitySnapshotRead,
 )
+from typing import Any
 from app.services.reliability_snapshots import (
     get_latest_strategy_reliability_snapshot,
     get_strategy_reliability_snapshot_history,
@@ -92,28 +94,27 @@ def refresh_snapshot(
 
 @router.get(
     "/strategies/{strategy_id}/reliability-snapshot",
-    response_model=StrategyReliabilitySnapshotRead,
+    response_model=StrategyReliabilitySnapshotRead | None,
 )
 def get_latest_snapshot(
     strategy_id: str,
     db: Session = Depends(get_db),
-) -> StrategyReliabilitySnapshotRead:
+) -> Any:
     """Return the latest reliability snapshot for a strategy.
 
-    Raises 404 if no snapshot exists yet — POST to
-    ``/reliability-snapshot/refresh`` to create one.
+    Returns ``null`` (200) when no snapshot exists yet — POST to
+    ``/reliability-snapshot/refresh`` to create one.  Returns null rather
+    than 404 so the frontend can distinguish "strategy not found" (404) from
+    "no snapshot yet" (200 null) and avoid spurious console errors.
     """
     _load_strategy(db, strategy_id)
 
     snapshot = get_latest_strategy_reliability_snapshot(db, strategy_id)
     if snapshot is None:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "No reliability snapshot exists yet. "
-                "POST to /reliability-snapshot/refresh to create one."
-            ),
-        )
+        # 200 null — the frontend already handles this gracefully and checks
+        # for null before rendering.  A 404 here causes unnecessary console
+        # errors and CORS pre-flight failures on some browsers.
+        return JSONResponse(content=None, status_code=200)
     return _enrich_snapshot(db, snapshot)
 
 

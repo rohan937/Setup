@@ -12,6 +12,10 @@ M70 production readiness notes
 * Set ``QF_JWT_SECRET_KEY`` to a long random secret (never the dev default).
 * Set ``QF_CORS_ORIGINS`` to your exact frontend origin, e.g.
   ``https://app.yourdomain.com``.
+* Alternatively set ``QF_FRONTEND_URL`` to a single frontend URL — it is
+  automatically appended to ``QF_CORS_ORIGINS`` so you don't have to repeat
+  the localhost defaults when adding a production domain.
+  Example: ``QF_FRONTEND_URL=https://quantfidelity.vercel.app``
 * Set ``QF_DEBUG=false`` in production.
 """
 
@@ -56,8 +60,14 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # CORS — comma-separated origins in the env var, parsed to a list.
-    # Production: set to exact frontend origin, never "*".
+    # Production: set QF_CORS_ORIGINS to exact frontend origin, never "*".
+    # Alternatively set QF_FRONTEND_URL and it will be appended automatically.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    # Optional single frontend URL added to CORS origins automatically.
+    # Useful on Render: set QF_FRONTEND_URL=https://quantfidelity.vercel.app
+    # so the Vercel frontend can reach the API without editing cors_origins.
+    frontend_url: str = ""
 
     # Database
     # SQLite for local dev / CI (no external service required).
@@ -108,7 +118,13 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        # Automatically include QF_FRONTEND_URL when set (e.g. the Vercel URL on Render).
+        if self.frontend_url:
+            url = self.frontend_url.rstrip("/")
+            if url not in origins:
+                origins.append(url)
+        return origins
 
     @property
     def is_sqlite(self) -> bool:
