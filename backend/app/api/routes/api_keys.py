@@ -80,9 +80,14 @@ def create_api_key(
     raw_key, key_prefix = generate_api_key(env=settings.qf_api_key_env)
     key_hash = hash_api_key(raw_key, settings.qf_api_key_hash_secret)
 
+    # Use org.id.hex (32-char hex, no hyphens) — not str(org.id) (36-char with
+    # hyphens) — because SQLAlchemy's Uuid(as_uuid=True) stores the PK in that
+    # format.  Using str() produces a hyphenated string that fails the FK
+    # constraint on PostgreSQL where VARCHAR equality is exact.  Every other
+    # String(36) FK reference in the codebase consistently uses .hex.
     api_key = ApiKey(
-        organization_id=str(org.id),
-        project_id=str(body.project_id) if body.project_id is not None else None,
+        organization_id=org.id.hex,
+        project_id=body.project_id.hex if body.project_id is not None else None,
         name=body.name,
         key_prefix=key_prefix,
         key_hash=key_hash,
@@ -132,11 +137,22 @@ def list_api_keys(
     _member=Depends(require_can_manage_api_keys),
 ) -> ApiKeyListResponse:
     """List API keys (never returns the raw key or key hash). RBAC: Owner/Admin only."""
+    # Normalise the filter values to the .hex format used for storage so that
+    # both the 36-char hyphenated (str(uuid)) and 32-char hex (uuid.hex) forms
+    # accepted as query params produce correct results.
+    def _to_hex(value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            return uuid.UUID(value).hex
+        except (ValueError, AttributeError):
+            return value  # pass through as-is and let the DB return empty
+
     q = db.query(ApiKey)
     if organization_id is not None:
-        q = q.filter(ApiKey.organization_id == organization_id)
+        q = q.filter(ApiKey.organization_id == _to_hex(organization_id))
     if project_id is not None:
-        q = q.filter(ApiKey.project_id == project_id)
+        q = q.filter(ApiKey.project_id == _to_hex(project_id))
     if status is not None:
         q = q.filter(ApiKey.status == status)
 
