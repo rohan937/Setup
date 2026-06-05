@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type {
   BacktestAudit,
@@ -162,6 +162,8 @@ import Badge from "@/components/Badge";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import EvidenceBundleUploader from "@/components/EvidenceBundleUploader";
 import EvidenceRepairModal from "@/components/EvidenceRepairModal";
+import StrategyCommandMenu from "@/components/StrategyCommandMenu";
+import { useAuth } from "@/context/AuthContext";
 import StrategyLifecycleBar from "@/components/StrategyLifecycleBar";
 import PanelEmptyState from "@/components/PanelEmptyState";
 import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
@@ -9173,6 +9175,7 @@ function BackendActionQueue({
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const auth = useAuth();
   const [strategy, setStrategy] = useState<StrategyDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -9243,6 +9246,15 @@ export default function StrategyDetail() {
   const [manageOpen, setManageOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  // Page-level feedback banner (auto-dismisses after 5 s)
+  const [pageFeedback, setPageFeedback] = useState<{ msg: string; isError: boolean } | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showPageFeedback(msg: string, isError = false) {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    setPageFeedback({ msg, isError });
+    feedbackTimerRef.current = setTimeout(() => setPageFeedback(null), 5000);
+  }
 
   // M29: run history and timeline drilldown
   const [runHistory, setRunHistory] = useState<StrategyRunHistoryResponse | null>(null);
@@ -9623,6 +9635,32 @@ export default function StrategyDetail() {
     <div className="space-y-6">
       {backLink}
 
+      {/* Page-level feedback banner from command menu actions (auto-dismisses) */}
+      {pageFeedback && (
+        <div
+          className={`flex items-start gap-3 rounded-card border px-4 py-2.5 ${
+            pageFeedback.isError
+              ? "border-fidelity-low/30 bg-fidelity-low/10"
+              : "border-teal-700/30 bg-teal-900/10"
+          }`}
+        >
+          <span
+            className={`font-mono text-xs leading-relaxed ${
+              pageFeedback.isError ? "text-fidelity-low" : "text-teal-300"
+            }`}
+          >
+            {pageFeedback.msg}
+          </span>
+          <button
+            onClick={() => setPageFeedback(null)}
+            className="ml-auto shrink-0 text-text-muted hover:text-text-primary"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Strategy header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -9676,50 +9714,31 @@ export default function StrategyDetail() {
           >
             + Log Run
           </button>
-          {/* M75: strategy management menu */}
-          <div className="relative">
-            <button
-              onClick={() => setManageOpen((o) => !o)}
-              className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-              aria-haspopup="menu"
-              aria-expanded={manageOpen}
-            >
-              Manage ▾
-            </button>
-            {manageOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-30"
-                  aria-hidden="true"
-                  onClick={() => setManageOpen(false)}
-                />
-                <div className="absolute right-0 z-40 mt-1 w-44 rounded-card border border-border bg-bg-800 py-1 shadow-panel">
-                  <button
-                    onClick={() => { setManageOpen(false); setEditOpen(true); }}
-                    className="block w-full px-3 py-2 text-left text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-                  >
-                    Edit strategy details
-                  </button>
-                  <button
-                    onClick={() => {
-                      setManageOpen(false);
-                      if (id) navigator.clipboard.writeText(id);
-                    }}
-                    className="block w-full px-3 py-2 text-left text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-                  >
-                    Copy strategy ID
-                  </button>
-                  <div className="my-1 border-t border-border" />
-                  <button
-                    onClick={() => { setManageOpen(false); setArchiveOpen(true); }}
-                    className="block w-full px-3 py-2 text-left text-xs text-fidelity-medium hover:bg-bg-600"
-                  >
-                    Archive strategy
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          {/* M75+: full strategy command menu */}
+          <StrategyCommandMenu
+            strategyId={id!}
+            strategyStatus={strategy.status}
+            latestRunId={strategy.runs && strategy.runs.length > 0 ? strategy.runs[0].id : null}
+            auth={auth}
+            isOpen={manageOpen}
+            onOpen={() => setManageOpen(true)}
+            onClose={() => setManageOpen(false)}
+            onComputeScore={handleComputeReliabilityScore}
+            onGenerateReport={handleGenerateReport}
+            computingScore={computingReliability}
+            generatingReport={generatingReport}
+            onSwitchTab={setActiveTab}
+            onOpenRunDrawer={() => setRunDrawerOpen(true)}
+            onOpenVersionDrawer={() => setVersionDrawerOpen(true)}
+            onOpenConfigDrawer={() => setConfigSnapshotDrawerOpen(true)}
+            onOpenUniverseDrawer={() => setUniverseSnapshotDrawerOpen(true)}
+            onOpenSignalDrawer={() => setSignalSnapshotDrawerOpen(true)}
+            onOpenEditModal={() => setEditOpen(true)}
+            onOpenArchiveModal={() => setArchiveOpen(true)}
+            onOpenRepairModal={(runId) => { setRepairRunId(runId); setRepairOpen(true); }}
+            onFeedback={showPageFeedback}
+            onRefreshed={reloadAll}
+          />
         </div>
       </div>
 
