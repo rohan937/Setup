@@ -199,6 +199,50 @@ class AlertAction(StrEnum):
     note = "note"
 
 
+class ReviewStatus(StrEnum):
+    """Status of a strategy promotion review (M87)."""
+
+    draft = "draft"
+    submitted = "submitted"
+    approved = "approved"
+    rejected = "rejected"
+    changes_requested = "changes_requested"
+    cancelled = "cancelled"
+
+
+class ReviewDecision(StrEnum):
+    """Reviewer's decision on a strategy promotion review (M87)."""
+
+    approved = "approved"
+    rejected = "rejected"
+    changes_requested = "changes_requested"
+
+
+class ReviewAction(StrEnum):
+    """Actions recorded in the strategy_review_events audit log (M87)."""
+
+    created = "created"
+    submitted = "submitted"
+    approved = "approved"
+    rejected = "rejected"
+    changes_requested = "changes_requested"
+    commented = "commented"
+    cancelled = "cancelled"
+    lifecycle_advanced = "lifecycle_advanced"
+
+
+# Ordered governance lifecycle stage keys (M87). The persisted
+# Strategy.lifecycle_stage and StrategyReview.target_stage use these values.
+LIFECYCLE_STAGES = [
+    "research",
+    "backtest",
+    "backtest_review",
+    "paper_candidate",
+    "shadow",
+    "production_candidate",
+]
+
+
 class ReportType(StrEnum):
     strategy_reliability = "strategy_reliability"
     backtest_audit = "backtest_audit"

@@ -31,6 +31,15 @@ class PortfolioReliabilityRecentScoreChange(BaseModel):
     direction: str  # up | down | flat
 
 
+class PortfolioReliabilityPendingReview(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    review_id: str
+    target_stage: str
+    status: str
+    reviewer_user_id: str | None = None
+
+
 class PortfolioReliabilityStrategyRow(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,6 +66,7 @@ class PortfolioReliabilityStrategyRow(BaseModel):
     owner_user_id: str | None
     owner_name: str | None
     regression_failed_count: int
+    pending_review: PortfolioReliabilityPendingReview | None = None
 
 
 class PortfolioReliabilitySummary(BaseModel):
