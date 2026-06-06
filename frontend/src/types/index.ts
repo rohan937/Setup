@@ -1577,6 +1577,41 @@ export interface SandboxScenarioRequest {
   target_stage?: string | null;
 }
 
+// M99: Score Explainability
+export interface ScoreDriverItem {
+  key: string;
+  label: string;
+  points: number;
+  direction: "positive" | "negative" | "neutral";
+  category: string;
+  evidence_type: string | null;
+  evidence_id: string | null;
+  explanation: string;
+  recommended_action: string | null;
+}
+
+export interface ScoreCard {
+  score_key: string;
+  label: string;
+  score: number | null;
+  max_score: number;
+  verdict: string;
+  primary_positive: string | null;
+  primary_drag: string | null;
+  items: ScoreDriverItem[];
+  formula_note: string;
+  generated_at: string;
+}
+
+export interface StrategyScoreExplanationResponse {
+  strategy_id: string;
+  strategy_name: string;
+  overall_summary: string;
+  scorecards: ScoreCard[];
+  disclaimer: string;
+  generated_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // M24: API Key types
 // ---------------------------------------------------------------------------

@@ -138,6 +138,7 @@ import type {
   SandboxStateResponse,
   SandboxResponse,
   SandboxScenarioRequest,
+  StrategyScoreExplanationResponse,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -1417,6 +1418,13 @@ export async function simulateStrategySandbox(
     method: "POST",
     body: JSON.stringify(scenario),
   });
+}
+
+// M99: Score Explainability
+export async function getStrategyScoreExplainability(
+  strategyId: string,
+): Promise<StrategyScoreExplanationResponse> {
+  return request<StrategyScoreExplanationResponse>(`/api/strategies/${strategyId}/score-explainability`);
 }
 
 // M76: strategy lifecycle inference

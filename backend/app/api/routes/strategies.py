@@ -4572,6 +4572,192 @@ def get_strategy_sandbox_report(
     }
 
 
+# M99: Score Explainability endpoints (read-only)
+from app.schemas.score_explainability import (  # noqa: E402
+    StrategyScoreExplanationResponse, ScoreCardOut, ScoreDriverItemOut, ScoreExplainReportResponse,
+)
+from app.services.score_explainability import (  # noqa: E402
+    explain_strategy_scores, explain_reliability_score, explain_backtest_trust,
+    explain_backtest_reality, explain_evidence_verification, explain_readiness_score,
+    generate_score_explainability_report, ScoreCard, StrategyScoreExplanation,
+)
+
+
+def _scorecard_out(c: ScoreCard) -> ScoreCardOut:
+    return ScoreCardOut(
+        score_key=c.score_key, label=c.label, score=c.score, max_score=c.max_score,
+        verdict=c.verdict, primary_positive=c.primary_positive, primary_drag=c.primary_drag,
+        items=[ScoreDriverItemOut(key=i.key, label=i.label, points=i.points, direction=i.direction, category=i.category, evidence_type=i.evidence_type, evidence_id=i.evidence_id, explanation=i.explanation, recommended_action=i.recommended_action) for i in c.items],
+        formula_note=c.formula_note, generated_at=c.generated_at,
+    )
+
+
+@router.get(
+    "/strategies/{strategy_id}/score-explainability",
+    response_model=StrategyScoreExplanationResponse,
+    tags=["strategies"],
+)
+def get_strategy_score_explainability(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> StrategyScoreExplanationResponse:
+    """Explain how a strategy's scores are computed.
+
+    Read-only — no DB writes. Deterministic, no AI.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data = explain_strategy_scores(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return StrategyScoreExplanationResponse(
+        strategy_id=data.strategy_id,
+        strategy_name=data.strategy_name,
+        overall_summary=data.overall_summary,
+        scorecards=[_scorecard_out(c) for c in data.scorecards],
+        disclaimer=data.disclaimer,
+        generated_at=data.generated_at,
+    )
+
+
+@router.get(
+    "/strategies/{strategy_id}/score-explainability/reliability",
+    response_model=ScoreCardOut,
+    tags=["strategies"],
+)
+def get_score_explainability_reliability(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> ScoreCardOut:
+    """Explain the reliability score. Read-only."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        return _scorecard_out(explain_reliability_score(strategy_id, db))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/strategies/{strategy_id}/score-explainability/backtest-trust",
+    response_model=ScoreCardOut,
+    tags=["strategies"],
+)
+def get_score_explainability_backtest_trust(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> ScoreCardOut:
+    """Explain the backtest trust score. Read-only."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        return _scorecard_out(explain_backtest_trust(strategy_id, db))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/strategies/{strategy_id}/score-explainability/backtest-reality",
+    response_model=ScoreCardOut,
+    tags=["strategies"],
+)
+def get_score_explainability_backtest_reality(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> ScoreCardOut:
+    """Explain the backtest reality check score. Read-only."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        return _scorecard_out(explain_backtest_reality(strategy_id, db))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/strategies/{strategy_id}/score-explainability/evidence-verification",
+    response_model=ScoreCardOut,
+    tags=["strategies"],
+)
+def get_score_explainability_evidence_verification(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> ScoreCardOut:
+    """Explain the evidence verification score. Read-only."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        return _scorecard_out(explain_evidence_verification(strategy_id, db))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/strategies/{strategy_id}/score-explainability/readiness",
+    response_model=ScoreCardOut,
+    tags=["strategies"],
+)
+def get_score_explainability_readiness(
+    strategy_id: uuid.UUID,
+    target_stage: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> ScoreCardOut:
+    """Explain the readiness score. Read-only."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        return _scorecard_out(explain_readiness_score(strategy_id, db, target_stage=target_stage))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/strategies/{strategy_id}/score-explainability/report",
+    tags=["strategies"],
+)
+def get_score_explainability_report(
+    strategy_id: uuid.UUID,
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+):
+    """Generate a score explainability report as JSON or Markdown. Read-only."""
+    if format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        content = generate_score_explainability_report(strategy_id, db, format=format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if format == "markdown":
+        return PlainTextResponse(content=content, media_type="text/markdown")
+
+    return ScoreExplainReportResponse(
+        strategy_id=strategy_id,
+        format="json",
+        content=content,
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
 @router.get(
     "/strategies/{strategy_id}/shadow-monitor",
     response_model=StrategyShadowMonitorResponse,

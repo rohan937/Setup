@@ -112,6 +112,7 @@ import type {
   BacktestRealityResponse,
   BacktestRealityCheck,
   PromotionPacketExportResponse,
+  StrategyScoreExplanationResponse,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -183,8 +184,10 @@ import {
   getStrategyReliabilityCommandCenter,
   refreshStrategyReliabilitySnapshot,
   getStrategyReliabilitySnapshot,
+  getStrategyScoreExplainability,
 } from "@/lib/api";
 import Badge from "@/components/Badge";
+import ScoreExplainDrawer from "@/components/ScoreExplainDrawer";
 import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import EvidenceBundleUploader from "@/components/EvidenceBundleUploader";
 import EvidenceRepairModal from "@/components/EvidenceRepairModal";
@@ -10385,6 +10388,12 @@ export default function StrategyDetail() {
   // M18/M19: reliability score state + history + trend
   const [computingReliability, setComputingReliability] = useState(false);
   const [reliabilityScore, setReliabilityScore] = useState<StrategyReliabilityScore | null>(null);
+  // M99: score explainability
+  const [scoreExplain, setScoreExplain] = useState<StrategyScoreExplanationResponse | null>(null);
+  const [scoreExplainOpen, setScoreExplainOpen] = useState(false);
+  const [scoreExplainLoading, setScoreExplainLoading] = useState(false);
+  const [scoreExplainError, setScoreExplainError] = useState<string | null>(null);
+  const [scoreExplainFocus, setScoreExplainFocus] = useState<string | null>(null);
   const [scoreHistory, setScoreHistory] = useState<StrategyReliabilityScore[]>([]);
   const [scoreTrend, setScoreTrend] = useState<ReliabilityScoreTrendResponse | null>(null);
   const [scoreComputeError, setScoreComputeError] = useState<string | null>(null);
@@ -11018,6 +11027,24 @@ export default function StrategyDetail() {
     }
   }
 
+  // M99: score explainability handler
+  async function openScoreExplain(focusKey: string | null) {
+    if (!id) return;
+    setScoreExplainFocus(focusKey);
+    setScoreExplainOpen(true);
+    if (scoreExplain) return; // already loaded
+    setScoreExplainLoading(true);
+    setScoreExplainError(null);
+    try {
+      const data = await getStrategyScoreExplainability(id);
+      setScoreExplain(data);
+    } catch (e: unknown) {
+      setScoreExplainError(e instanceof Error ? e.message : "Failed to load explanation.");
+    } finally {
+      setScoreExplainLoading(false);
+    }
+  }
+
   // M95: lineage diff handlers
   async function handleCompareVersions() {
     if (!strategy || !diffBaseVersion || !diffComparisonVersion) return;
@@ -11302,7 +11329,20 @@ export default function StrategyDetail() {
           {health && <StrategyHealthCard health={health} />}
 
           {/* M49: Strategy Readiness panel */}
-          {readiness && <ReadinessPanel readiness={readiness} />}
+          {readiness && (
+            <>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => openScoreExplain("readiness")}
+                  className="rounded-control border border-border bg-bg-700 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:text-text-primary hover:border-border-hover"
+                >
+                  Why? / Explain score
+                </button>
+              </div>
+              <ReadinessPanel readiness={readiness} />
+            </>
+          )}
         </>
       )}
 
@@ -11351,6 +11391,16 @@ export default function StrategyDetail() {
         universeSnapshots={strategy.universe_snapshots}
         onClose={() => setSignalSnapshotDrawerOpen(false)}
         onCreated={() => setRefreshKey((k) => k + 1)}
+      />
+
+      {/* M99: score explainability drawer */}
+      <ScoreExplainDrawer
+        open={scoreExplainOpen}
+        onClose={() => setScoreExplainOpen(false)}
+        data={scoreExplain}
+        loading={scoreExplainLoading}
+        error={scoreExplainError}
+        focusScoreKey={scoreExplainFocus}
       />
 
       {/* M75: evidence repair + strategy management modals */}
@@ -11451,6 +11501,15 @@ export default function StrategyDetail() {
       )}
 
       {/* M18/M19: Strategy Reliability panel with history + trend */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => openScoreExplain("reliability")}
+          className="rounded-control border border-border bg-bg-700 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:text-text-primary hover:border-border-hover"
+        >
+          Why? / Explain score
+        </button>
+      </div>
       <ReliabilityPanel
         score={reliabilityScore}
         history={scoreHistory}
@@ -11572,6 +11631,15 @@ export default function StrategyDetail() {
       )}
 
       {/* M92: Evidence Verification */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => openScoreExplain("evidence_verification")}
+          className="rounded-control border border-border bg-bg-700 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:text-text-primary hover:border-border-hover"
+        >
+          Why? / Explain score
+        </button>
+      </div>
       <EvidenceVerificationPanel
         verification={evidenceVerification}
         onRefresh={handleRefreshEvidenceVerification}
@@ -11751,6 +11819,15 @@ export default function StrategyDetail() {
       )}
 
       {/* M88: Shadow Drift Monitor */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => openScoreExplain("shadow_monitor")}
+          className="rounded-control border border-border bg-bg-700 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:text-text-primary hover:border-border-hover"
+        >
+          Why? / Explain score
+        </button>
+      </div>
       <ShadowMonitorV2Panel
         monitor={shadowMonitorV2}
         onRefresh={handleRefreshShadowMonitor}
@@ -11762,6 +11839,15 @@ export default function StrategyDetail() {
       />
 
       {/* M93: Backtest Reality Check */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => openScoreExplain("backtest_reality")}
+          className="rounded-control border border-border bg-bg-700 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:text-text-primary hover:border-border-hover"
+        >
+          Why? / Explain score
+        </button>
+      </div>
       <BacktestRealityPanel
         reality={backtestReality}
         onRefresh={handleRefreshBacktestReality}
