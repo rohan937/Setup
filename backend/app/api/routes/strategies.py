@@ -3839,6 +3839,24 @@ def get_lineage_diff(
 
 from fastapi.responses import PlainTextResponse  # noqa: E402
 
+from app.schemas.risk_narrative import (  # noqa: E402
+    RiskNarrativeResponse, NarrativeStrengthOut, NarrativeRiskOut, RiskNarrativeReportResponse,
+)
+from app.services.risk_narrative import (  # noqa: E402
+    generate_strategy_risk_narrative, render_risk_narrative_report, RiskNarrativeData,
+)
+
+
+def _build_risk_narrative_response(data: RiskNarrativeData) -> RiskNarrativeResponse:
+    return RiskNarrativeResponse(
+        strategy_id=data.strategy_id, strategy_name=data.strategy_name, target_stage=data.target_stage,
+        headline=data.headline, narrative=data.narrative, verdict=data.verdict, confidence=data.confidence,
+        primary_strengths=[NarrativeStrengthOut(key=s.key, label=s.label, evidence=s.evidence) for s in data.primary_strengths],
+        primary_risks=[NarrativeRiskOut(key=r.key, label=r.label, severity=r.severity, evidence=r.evidence, recommended_action=r.recommended_action) for r in data.primary_risks],
+        recommended_next_actions=data.recommended_next_actions, source_scores=data.source_scores,
+        disclaimer=data.disclaimer, generated_at=data.generated_at,
+    )
+
 
 @router.get(
     "/strategies/{strategy_id}/lineage/diff/report",
@@ -4751,6 +4769,64 @@ def get_score_explainability_report(
         return PlainTextResponse(content=content, media_type="text/markdown")
 
     return ScoreExplainReportResponse(
+        strategy_id=strategy_id,
+        format="json",
+        content=content,
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
+# M100: Research Risk Narrative endpoints (read-only, on-demand)
+@router.get(
+    "/strategies/{strategy_id}/risk-narrative",
+    response_model=RiskNarrativeResponse,
+    tags=["strategies"],
+)
+def get_risk_narrative(
+    strategy_id: uuid.UUID,
+    target_stage: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> RiskNarrativeResponse:
+    """Generate a deterministic research-governance risk narrative. Read-only — no LLM, no DB writes."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data = generate_strategy_risk_narrative(strategy_id, db, target_stage=target_stage)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_risk_narrative_response(data)
+
+
+@router.get(
+    "/strategies/{strategy_id}/risk-narrative/report",
+    tags=["strategies"],
+)
+def get_risk_narrative_report(
+    strategy_id: uuid.UUID,
+    target_stage: str | None = Query(default=None),
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+):
+    """Render the research risk narrative as JSON or Markdown. Read-only."""
+    if format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        content = render_risk_narrative_report(strategy_id, db, target_stage=target_stage, format=format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if format == "markdown":
+        return PlainTextResponse(content=content, media_type="text/markdown")
+
+    return RiskNarrativeReportResponse(
         strategy_id=strategy_id,
         format="json",
         content=content,

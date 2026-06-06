@@ -1612,6 +1612,37 @@ export interface StrategyScoreExplanationResponse {
   generated_at: string;
 }
 
+// M100: Research Risk Narrative
+export interface NarrativeStrength {
+  key: string;
+  label: string;
+  evidence: string;
+}
+
+export interface NarrativeRisk {
+  key: string;
+  label: string;
+  severity: "low" | "medium" | "high" | "critical";
+  evidence: string;
+  recommended_action: string | null;
+}
+
+export interface RiskNarrativeResponse {
+  strategy_id: string;
+  strategy_name: string;
+  target_stage: string;
+  headline: string;
+  narrative: string;
+  verdict: "ready" | "review" | "blocked" | "insufficient_data";
+  confidence: "high" | "medium" | "low";
+  primary_strengths: NarrativeStrength[];
+  primary_risks: NarrativeRisk[];
+  recommended_next_actions: string[];
+  source_scores: Record<string, number | null>;
+  disclaimer: string;
+  generated_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // M24: API Key types
 // ---------------------------------------------------------------------------

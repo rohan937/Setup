@@ -113,6 +113,8 @@ import type {
   BacktestRealityCheck,
   PromotionPacketExportResponse,
   StrategyScoreExplanationResponse,
+  RiskNarrativeResponse,
+  NarrativeRisk,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -152,6 +154,8 @@ import {
   refreshStrategyEvidenceVerification,
   refreshStrategyBacktestReality,
   getStrategyPromotionPacket,
+  getStrategyRiskNarrative,
+  getStrategyRiskNarrativeReport,
   getStrategyPromotionGates,
   getStrategyEvidenceGraph,
   createDefaultRegressionTests,
@@ -10354,6 +10358,217 @@ function BackendActionQueue({
   );
 }
 
+// M100: Research Risk Narrative
+function narrativeVerdictBadge(verdict: RiskNarrativeResponse["verdict"]): string {
+  switch (verdict) {
+    case "ready":   return "bg-teal-900/40 text-teal-300 border-teal-700/40";
+    case "review":  return "bg-yellow-900/40 text-yellow-200 border-yellow-700/40";
+    case "blocked": return "bg-red-900/40 text-red-300 border-red-700/40";
+    default:        return "bg-bg-600 text-text-muted border-border";
+  }
+}
+
+function narrativeVerdictLabel(verdict: RiskNarrativeResponse["verdict"]): string {
+  switch (verdict) {
+    case "ready":   return "Ready";
+    case "review":  return "Needs Review";
+    case "blocked": return "Blocked";
+    default:        return "Insufficient Data";
+  }
+}
+
+function narrativeRiskSeverityColor(severity: NarrativeRisk["severity"]): string {
+  switch (severity) {
+    case "critical": return "text-fidelity-low";
+    case "high":     return "text-fidelity-low";
+    case "medium":   return "text-fidelity-medium";
+    default:         return "text-text-muted";
+  }
+}
+
+const NARRATIVE_SCORE_FIELDS: { key: string; label: string }[] = [
+  { key: "reliability_score", label: "Reliability" },
+  { key: "backtest_reality_score", label: "Backtest Reality" },
+  { key: "evidence_verification_score", label: "Evidence Verification" },
+  { key: "readiness_score", label: "Readiness" },
+  { key: "shadow_drift_score", label: "Shadow Drift" },
+];
+
+function RiskNarrativePanel({
+  data,
+  loading,
+  error,
+  compact,
+  onGenerate,
+  onDownload,
+}: {
+  data: RiskNarrativeResponse | null;
+  loading: boolean;
+  error: string | null;
+  compact: boolean;
+  onGenerate: () => void;
+  onDownload?: (f: "json" | "markdown") => void;
+}) {
+  // ----- COMPACT (Overview) -----
+  if (compact) {
+    const topRisk = data?.primary_risks[0];
+    return (
+      <div className="rounded-card border border-border bg-bg-700">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+          <p className="caption">Research Risk Narrative</p>
+          <button
+            onClick={onGenerate}
+            disabled={loading}
+            className="rounded-control border border-border px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Generating…" : data ? "View" : "Generate"}
+          </button>
+        </div>
+        {error && (
+          <div className="border-b border-fidelity-low/20 bg-fidelity-low/5 px-4 py-2">
+            <p className="font-mono text-2xs text-fidelity-low">{error}</p>
+          </div>
+        )}
+        {data === null ? (
+          <div className="px-4 py-4">
+            <p className="font-mono text-2xs text-text-muted">
+              {loading ? "Generating narrative…" : "Summarize evidence quality and governance readiness in plain language."}
+            </p>
+          </div>
+        ) : (
+          <div className="p-4 space-y-2">
+            <p className="text-xs font-semibold text-text-primary leading-snug">{data.headline}</p>
+            <span className={`inline-block rounded-control border px-2 py-0.5 font-mono text-2xs ${narrativeVerdictBadge(data.verdict)}`}>
+              {narrativeVerdictLabel(data.verdict)}
+            </span>
+            {topRisk && (
+              <p className="font-mono text-2xs text-text-secondary">
+                <span className={narrativeRiskSeverityColor(topRisk.severity)}>●</span> {topRisk.label}
+              </p>
+            )}
+            <p className="font-mono text-2xs text-text-muted italic">View full narrative in the Governance tab →</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ----- FULL (Governance) -----
+  return (
+    <div className="rounded-card border border-border bg-bg-800 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-text-primary">Research Risk Narrative</p>
+        <button
+          onClick={onGenerate}
+          disabled={loading}
+          className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700 disabled:opacity-50"
+        >
+          {loading ? "Generating…" : data ? "Regenerate" : "Generate"}
+        </button>
+      </div>
+
+      {error && <p className="font-mono text-2xs text-red-400">{error}</p>}
+
+      {data === null ? (
+        <p className="text-xs text-text-muted">
+          {loading ? "Generating narrative…" : "Generate a research risk narrative to summarize evidence quality and governance readiness."}
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-text-primary leading-snug">{data.headline}</p>
+            <div className="flex flex-wrap gap-2">
+              <span className={`inline-block rounded-control border px-2 py-0.5 font-mono text-2xs ${narrativeVerdictBadge(data.verdict)}`}>
+                {narrativeVerdictLabel(data.verdict)}
+              </span>
+              <span className="inline-block rounded-control border border-border bg-bg-700 px-2 py-0.5 font-mono text-2xs text-text-muted">
+                Confidence: {data.confidence}
+              </span>
+            </div>
+          </div>
+
+          <p className="text-xs leading-relaxed text-text-secondary">{data.narrative}</p>
+
+          {data.primary_strengths.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="font-mono text-2xs uppercase tracking-wide text-text-muted">Primary strengths</p>
+              <ul className="space-y-1.5">
+                {data.primary_strengths.map((s) => (
+                  <li key={s.key} className="text-xs text-text-secondary">
+                    <span className="text-fidelity-high">✓</span> <span className="font-medium text-text-primary">{s.label}</span>
+                    <span className="text-text-muted"> — {s.evidence}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {data.primary_risks.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="font-mono text-2xs uppercase tracking-wide text-text-muted">Primary risks</p>
+              <ul className="space-y-1.5">
+                {data.primary_risks.map((r) => (
+                  <li key={r.key} className="text-xs text-text-secondary">
+                    <span className={narrativeRiskSeverityColor(r.severity)}>● {r.severity}</span>{" "}
+                    <span className="font-medium text-text-primary">{r.label}</span>
+                    <span className="text-text-muted"> — {r.evidence}</span>
+                    {r.recommended_action && (
+                      <span className="block pl-4 text-2xs text-text-muted">Action: {r.recommended_action}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {data.recommended_next_actions.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="font-mono text-2xs uppercase tracking-wide text-text-muted">Recommended next actions</p>
+              <ul className="list-disc space-y-1 pl-5">
+                {data.recommended_next_actions.map((a, i) => (
+                  <li key={i} className="text-xs text-text-secondary">{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <p className="font-mono text-2xs uppercase tracking-wide text-text-muted">Source scores</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {NARRATIVE_SCORE_FIELDS.map((f) => {
+                const val = data.source_scores[f.key];
+                return (
+                  <div key={f.key} className="rounded-control border border-border bg-bg-700 px-2 py-1.5">
+                    <p className="font-mono text-2xs text-text-muted">{f.label}</p>
+                    <p className={`mono-num text-sm ${scoreComponentColor(val ?? null)}`}>
+                      {val != null ? val.toFixed(1) : "—"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {onDownload && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button onClick={() => onDownload("markdown")}
+                className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700">
+                Export Markdown
+              </button>
+              <button onClick={() => onDownload("json")}
+                className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700">
+                Export JSON
+              </button>
+            </div>
+          )}
+
+          <p className="font-mono text-2xs text-text-muted italic">{data.disclaimer}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StrategyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -10384,6 +10599,11 @@ export default function StrategyDetail() {
 
   // M17: signal snapshot drawer state
   const [signalSnapshotDrawerOpen, setSignalSnapshotDrawerOpen] = useState(false);
+
+  // M100: research risk narrative
+  const [riskNarrative, setRiskNarrative] = useState<RiskNarrativeResponse | null>(null);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [narrativeError, setNarrativeError] = useState<string | null>(null);
 
   // M18/M19: reliability score state + history + trend
   const [computingReliability, setComputingReliability] = useState(false);
@@ -10657,6 +10877,35 @@ export default function StrategyDetail() {
     } catch (e: unknown) {
       setPacketError(e instanceof Error ? e.message : "Failed to generate packet.");
     } finally { setPacketGenerating(false); }
+  }
+
+  async function handleGenerateNarrative() {
+    if (!id) return;
+    setNarrativeLoading(true); setNarrativeError(null);
+    try {
+      const data = await getStrategyRiskNarrative(id);
+      setRiskNarrative(data);
+    } catch (e: unknown) {
+      setNarrativeError(e instanceof Error ? e.message : "Failed to generate narrative.");
+    } finally { setNarrativeLoading(false); }
+  }
+  async function handleDownloadNarrative(format: "json" | "markdown") {
+    if (!strategy) return;
+    try {
+      if (format === "markdown") {
+        const content = await getStrategyRiskNarrativeReport(strategy.id, "markdown") as string;
+        const blob = new Blob([content], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob); const a = document.createElement("a");
+        a.href = url; a.download = `risk-narrative-${strategy.slug}.md`; a.click(); URL.revokeObjectURL(url);
+      } else {
+        const data = await getStrategyRiskNarrative(strategy.id);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob); const a = document.createElement("a");
+        a.href = url; a.download = `risk-narrative-${strategy.slug}.json`; a.click(); URL.revokeObjectURL(url);
+      }
+    } catch (e: unknown) {
+      showPageFeedback(e instanceof Error ? e.message : "Download failed.", true);
+    }
   }
 
   async function handleCompareConfig() {
@@ -11448,6 +11697,9 @@ export default function StrategyDetail() {
       {/* ===================== OVERVIEW (continued) ===================== */}
       {onTab("overview") && (
         <>
+      {/* M100: Research Risk Narrative (compact) */}
+      <RiskNarrativePanel data={riskNarrative} loading={narrativeLoading} error={narrativeError} compact onGenerate={handleGenerateNarrative} />
+
       {/* M14: Report error */}
       {reportError && (
         <div className="rounded-control border border-fidelity-low/30 bg-fidelity-low/10 px-3 py-2 font-mono text-xs text-fidelity-low">
@@ -11903,6 +12155,9 @@ export default function StrategyDetail() {
         <p className="font-mono text-2xs text-text-muted italic">This packet is a deterministic research governance summary. It is not trading advice.</p>
       </div>
 
+      {/* M100: Research Risk Narrative (full) */}
+      <RiskNarrativePanel data={riskNarrative} loading={narrativeLoading} error={narrativeError} compact={false} onGenerate={handleGenerateNarrative} onDownload={handleDownloadNarrative} />
+
       {/* M51: Promotion Gates */}
       {promotionGates && (
         <PromotionGatesPanel
@@ -12065,6 +12320,23 @@ export default function StrategyDetail() {
           </button>
         </div>
         {packetError && <p className="font-mono text-2xs text-red-400">{packetError}</p>}
+      </div>
+
+      {/* M100: Research Risk Narrative Export */}
+      <div className="rounded-card border border-border bg-bg-800 p-4 space-y-3">
+        <p className="text-xs font-semibold text-text-primary">Research Risk Narrative</p>
+        <p className="text-xs text-text-muted">Download a plain-language summary of evidence quality and governance readiness, including primary strengths, risks, and recommended next actions.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => handleDownloadNarrative("markdown")}
+            className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700">
+            Export MD
+          </button>
+          <button onClick={() => handleDownloadNarrative("json")}
+            className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700">
+            Export JSON
+          </button>
+        </div>
+        <p className="font-mono text-2xs text-text-muted italic">This narrative is a deterministic research governance summary. It is not trading advice.</p>
       </div>
         </>
       )}

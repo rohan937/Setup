@@ -139,6 +139,7 @@ import type {
   SandboxResponse,
   SandboxScenarioRequest,
   StrategyScoreExplanationResponse,
+  RiskNarrativeResponse,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -1425,6 +1426,32 @@ export async function getStrategyScoreExplainability(
   strategyId: string,
 ): Promise<StrategyScoreExplanationResponse> {
   return request<StrategyScoreExplanationResponse>(`/api/strategies/${strategyId}/score-explainability`);
+}
+
+// M100: Research Risk Narrative
+export async function getStrategyRiskNarrative(
+  strategyId: string,
+  targetStage?: string,
+): Promise<RiskNarrativeResponse> {
+  const qs = targetStage ? `?target_stage=${targetStage}` : "";
+  return request<RiskNarrativeResponse>(`/api/strategies/${strategyId}/risk-narrative${qs}`);
+}
+
+export async function getStrategyRiskNarrativeReport(
+  strategyId: string,
+  format: "json" | "markdown" = "json",
+  targetStage?: string,
+): Promise<import("@/types").RiskNarrativeResponse | string> {
+  const qs = new URLSearchParams({ format });
+  if (targetStage) qs.set("target_stage", targetStage);
+  if (format === "markdown") {
+    const resp = await fetch(`${API_BASE_URL}/api/strategies/${strategyId}/risk-narrative/report?${qs}`, {
+      headers: { ...getAuthHeaders(), Accept: "text/markdown" },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.text();
+  }
+  return request(`/api/strategies/${strategyId}/risk-narrative/report?${qs}`);
 }
 
 // M76: strategy lifecycle inference
