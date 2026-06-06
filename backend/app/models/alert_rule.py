@@ -38,5 +38,10 @@ class AlertRule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     threshold: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     config_json: Mapped[dict | None] = mapped_column(JSON(), nullable=True)
 
+    # M85: default severity for alerts produced by this rule.
+    severity: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # M85: optional strategy scope for this rule; no FK.
+    strategy_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+
     # Relationships
     organization: Mapped[Organization] = relationship("Organization", back_populates="alert_rules")

@@ -68,6 +68,11 @@ class Alert(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     metadata_json: Mapped[dict | None] = mapped_column(JSON(), nullable=True)
 
+    # M85: suggested remediation text shown to the operator.
+    recommended_fix: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    # M85: str(auth_user.id) of the assigned owner; no FK (mirror workspace_member.user_id).
+    owner_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+
     # Relationships
     organization: Mapped[Organization] = relationship("Organization", back_populates="alerts")
     strategy: Mapped[Strategy | None] = relationship("Strategy", back_populates="alerts")

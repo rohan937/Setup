@@ -2,10 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
 import StrategyLifecycleBar from "@/components/StrategyLifecycleBar";
-import { getStrategies, getStrategyActionQueue, getStrategyLifecycle } from "@/lib/api";
+import {
+  getAlerts,
+  getAlertsSummary,
+  getStrategies,
+  getStrategyActionQueue,
+  getStrategyLifecycle,
+} from "@/lib/api";
 import type {
   ActionItem,
   ActionQueueResponse,
+  Alert,
+  AlertSummary,
   LifecycleBlocker,
   StrategyLifecycleResponse,
   Strategy,
@@ -211,6 +219,9 @@ export default function CommandCenter() {
         <p className="text-sm text-text-secondary">{queue.deterministic_summary}</p>
       )}
 
+      {/* M85: Reliability Alerts — org-wide top active alerts + severity mix */}
+      <ReliabilityAlertsSection />
+
       {/* Queue states */}
       {queueLoading && (
         <div className="rounded-card border border-border bg-bg-700 px-4 py-6">
@@ -342,6 +353,123 @@ function ActionRow({
           {item.action_label}
         </Link>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M85: Reliability Alerts section — top active alerts + severity distribution
+// ---------------------------------------------------------------------------
+
+const ALERT_SEV_DOT: Record<string, string> = {
+  info: "bg-bg-600 border border-border",
+  low: "bg-blue-400",
+  medium: "bg-yellow-400",
+  high: "bg-orange-400",
+  critical: "bg-red-500",
+};
+
+const ALERT_SEV_CHIP: Record<string, string> = {
+  critical: "border-red-700/40 bg-red-900/20 text-red-300",
+  high: "border-orange-700/40 bg-orange-900/20 text-orange-300",
+  medium: "border-yellow-700/40 bg-yellow-900/20 text-yellow-300",
+  low: "border-blue-700/40 bg-blue-900/20 text-blue-300",
+};
+
+function ReliabilityAlertsSection() {
+  const [alerts, setAlerts] = useState<Alert[] | null>(null);
+  const [summary, setSummary] = useState<AlertSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([getAlerts({ status: "open", limit: 8 }), getAlertsSummary()])
+      .then(([list, sum]) => {
+        setAlerts(list.items);
+        setSummary(sum);
+      })
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "Failed to load alerts"),
+      );
+  }, []);
+
+  return (
+    <div className="rounded-card border border-border bg-bg-700">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <div>
+          <p className="text-sm font-medium text-text-primary">Reliability Alerts</p>
+          <p className="text-2xs text-text-muted">
+            Top active reliability signals across every strategy
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {summary && (
+            <span className="rounded-chip border border-border-strong bg-bg-800 px-2 py-0.5 font-mono text-2xs text-text-secondary">
+              {summary.open} open
+            </span>
+          )}
+          <Link
+            to="/alerts"
+            className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+          >
+            View all →
+          </Link>
+        </div>
+      </div>
+
+      {/* Severity distribution */}
+      {summary && (
+        <div className="flex flex-wrap gap-1.5 border-b border-border px-4 py-2">
+          {(["critical", "high", "medium", "low"] as const).map((sev) => (
+            <span
+              key={sev}
+              className={`rounded-chip border px-1.5 py-0.5 font-mono text-2xs capitalize ${ALERT_SEV_CHIP[sev]}`}
+            >
+              {sev} {summary.by_severity[sev]}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="px-4 py-2">
+        {error && <p className="py-3 text-2xs text-amber-400">{error}</p>}
+        {!error && alerts === null && (
+          <p className="py-3 font-mono text-2xs text-text-muted animate-pulse">
+            Loading alerts…
+          </p>
+        )}
+        {!error && alerts !== null && alerts.length === 0 && (
+          <p className="py-3 font-mono text-2xs text-fidelity-high">
+            No open alerts — reliability signals are clear.
+          </p>
+        )}
+        {alerts && alerts.length > 0 && (
+          <ul className="divide-y divide-border">
+            {alerts.map((a) => (
+              <li key={a.id} className="flex items-start gap-2.5 py-2">
+                <span
+                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                    ALERT_SEV_DOT[a.severity] ?? "bg-bg-600"
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-text-primary leading-snug">{a.title}</p>
+                  <span className="font-mono text-2xs text-text-muted capitalize">
+                    {a.severity}
+                  </span>
+                </div>
+                {a.strategy_id && (
+                  <Link
+                    to={`/strategies/${a.strategy_id}`}
+                    className="shrink-0 font-mono text-2xs text-accent-500 hover:text-accent-300"
+                  >
+                    Open →
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

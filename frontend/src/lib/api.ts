@@ -8,6 +8,12 @@ import type {
   AlertGenerateResponse,
   AlertListResponse,
   AlertUpdateRequest,
+  AlertSummary,
+  StrategyAlertSummary,
+  AlertHistoryListResponse,
+  AlertRule,
+  AlertRuleListResponse,
+  AlertRuleUpdateRequest,
   ApiInfo,
   ApiError,
   BacktestAudit,
@@ -444,6 +450,96 @@ export async function updateAlert(
   return request<Alert>(`/api/alerts/${alertId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// M85: Research Reliability Alerts — summaries, lifecycle actions, history,
+// rules, and per-strategy generation/listing.
+// ---------------------------------------------------------------------------
+
+/** Org-level alert summary (status counts + severity breakdown). */
+export async function getAlertsSummary(): Promise<AlertSummary> {
+  return request<AlertSummary>("/api/alerts/summary");
+}
+
+/** Append-only history for a single alert. */
+export async function getAlertHistory(
+  alertId: string,
+): Promise<AlertHistoryListResponse> {
+  return request<AlertHistoryListResponse>(`/api/alerts/${alertId}/history`);
+}
+
+export async function acknowledgeAlert(
+  alertId: string,
+  note?: string,
+): Promise<Alert> {
+  return request<Alert>(`/api/alerts/${alertId}/acknowledge`, {
+    method: "POST",
+    body: JSON.stringify(note ? { note } : {}),
+  });
+}
+
+export async function resolveAlert(
+  alertId: string,
+  note?: string,
+): Promise<Alert> {
+  return request<Alert>(`/api/alerts/${alertId}/resolve`, {
+    method: "POST",
+    body: JSON.stringify(note ? { note } : {}),
+  });
+}
+
+export async function snoozeAlert(
+  alertId: string,
+  opts: { hours?: number; snoozed_until?: string; note?: string } = {},
+): Promise<Alert> {
+  return request<Alert>(`/api/alerts/${alertId}/snooze`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
+
+/** Generate alerts scoped to a single strategy. */
+export async function generateStrategyAlerts(
+  strategyId: string,
+): Promise<AlertGenerateResponse> {
+  return request<AlertGenerateResponse>(
+    `/api/strategies/${strategyId}/alerts/generate`,
+    { method: "POST" },
+  );
+}
+
+/** List alerts for a single strategy, optionally filtered by status. */
+export async function getStrategyAlerts(
+  strategyId: string,
+  status?: string,
+): Promise<AlertListResponse> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request<AlertListResponse>(`/api/strategies/${strategyId}/alerts${qs}`);
+}
+
+/** Per-strategy alert summary (includes promotion-blocking count). */
+export async function getStrategyAlertSummary(
+  strategyId: string,
+): Promise<StrategyAlertSummary> {
+  return request<StrategyAlertSummary>(
+    `/api/strategies/${strategyId}/alerts/summary`,
+  );
+}
+
+/** List the configurable alert rules. */
+export async function getAlertRules(): Promise<AlertRuleListResponse> {
+  return request<AlertRuleListResponse>("/api/alerts/rules");
+}
+
+export async function updateAlertRule(
+  ruleId: string,
+  body: AlertRuleUpdateRequest,
+): Promise<AlertRule> {
+  return request<AlertRule>(`/api/alerts/rules/${ruleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
   });
 }
 

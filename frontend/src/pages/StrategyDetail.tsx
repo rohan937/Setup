@@ -163,6 +163,7 @@ import ConfigSnapshotDrawer from "@/components/ConfigSnapshotDrawer";
 import EvidenceBundleUploader from "@/components/EvidenceBundleUploader";
 import EvidenceRepairModal from "@/components/EvidenceRepairModal";
 import StrategyCommandMenu from "@/components/StrategyCommandMenu";
+import StrategyAlertsCard from "@/components/StrategyAlertsCard";
 import { useAuth } from "@/context/AuthContext";
 import StrategyLifecycleBar from "@/components/StrategyLifecycleBar";
 import PanelEmptyState from "@/components/PanelEmptyState";
@@ -9789,6 +9790,9 @@ export default function StrategyDetail() {
               />
             </>
           )}
+
+          {/* M85: Open reliability alerts for this strategy */}
+          <StrategyAlertsCard strategyId={strategy.id} />
 
           {/* M64: Strategy Reliability Command Center */}
           <CommandCenterPanel strategyId={strategy.id} />

@@ -113,11 +113,24 @@ def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _verify_email(db: Session, email: str) -> None:
+    """Mark a user's email verified. RBAC and M84 email-verification are
+    orthogonal concerns; these role tests must not be blocked by the
+    verification gate, so users are verified before exercising write actions."""
+    from app.models.auth_user import AuthUser
+
+    user = db.query(AuthUser).filter(AuthUser.email == email).first()
+    if user is not None:
+        user.email_verified = True
+        db.commit()
+
+
 def _make_user(client: TestClient, db: Session, role: str) -> str:
     """Register a fresh user, force their membership role, return a token."""
     email = f"{role}-{uuid.uuid4().hex[:8]}@test.com"
     token = _register(client, email)
     _set_role(db, email, role)
+    _verify_email(db, email)
     return token
 
 

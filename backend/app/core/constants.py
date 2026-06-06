@@ -167,6 +167,14 @@ class AlertRuleType(StrEnum):
     missing_signal_evidence = "missing_signal_evidence"
     missing_universe_evidence = "missing_universe_evidence"
     missing_config_evidence = "missing_config_evidence"
+    # M85: lifecycle checks
+    regression_test_failed = "regression_test_failed"
+    evidence_sla_breached = "evidence_sla_breached"
+    reliability_report_missing = "reliability_report_missing"
+    promotion_gate_blocked = "promotion_gate_blocked"
+    paper_backtest_drift = "paper_backtest_drift"
+    assumption_health_degraded = "assumption_health_degraded"
+    run_missing_linked_evidence = "run_missing_linked_evidence"
 
 
 class AlertStatus(StrEnum):
@@ -174,6 +182,21 @@ class AlertStatus(StrEnum):
     acknowledged = "acknowledged"
     resolved = "resolved"
     snoozed = "snoozed"
+    dismissed = "dismissed"
+
+
+class AlertAction(StrEnum):
+    """Lifecycle actions recorded in the alert_history audit log (M85)."""
+
+    created = "created"
+    acknowledged = "acknowledged"
+    snoozed = "snoozed"
+    resolved = "resolved"
+    dismissed = "dismissed"
+    reopened = "reopened"
+    auto_resolved = "auto_resolved"
+    snooze_expired = "snooze_expired"
+    note = "note"
 
 
 class ReportType(StrEnum):

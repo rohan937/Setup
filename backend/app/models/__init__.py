@@ -22,6 +22,7 @@ from app.models.backtest_audit import BacktestAudit
 from app.models.backtest_issue import BacktestIssue
 from app.models.alert_rule import AlertRule
 from app.models.alert import Alert
+from app.models.alert_history import AlertHistory
 from app.models.report import Report
 from app.models.report_section import ReportSection
 from app.models.strategy_reliability_score import StrategyReliabilityScore
@@ -63,6 +64,7 @@ __all__ = [
     "BacktestIssue",
     "AlertRule",
     "Alert",
+    "AlertHistory",
     "Report",
     "ReportSection",
     "StrategyReliabilityScore",

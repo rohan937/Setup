@@ -1,7 +1,21 @@
-import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import type { Alert, AlertFilters, AlertListResponse } from "@/types";
-import { generateAlerts, getAlerts, updateAlert } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import type {
+  Alert,
+  AlertFilters,
+  AlertHistory,
+  AlertListResponse,
+  AlertSummary,
+} from "@/types";
+import {
+  acknowledgeAlert,
+  generateAlerts,
+  getAlertHistory,
+  getAlerts,
+  getAlertsSummary,
+  resolveAlert,
+  snoozeAlert,
+} from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Visual helpers
@@ -15,11 +29,26 @@ const SEVERITY_DOT: Record<string, string> = {
   critical: "bg-red-500",
 };
 
+const SEVERITY_CARD: Record<string, string> = {
+  critical: "border-red-700/40 bg-red-900/15",
+  high: "border-orange-700/40 bg-orange-900/15",
+  medium: "border-yellow-700/40 bg-yellow-900/15",
+  low: "border-blue-700/40 bg-blue-900/15",
+};
+
+const SEVERITY_TEXT: Record<string, string> = {
+  critical: "text-red-300",
+  high: "text-orange-300",
+  medium: "text-yellow-300",
+  low: "text-blue-300",
+};
+
 const STATUS_BADGE: Record<string, string> = {
   open: "bg-red-900/40 text-red-300 border-red-700/40",
   acknowledged: "bg-yellow-900/40 text-yellow-300 border-yellow-700/40",
   resolved: "bg-teal-900/40 text-teal-300 border-teal-700/40",
   snoozed: "bg-bg-600 text-text-muted border-border",
+  dismissed: "bg-bg-600 text-text-muted border-border",
 };
 
 const RULE_LABEL: Record<string, string> = {
@@ -41,20 +70,6 @@ const RULE_LABEL: Record<string, string> = {
   missing_config_evidence: "Missing Config",
 };
 
-const M33_RULE_TYPES = new Set([
-  "evidence_coverage_below_threshold",
-  "strategy_health_review_or_critical",
-  "reliability_score_deteriorating",
-  "data_health_deteriorating",
-  "signal_quality_deteriorating",
-  "backtest_trust_deteriorating",
-  "stale_strategy_run",
-  "repeated_failed_ingestion",
-  "missing_signal_evidence",
-  "missing_universe_evidence",
-  "missing_config_evidence",
-]);
-
 function SeverityDot({ severity }: { severity: string }) {
   return (
     <span
@@ -66,7 +81,9 @@ function SeverityDot({ severity }: { severity: string }) {
 function StatusBadge({ status }: { status: string }) {
   const style = STATUS_BADGE[status] ?? "bg-bg-600 text-text-muted border-border";
   return (
-    <span className={`inline-block rounded border px-1.5 py-0.5 font-mono text-2xs leading-none ${style}`}>
+    <span
+      className={`inline-block rounded border px-1.5 py-0.5 font-mono text-2xs leading-none ${style}`}
+    >
       {status}
     </span>
   );
@@ -91,33 +108,135 @@ function fmtTime(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// History drawer
+// ---------------------------------------------------------------------------
+
+function HistoryDrawer({
+  alert,
+  onClose,
+}: {
+  alert: Alert;
+  onClose: () => void;
+}) {
+  const [items, setItems] = useState<AlertHistory[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getAlertHistory(alert.id)
+      .then((r) => setItems(r.items))
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "Failed to load history"),
+      );
+  }, [alert.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
+      <div className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-bg-800 shadow-panel">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="min-w-0">
+            <p className="caption">Alert History</p>
+            <p className="mt-0.5 truncate text-sm text-text-primary">{alert.title}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 font-mono text-xs text-text-muted hover:text-text-primary"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          {error && (
+            <p className="font-mono text-2xs text-red-300">{error}</p>
+          )}
+          {!error && items === null && (
+            <p className="font-mono text-2xs text-text-muted">Loading…</p>
+          )}
+          {items && items.length === 0 && (
+            <p className="font-mono text-2xs text-text-muted">
+              No history recorded for this alert.
+            </p>
+          )}
+          {items && items.length > 0 && (
+            <ul className="space-y-3">
+              {items.map((h) => (
+                <li key={h.id} className="border-b border-border pb-3 last:border-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-2xs uppercase tracking-wider text-accent-400">
+                      {h.action.replace(/_/g, " ")}
+                    </span>
+                    <span className="font-mono text-2xs text-text-muted">
+                      {fmtTime(h.created_at)}
+                    </span>
+                  </div>
+                  {h.note && (
+                    <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+                      {h.note}
+                    </p>
+                  )}
+                  <p className="mt-1 font-mono text-2xs text-text-muted/70">
+                    {h.actor_user_id ? `actor ${h.actor_user_id.slice(0, 8)}` : "system"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Alert row
 // ---------------------------------------------------------------------------
 
 function AlertRow({
   alert,
-  onStatusChange,
+  onChanged,
+  onOpenHistory,
 }: {
   alert: Alert;
-  onStatusChange: (id: string, newStatus: string) => void;
+  onChanged: (msg: string, isError: boolean) => void;
+  onOpenHistory: (alert: Alert) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [transitioning, setTransitioning] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const suggestedCheck = (alert.metadata_json as any)?.suggested_check as string | undefined;
+  const suggestedCheck = (alert.metadata_json as any)?.suggested_check as
+    | string
+    | undefined;
+  const evidenceType = alert.evidence_type ?? alert.source_type;
+  const evidenceId = alert.evidence_id ?? alert.source_id;
 
-  async function handleTransition(newStatus: string) {
-    setTransitioning(true);
+  async function act(
+    kind: "acknowledge" | "resolve" | "snooze",
+    fn: () => Promise<unknown>,
+  ) {
+    setBusy(true);
     try {
-      await updateAlert(alert.id, { status: newStatus });
-      onStatusChange(alert.id, newStatus);
-    } catch {
-      // silent — UI stays unchanged
+      await fn();
+      const verb =
+        kind === "acknowledge"
+          ? "acknowledged"
+          : kind === "resolve"
+            ? "resolved"
+            : "snoozed for 24h";
+      onChanged(`Alert ${verb}.`, false);
+    } catch (e: unknown) {
+      onChanged(e instanceof Error ? e.message : "Action failed", true);
     } finally {
-      setTransitioning(false);
+      setBusy(false);
     }
   }
+
+  const canAck = alert.status === "open";
+  const canSnooze = alert.status === "open" || alert.status === "acknowledged";
+  const canResolve =
+    alert.status === "open" ||
+    alert.status === "acknowledged" ||
+    alert.status === "snoozed";
 
   return (
     <div className="group flex gap-3 border-b border-border py-3 last:border-0">
@@ -140,72 +259,134 @@ function AlertRow({
 
         {/* Secondary line */}
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          {alert.source_type && (
+          {alert.strategy_id && (
+            <Link
+              to={`/strategies/${alert.strategy_id}`}
+              className="font-mono text-2xs text-accent-500/80 hover:text-accent-300"
+            >
+              strategy {alert.strategy_id.slice(0, 8)}
+            </Link>
+          )}
+          {evidenceType && (
             <span className="font-mono text-2xs text-text-muted">
-              {alert.source_type.replace(/_/g, " ")}
+              {evidenceType.replace(/_/g, " ")}
             </span>
           )}
-          {alert.description && !expanded && (
-            <button
-              onClick={() => setExpanded(true)}
-              className="font-mono text-2xs text-text-muted/60 hover:text-text-muted"
-            >
-              details ▼
-            </button>
-          )}
-          {expanded && (
-            <button
-              onClick={() => setExpanded(false)}
-              className="font-mono text-2xs text-text-muted/60 hover:text-text-muted"
-            >
-              ▲
-            </button>
-          )}
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="font-mono text-2xs text-text-muted/60 hover:text-text-muted"
+          >
+            {expanded ? "▲ less" : "details ▼"}
+          </button>
         </div>
 
-        {/* Expanded description */}
-        {expanded && alert.description && (
-          <p className="mt-1.5 text-xs text-text-secondary leading-relaxed">
-            {alert.description}
-          </p>
-        )}
-
-        {/* Suggested check from metadata */}
-        {suggestedCheck && (
-          <p className="font-mono text-2xs text-accent-500/70 mt-0.5 italic">
-            {suggestedCheck}
-          </p>
-        )}
-
-        {/* Action buttons — only for non-resolved */}
-        {alert.status !== "resolved" && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {alert.status === "open" && (
-              <button
-                onClick={() => handleTransition("acknowledged")}
-                disabled={transitioning}
-                className="rounded border border-border bg-bg-600 px-2 py-0.5 font-mono text-2xs text-text-muted hover:border-yellow-600 hover:text-yellow-300 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Acknowledge
-              </button>
+        {/* Expanded detail */}
+        {expanded && (
+          <div className="mt-1.5 space-y-1.5">
+            {alert.description && (
+              <p className="text-xs text-text-secondary leading-relaxed">
+                {alert.description}
+              </p>
             )}
+            {alert.recommended_fix && (
+              <div className="rounded border border-accent-700/30 bg-accent-900/15 px-2.5 py-1.5">
+                <p className="font-mono text-2xs uppercase tracking-wider text-accent-400">
+                  Recommended fix
+                </p>
+                <p className="mt-0.5 text-xs text-text-secondary leading-relaxed">
+                  {alert.recommended_fix}
+                </p>
+              </div>
+            )}
+            {(evidenceType || evidenceId) && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-2xs text-text-muted">
+                  Evidence: {evidenceType ?? "—"}
+                  {evidenceId ? ` · ${evidenceId.slice(0, 8)}` : ""}
+                </span>
+                {alert.strategy_id && (
+                  <Link
+                    to={`/strategies/${alert.strategy_id}`}
+                    className="font-mono text-2xs text-accent-500 hover:text-accent-300"
+                  >
+                    Open evidence →
+                  </Link>
+                )}
+              </div>
+            )}
+            {suggestedCheck && (
+              <p className="font-mono text-2xs italic text-accent-500/70">
+                {suggestedCheck}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {canAck && (
             <button
-              onClick={() => handleTransition("resolved")}
-              disabled={transitioning}
+              onClick={() => act("acknowledge", () => acknowledgeAlert(alert.id))}
+              disabled={busy}
+              className="rounded border border-border bg-bg-600 px-2 py-0.5 font-mono text-2xs text-text-muted hover:border-yellow-600 hover:text-yellow-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Acknowledge
+            </button>
+          )}
+          {canSnooze && (
+            <button
+              onClick={() => act("snooze", () => snoozeAlert(alert.id, { hours: 24 }))}
+              disabled={busy}
+              className="rounded border border-border bg-bg-600 px-2 py-0.5 font-mono text-2xs text-text-muted hover:border-accent-600 hover:text-accent-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Snooze 24h
+            </button>
+          )}
+          {canResolve && (
+            <button
+              onClick={() => act("resolve", () => resolveAlert(alert.id))}
+              disabled={busy}
               className="rounded border border-border bg-bg-600 px-2 py-0.5 font-mono text-2xs text-text-muted hover:border-teal-600 hover:text-teal-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Resolve
             </button>
-          </div>
-        )}
+          )}
+          <button
+            onClick={() => onOpenHistory(alert)}
+            className="rounded border border-border bg-bg-600 px-2 py-0.5 font-mono text-2xs text-text-muted hover:border-border-strong hover:text-text-secondary"
+          >
+            History
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Filter select
+// Summary cards + filters
 // ---------------------------------------------------------------------------
+
+function SummaryCard({
+  severity,
+  count,
+}: {
+  severity: string;
+  count: number;
+}) {
+  return (
+    <div
+      className={`rounded-card border px-3 py-2.5 ${SEVERITY_CARD[severity] ?? "border-border bg-bg-700"}`}
+    >
+      <p
+        className={`font-mono text-2xs uppercase tracking-wider ${SEVERITY_TEXT[severity] ?? "text-text-muted"}`}
+      >
+        {severity}
+      </p>
+      <p className="mt-0.5 text-lg font-semibold text-text-primary">{count}</p>
+    </div>
+  );
+}
 
 function FilterSelect({
   label,
@@ -239,17 +420,17 @@ function FilterSelect({
 }
 
 // ---------------------------------------------------------------------------
-// Main page
+// Constants
 // ---------------------------------------------------------------------------
 
 const PAGE_SIZE = 50;
 
-const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
+const STATUS_TABS = [
   { value: "open", label: "Open" },
   { value: "acknowledged", label: "Acknowledged" },
-  { value: "resolved", label: "Resolved" },
   { value: "snoozed", label: "Snoozed" },
+  { value: "resolved", label: "Resolved" },
+  { value: "", label: "All" },
 ];
 
 const SEVERITY_OPTIONS = [
@@ -262,54 +443,54 @@ const SEVERITY_OPTIONS = [
 
 const RULE_TYPE_OPTIONS = [
   { value: "", label: "All rule types" },
-  { value: "data_health_below_threshold", label: "Data Health" },
-  { value: "backtest_trust_below_threshold", label: "Backtest Trust" },
-  { value: "data_quality_issue_high_or_critical", label: "Data Quality" },
-  { value: "backtest_issue_high_or_critical", label: "Backtest Issue" },
-  { value: "strategy_run_missing_dataset_evidence", label: "Missing Evidence" },
-  { value: "evidence_coverage_below_threshold", label: "Evidence Coverage" },
-  { value: "strategy_health_review_or_critical", label: "Strategy Health" },
-  { value: "reliability_score_deteriorating", label: "Reliability Trend" },
-  { value: "data_health_deteriorating", label: "Data Health Trend" },
-  { value: "signal_quality_deteriorating", label: "Signal Quality Trend" },
-  { value: "backtest_trust_deteriorating", label: "Backtest Trust Trend" },
-  { value: "stale_strategy_run", label: "Stale Run" },
-  { value: "repeated_failed_ingestion", label: "Ingestion Failures" },
-  { value: "missing_signal_evidence", label: "Missing Signal" },
-  { value: "missing_universe_evidence", label: "Missing Universe" },
-  { value: "missing_config_evidence", label: "Missing Config" },
+  ...Object.entries(RULE_LABEL).map(([value, label]) => ({ value, label })),
 ];
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
 export default function Alerts() {
   const [searchParams] = useSearchParams();
 
-  const [status, setStatus] = useState(searchParams.get("status") ?? "");
+  const [status, setStatus] = useState(searchParams.get("status") ?? "open");
   const [severity, setSeverity] = useState(searchParams.get("severity") ?? "");
   const [ruleType, setRuleType] = useState(searchParams.get("rule_type") ?? "");
+  const [strategyId, setStrategyId] = useState(searchParams.get("strategy_id") ?? "");
 
   const [response, setResponse] = useState<AlertListResponse | null>(null);
   const [items, setItems] = useState<Alert[]>([]);
+  const [summary, setSummary] = useState<AlertSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generateResult, setGenerateResult] = useState<{
     created: number;
-    skipped: number;
+    resolved: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ msg: string; isError: boolean } | null>(null);
+  const [historyAlert, setHistoryAlert] = useState<Alert | null>(null);
 
-  const filtersRef = useRef({ status, severity, ruleType });
-  filtersRef.current = { status, severity, ruleType };
+  const buildFilters = useCallback(
+    (offset = 0): AlertFilters => {
+      const f: AlertFilters = { limit: PAGE_SIZE, offset };
+      if (status) f.status = status;
+      if (severity) f.severity = severity;
+      if (ruleType) f.rule_type = ruleType;
+      if (strategyId.trim()) f.strategy_id = strategyId.trim();
+      return f;
+    },
+    [status, severity, ruleType, strategyId],
+  );
 
-  function buildFilters(offset = 0): AlertFilters {
-    const f: AlertFilters = { limit: PAGE_SIZE, offset };
-    if (status) f.status = status;
-    if (severity) f.severity = severity;
-    if (ruleType) f.rule_type = ruleType;
-    return f;
-  }
+  const refreshSummary = useCallback(() => {
+    getAlertsSummary()
+      .then(setSummary)
+      .catch(() => {});
+  }, []);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     setLoading(true);
     setError(null);
     getAlerts(buildFilters(0))
@@ -321,14 +502,20 @@ export default function Alerts() {
         setError(e instanceof Error ? e.message : "Failed to load alerts"),
       )
       .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, severity, ruleType]);
+  }, [buildFilters]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  useEffect(() => {
+    refreshSummary();
+  }, [refreshSummary]);
 
   function handleLoadMore() {
     if (!response) return;
-    const nextOffset = items.length;
     setLoadingMore(true);
-    getAlerts(buildFilters(nextOffset))
+    getAlerts(buildFilters(items.length))
       .then((resp) => {
         setResponse(resp);
         setItems((prev) => [...prev, ...resp.items]);
@@ -340,16 +527,15 @@ export default function Alerts() {
   async function handleGenerate() {
     setGenerating(true);
     setGenerateResult(null);
+    setError(null);
     try {
       const result = await generateAlerts();
       setGenerateResult({
         created: result.alerts_created,
-        skipped: result.alerts_skipped_duplicate,
+        resolved: result.alerts_auto_resolved,
       });
-      // Reload the list
-      const resp = await getAlerts(buildFilters(0));
-      setResponse(resp);
-      setItems(resp.items);
+      reload();
+      refreshSummary();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Generate failed");
     } finally {
@@ -357,21 +543,21 @@ export default function Alerts() {
     }
   }
 
-  function handleStatusChange(id: string, newStatus: string) {
-    setItems((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status: newStatus as Alert["status"] } : a)),
-    );
-    // Also refresh total counts
-    getAlerts(buildFilters(0)).then((resp) => {
-      setResponse(resp);
-    }).catch(() => {});
+  function handleChanged(msg: string, isError: boolean) {
+    setNotice({ msg, isError });
+    if (!isError) {
+      reload();
+      refreshSummary();
+    }
   }
 
   const hasMore = response !== null && items.length < response.total;
-
-  // Count evidence quality alerts (M33 rule types) when no rule_type filter is active
-  const evidenceQualityCount =
-    !ruleType ? items.filter((a) => M33_RULE_TYPES.has(a.rule_type)).length : 0;
+  const totalOpen = summary
+    ? summary.by_severity.critical +
+      summary.by_severity.high +
+      summary.by_severity.medium +
+      summary.by_severity.low
+    : null;
 
   return (
     <div className="space-y-5">
@@ -381,14 +567,14 @@ export default function Alerts() {
           <p className="caption mb-1">Reliability Signals</p>
           <h1 className="text-xl font-semibold text-text-primary">Alerts</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Deterministic alerts raised by the evidence engine — threshold
-            breaches, data quality issues, and missing instrumentation.
+            Deterministic reliability alerts raised by the evidence engine —
+            threshold breaches, data quality issues, and missing instrumentation.
           </p>
         </div>
         <div className="flex items-center gap-3">
           {generateResult && (
             <span className="font-mono text-2xs text-text-muted">
-              +{generateResult.created} created · {generateResult.skipped} skipped
+              +{generateResult.created} created · {generateResult.resolved} auto-resolved
             </span>
           )}
           <button
@@ -396,10 +582,28 @@ export default function Alerts() {
             disabled={generating}
             className="rounded border border-accent-600 bg-accent-900/30 px-3 py-1.5 font-mono text-xs text-accent-300 hover:bg-accent-900/50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {generating ? "Generating…" : "Run alert check"}
+            {generating ? "Generating…" : "Generate alerts"}
           </button>
         </div>
       </div>
+
+      {/* Severity summary cards */}
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <SummaryCard severity="critical" count={summary.by_severity.critical} />
+          <SummaryCard severity="high" count={summary.by_severity.high} />
+          <SummaryCard severity="medium" count={summary.by_severity.medium} />
+          <SummaryCard severity="low" count={summary.by_severity.low} />
+          <div className="rounded-card border border-border bg-bg-700 px-3 py-2.5">
+            <p className="font-mono text-2xs uppercase tracking-wider text-text-muted">
+              Total open
+            </p>
+            <p className="mt-0.5 text-lg font-semibold text-text-primary">
+              {totalOpen ?? summary.open}
+            </p>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="rounded border border-red-800 bg-red-900/20 px-4 py-3 font-mono text-xs text-red-300">
@@ -407,33 +611,63 @@ export default function Alerts() {
         </div>
       )}
 
-      {/* Evidence quality banner */}
-      {!loading && evidenceQualityCount > 0 && (
-        <div className="rounded border border-accent-700/40 bg-accent-900/20 px-4 py-2 font-mono text-2xs text-accent-400">
-          {evidenceQualityCount} evidence quality alert{evidenceQualityCount !== 1 ? "s" : ""}. Run evidence checks on Strategy Detail pages.
+      {notice && (
+        <div
+          className={`rounded border px-4 py-2 font-mono text-2xs ${
+            notice.isError
+              ? "border-red-800 bg-red-900/20 text-red-300"
+              : "border-teal-700/40 bg-teal-900/20 text-teal-300"
+          }`}
+        >
+          {notice.msg}
         </div>
       )}
+
+      {/* Status tabs */}
+      <div className="flex flex-wrap gap-1 border-b border-border">
+        {STATUS_TABS.map((t) => {
+          const active = status === t.value;
+          return (
+            <button
+              key={t.value || "all"}
+              onClick={() => setStatus(t.value)}
+              className={`border-b-2 px-3 py-1.5 font-mono text-xs transition-colors ${
+                active
+                  ? "border-accent-500 text-text-primary"
+                  : "border-transparent text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-4 rounded-card border border-border bg-bg-700 px-4 py-3">
         <FilterSelect
-          label="Status"
-          value={status}
-          options={STATUS_OPTIONS}
-          onChange={(v) => setStatus(v)}
-        />
-        <FilterSelect
           label="Severity"
           value={severity}
           options={SEVERITY_OPTIONS}
-          onChange={(v) => setSeverity(v)}
+          onChange={setSeverity}
         />
         <FilterSelect
           label="Rule"
           value={ruleType}
           options={RULE_TYPE_OPTIONS}
-          onChange={(v) => setRuleType(v)}
+          onChange={setRuleType}
         />
+        <label className="flex items-center gap-1.5">
+          <span className="font-mono text-2xs text-text-muted uppercase tracking-wider">
+            Strategy
+          </span>
+          <input
+            value={strategyId}
+            onChange={(e) => setStrategyId(e.target.value)}
+            placeholder="strategy_id"
+            className="w-48 rounded border border-border bg-bg-800 px-2 py-1 font-mono text-2xs text-text-secondary placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent-500"
+          />
+        </label>
         <span className="ml-auto font-mono text-2xs text-text-muted">
           {response
             ? `${response.total.toLocaleString()} alert${response.total !== 1 ? "s" : ""}`
@@ -452,11 +686,9 @@ export default function Alerts() {
             <p className="font-mono text-2xs text-text-muted">
               No alerts match the selected filters.
             </p>
-            {!status && !severity && !ruleType && (
-              <p className="mt-2 font-mono text-2xs text-text-muted/60">
-                Run an alert check to generate alerts from existing evidence.
-              </p>
-            )}
+            <p className="mt-2 font-mono text-2xs text-text-muted/60">
+              Generate alerts to surface reliability signals from existing evidence.
+            </p>
           </div>
         ) : (
           <div className="px-4">
@@ -464,13 +696,13 @@ export default function Alerts() {
               <AlertRow
                 key={alert.id}
                 alert={alert}
-                onStatusChange={handleStatusChange}
+                onChanged={handleChanged}
+                onOpenHistory={setHistoryAlert}
               />
             ))}
           </div>
         )}
 
-        {/* Load more footer */}
         {hasMore && !loading && (
           <div className="border-t border-border px-4 py-3 text-center">
             <button
@@ -485,6 +717,15 @@ export default function Alerts() {
           </div>
         )}
       </div>
+
+      {/* Footer disclaimer */}
+      <p className="pb-2 font-mono text-2xs text-text-muted">
+        Alerts are research reliability signals, not trading recommendations.
+      </p>
+
+      {historyAlert && (
+        <HistoryDrawer alert={historyAlert} onClose={() => setHistoryAlert(null)} />
+      )}
     </div>
   );
 }

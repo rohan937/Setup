@@ -33,6 +33,7 @@ import {
   createDefaultRegressionTests,
   exportStrategyEvidence,
   generateResearchReviewCases,
+  generateStrategyAlerts,
   refreshStrategyReliabilitySnapshot,
   runBacktestAudit,
   runStrategyRegressionTests,
@@ -214,6 +215,18 @@ export default function StrategyCommandMenu({
         force
           ? "Reliability snapshot force-refreshed."
           : "Reliability snapshot refreshed.",
+      );
+      onRefreshed();
+    });
+  }
+
+  async function handleGenerateAlerts() {
+    await run("gen-alerts", async () => {
+      const r = await generateStrategyAlerts(strategyId);
+      onFeedback(
+        `Alert check complete — ${r.alerts_created} created, ` +
+          `${r.alerts_auto_resolved} auto-resolved, ` +
+          `${r.total_alerts_open} open.`,
       );
       onRefreshed();
     });
@@ -407,6 +420,12 @@ export default function StrategyCommandMenu({
                 <span className="shrink-0 text-text-muted/30 text-2xs">no runs</span>
               </span>
             )}
+            <WriteBtn
+              actionKey="gen-alerts"
+              text="Generate alerts for this strategy"
+              onClick={handleGenerateAlerts}
+              title="Run the reliability alert check scoped to this strategy"
+            />
 
             <Divider />
 

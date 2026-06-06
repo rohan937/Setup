@@ -782,7 +782,12 @@ export interface DashboardSummary {
 // Alerts Engine (M11)
 // ---------------------------------------------------------------------------
 
-export type AlertStatus = "open" | "acknowledged" | "resolved" | "snoozed";
+export type AlertStatus =
+  | "open"
+  | "acknowledged"
+  | "resolved"
+  | "snoozed"
+  | "dismissed";
 
 export type AlertRuleType =
   | "data_health_below_threshold"
@@ -818,8 +823,87 @@ export interface Alert {
   resolved_at: string | null;
   snoozed_until: string | null;
   metadata_json: Record<string, unknown> | null;
+  /** M85: deterministic recommended remediation, null when none applies. */
+  recommended_fix: string | null;
+  /** M85: assigned owner user id, null when unassigned. */
+  owner_user_id: string | null;
+  /** M85: type of the linked evidence object (alias of source_type). */
+  evidence_type: string | null;
+  /** M85: id of the linked evidence object (alias of source_id). */
+  evidence_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// M85: Alert history, rules, and summaries
+// ---------------------------------------------------------------------------
+
+export interface AlertHistory {
+  id: string;
+  alert_id: string;
+  actor_user_id: string | null;
+  action: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface AlertHistoryListResponse {
+  items: AlertHistory[];
+}
+
+export interface AlertRule {
+  id: string;
+  rule_key: string;
+  enabled: boolean;
+  severity: string;
+  threshold_json: Record<string, unknown> | null;
+  strategy_id: string | null;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertRuleListResponse {
+  items: AlertRule[];
+}
+
+export interface AlertSeverityBreakdown {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface AlertSummary {
+  open: number;
+  acknowledged: number;
+  snoozed: number;
+  resolved: number;
+  by_severity: AlertSeverityBreakdown;
+}
+
+export interface StrategyAlertSummary extends AlertSummary {
+  blocking_promotion: number;
+}
+
+export interface AlertActionRequest {
+  note?: string;
+}
+
+export interface AlertSnoozeRequest {
+  hours?: number;
+  snoozed_until?: string;
+  note?: string;
+}
+
+export interface AlertRuleUpdateRequest {
+  enabled?: boolean;
+  severity?: string;
+  threshold_json?: Record<string, unknown>;
+  name?: string;
+  description?: string;
 }
 
 export interface AlertListResponse {
@@ -832,6 +916,8 @@ export interface AlertListResponse {
 export interface AlertGenerateResponse {
   alerts_created: number;
   alerts_skipped_duplicate: number;
+  /** M85: alerts auto-resolved because their condition no longer holds. */
+  alerts_auto_resolved: number;
   total_alerts_open: number;
 }
 
@@ -845,7 +931,9 @@ export interface AlertFilters {
 }
 
 export interface AlertUpdateRequest {
-  status: string;
+  status?: string;
+  owner_user_id?: string | null;
+  note?: string;
 }
 
 export interface BacktestAuditListItem {
