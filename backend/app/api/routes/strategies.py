@@ -252,6 +252,21 @@ from app.services.promotion_gates import (
     PromotionGateCheckData,
 )
 
+# M95: Strategy Lineage Diff endpoints
+from app.schemas.lineage_diff import (  # noqa: E402
+    ComparableVersionsResponse,
+    ComparableVersionItem,
+    LineageDiffResponse,
+    LineageDiffSection,
+    LineageDiffItem,
+    LineageDiffReportResponse,
+)
+from app.services.strategy_lineage_diff import (  # noqa: E402
+    list_comparable_versions,
+    compare_strategy_versions,
+    render_lineage_diff_report,
+)
+
 router = APIRouter(tags=["strategies"])
 
 # ---------------------------------------------------------------------------
@@ -3741,6 +3756,126 @@ def get_strategy_version_lineage_endpoint(
         ),
         versions=[_version_schema(v) for v in result.versions],
         transitions=[_transition_schema(t) for t in result.transitions],
+    )
+
+
+# ---------------------------------------------------------------------------
+# M95: GET /api/strategies/{strategy_id}/lineage/versions
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/lineage/versions",
+    response_model=ComparableVersionsResponse,
+    tags=["strategies"],
+)
+def get_lineage_versions(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> ComparableVersionsResponse:
+    """Return the list of versions available for lineage diffing."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    versions = list_comparable_versions(strategy_id, db)
+    return ComparableVersionsResponse(
+        strategy_id=str(strategy_id),
+        versions=[ComparableVersionItem(**v) for v in versions],
+        comparable=len(versions) >= 2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M95: GET /api/strategies/{strategy_id}/lineage/diff
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/strategies/{strategy_id}/lineage/diff",
+    response_model=LineageDiffResponse,
+    tags=["strategies"],
+)
+def get_lineage_diff(
+    strategy_id: uuid.UUID,
+    base_version: str = Query(...),
+    comparison_version: str = Query(...),
+    db: Session = Depends(get_db),
+) -> LineageDiffResponse:
+    """Return a structured diff between two strategy versions."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        diff = compare_strategy_versions(strategy_id, base_version, comparison_version, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return LineageDiffResponse(
+        sections=[
+            LineageDiffSection(
+                key=s["key"],
+                title=s["title"],
+                status=s["status"],
+                items=[LineageDiffItem(**item) for item in s.get("items", [])],
+            )
+            for s in diff.get("sections", [])
+        ],
+        metric_deltas=[LineageDiffItem(**m) for m in diff.get("metric_deltas", [])],
+        blockers_introduced=[LineageDiffItem(**b) for b in diff.get("blockers_introduced", [])],
+        blockers_resolved=[LineageDiffItem(**b) for b in diff.get("blockers_resolved", [])],
+        **{
+            k: diff[k]
+            for k in diff
+            if k not in ("sections", "metric_deltas", "blockers_introduced", "blockers_resolved")
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# M95: GET /api/strategies/{strategy_id}/lineage/diff/report
+# ---------------------------------------------------------------------------
+
+from fastapi.responses import PlainTextResponse  # noqa: E402
+
+
+@router.get(
+    "/strategies/{strategy_id}/lineage/diff/report",
+    tags=["strategies"],
+)
+def get_lineage_diff_report(
+    strategy_id: uuid.UUID,
+    base_version: str = Query(...),
+    comparison_version: str = Query(...),
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+):
+    """Return a rendered lineage diff report in json or markdown format."""
+    if format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        diff = compare_strategy_versions(strategy_id, base_version, comparison_version, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    content = render_lineage_diff_report(diff, strategy.name, format=format)
+
+    if format == "markdown":
+        return PlainTextResponse(content=content, media_type="text/markdown")
+
+    return LineageDiffReportResponse(
+        strategy_id=str(strategy_id),
+        base_version=base_version,
+        comparison_version=comparison_version,
+        format="json",
+        content=content,
+        generated_at=diff["generated_at"],
     )
 
 

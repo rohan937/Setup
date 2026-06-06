@@ -33,6 +33,9 @@ import type {
   StrategyTimelineDrilldownResponse,
   StrategyVersion,
   StrategyVersionLineageResponse,
+  LineageDiffResponse,
+  LineageDiffItem,
+  LineageDiffSection,
   StrategyVersionLineageItem,
   StrategyVersionTransition,
   TrendPoint,
@@ -118,6 +121,8 @@ import {
   getStrategyEvidenceTrends,
   getStrategyTimelineDrilldown,
   getStrategyVersionLineage,
+  getLineageDiff,
+  getLineageDiffReport,
   ingestEvidenceBundle,
   runBacktestAudit,
   getSignalSnapshotQualityDrilldown,
@@ -3336,6 +3341,193 @@ function VersionLineagePanel({ lineage }: { lineage: StrategyVersionLineageRespo
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M95: Version Diff Panel
+// ---------------------------------------------------------------------------
+
+function VersionDiffPanel({
+  versions,
+  baseVersion,
+  comparisonVersion,
+  onBaseChange,
+  onComparisonChange,
+  onCompare,
+  onDownload,
+  loading,
+  reportLoading,
+  diff,
+  error,
+}: {
+  versions: { version_label: string }[];
+  baseVersion: string;
+  comparisonVersion: string;
+  onBaseChange: (v: string) => void;
+  onComparisonChange: (v: string) => void;
+  onCompare: () => void;
+  onDownload: (format: "json" | "markdown") => void;
+  loading: boolean;
+  reportLoading: boolean;
+  diff: LineageDiffResponse | null;
+  error: string | null;
+}) {
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+
+  const verdictColors: Record<string, string> = {
+    improved: "text-teal-400 bg-teal-900/20 border-teal-700/30",
+    mixed: "text-amber-400 bg-amber-900/20 border-amber-700/30",
+    worse: "text-red-400 bg-red-900/20 border-red-700/30",
+    unchanged: "text-text-muted bg-bg-700 border-border",
+    insufficient_data: "text-text-muted bg-bg-700 border-border",
+  };
+
+  const statusIcon = (s: string) => s === "improved" ? "↑" : s === "worsened" || s === "worse" ? "↓" : s === "introduced" ? "⚠" : s === "resolved" ? "✓" : "~";
+
+  if (versions.length < 2) {
+    return (
+      <PanelEmptyState
+        title="Version comparison not available"
+        description="Create another strategy version to compare research changes over time. Each version captures a snapshot of config, universe, signals, and run evidence."
+      />
+    );
+  }
+
+  return (
+    <div className="rounded-card border border-border bg-bg-card p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wide">Compare Versions</h3>
+      </div>
+
+      {/* Version selectors */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={baseVersion} onChange={(e) => onBaseChange(e.target.value)}
+          className="rounded-control border border-border bg-bg-700 px-2 py-1.5 text-xs text-text-primary focus:outline-none">
+          <option value="">Base version</option>
+          {versions.map((v) => <option key={v.version_label} value={v.version_label}>{v.version_label}</option>)}
+        </select>
+        <span className="font-mono text-xs text-text-muted">→</span>
+        <select value={comparisonVersion} onChange={(e) => onComparisonChange(e.target.value)}
+          className="rounded-control border border-border bg-bg-700 px-2 py-1.5 text-xs text-text-primary focus:outline-none">
+          <option value="">Comparison version</option>
+          {versions.map((v) => <option key={v.version_label} value={v.version_label}>{v.version_label}</option>)}
+        </select>
+        <button onClick={onCompare} disabled={loading || !baseVersion || !comparisonVersion}
+          className="rounded-control border border-accent-500/40 bg-accent-500/10 px-3 py-1.5 text-xs text-accent-400 hover:bg-accent-500/20 disabled:opacity-50">
+          {loading ? "Comparing..." : "Compare"}
+        </button>
+      </div>
+
+      {error && <p className="font-mono text-2xs text-red-400">{error}</p>}
+
+      {diff && (
+        <>
+          {/* Verdict + summary */}
+          <div className="flex items-start gap-4 flex-wrap">
+            <span className={`font-mono text-xs font-semibold px-2 py-0.5 rounded border ${verdictColors[diff.verdict] ?? verdictColors.unchanged}`}>
+              {diff.verdict.replace(/_/g, " ")}
+            </span>
+            {diff.trust_delta !== null && (
+              <span className={`font-mono text-xs ${diff.trust_delta > 0 ? "text-teal-400" : diff.trust_delta < 0 ? "text-red-400" : "text-text-muted"}`}>
+                Trust {diff.trust_delta > 0 ? "+" : ""}{diff.trust_delta?.toFixed(1)}
+              </span>
+            )}
+          </div>
+          <p className="font-mono text-2xs text-text-secondary">{diff.summary}</p>
+
+          {/* Blockers introduced */}
+          {diff.blockers_introduced.length > 0 && (
+            <div className="rounded border border-red-700/30 bg-red-900/10 px-3 py-2 space-y-1">
+              <p className="font-mono text-2xs font-semibold text-red-400">New Risks ({diff.blockers_introduced.length})</p>
+              {diff.blockers_introduced.map((b: LineageDiffItem) => (
+                <p key={b.key} className="font-mono text-2xs text-red-300">⚠ {b.explanation}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Metric deltas */}
+          {diff.metric_deltas.length > 0 && (
+            <div className="overflow-x-auto">
+              <p className="caption mb-1.5">Run Metric Changes</p>
+              <table className="w-full font-mono text-2xs border-collapse">
+                <thead><tr className="border-b border-border text-text-muted">
+                  <th className="text-left py-1 pr-3">Metric</th>
+                  <th className="text-right py-1 pr-3">Base</th>
+                  <th className="text-right py-1 pr-3">New</th>
+                  <th className="text-right py-1 pr-3">Δ</th>
+                  <th className="text-center py-1">Dir</th>
+                </tr></thead>
+                <tbody>
+                  {diff.metric_deltas.map((m: LineageDiffItem) => (
+                    <tr key={m.key} className="border-b border-border/40">
+                      <td className="py-1 pr-3 text-text-primary">{m.label}</td>
+                      <td className="py-1 pr-3 text-right text-text-muted mono-num">{m.base_value !== null ? String(m.base_value) : "—"}</td>
+                      <td className="py-1 pr-3 text-right text-text-muted mono-num">{m.comparison_value !== null ? String(m.comparison_value) : "—"}</td>
+                      <td className={`py-1 pr-3 text-right mono-num ${m.status === "improved" ? "text-teal-400" : m.status === "worsened" ? "text-red-400" : "text-text-muted"}`}>
+                        {m.delta !== null ? String(m.delta) : "—"}
+                      </td>
+                      <td className="py-1 text-center">{statusIcon(m.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Sections */}
+          {diff.sections.map((section: LineageDiffSection) => (
+            <div key={section.key}>
+              <button
+                className="flex w-full items-center gap-2 font-mono text-2xs text-text-secondary hover:text-text-primary"
+                onClick={() => setExpandedSection(expandedSection === section.key ? null : section.key)}
+              >
+                <span>{expandedSection === section.key ? "▾" : "▸"}</span>
+                <span>{section.title}</span>
+                <span className={`ml-1 px-1.5 py-0.5 rounded text-2xs font-semibold border ${
+                  section.status === "improved" ? "text-teal-400 bg-teal-900/20 border-teal-700/30" :
+                  section.status === "worse" ? "text-red-400 bg-red-900/20 border-red-700/30" :
+                  "text-text-muted bg-bg-700 border-border"
+                }`}>{section.status}</span>
+              </button>
+              {expandedSection === section.key && section.items.length > 0 && (
+                <ul className="mt-2 space-y-1 pl-4">
+                  {section.items.map((item: LineageDiffItem) => (
+                    <li key={item.key} className="font-mono text-2xs text-text-muted">
+                      {statusIcon(item.status)} {item.explanation}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+
+          {/* Suggested actions */}
+          {diff.suggested_actions.length > 0 && (
+            <div>
+              <p className="caption mb-1">Suggested Actions</p>
+              {diff.suggested_actions.map((a, i) => (
+                <p key={i} className="font-mono text-2xs text-text-secondary">→ {a}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Export buttons */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => onDownload("markdown")} disabled={reportLoading}
+              className="rounded-control border border-border px-2 py-1 text-2xs text-text-secondary hover:text-text-primary disabled:opacity-50">
+              {reportLoading ? "..." : "Export MD"}
+            </button>
+            <button onClick={() => onDownload("json")} disabled={reportLoading}
+              className="rounded-control border border-border px-2 py-1 text-2xs text-text-secondary hover:text-text-primary disabled:opacity-50">
+              {reportLoading ? "..." : "Export JSON"}
+            </button>
+          </div>
+
+          <p className="font-mono text-2xs text-text-muted italic">{diff.disclaimer}</p>
+        </>
+      )}
     </div>
   );
 }
@@ -9826,6 +10018,14 @@ export default function StrategyDetail() {
   // M35: version lineage
   const [versionLineage, setVersionLineage] = useState<StrategyVersionLineageResponse | null>(null);
 
+  // M95: lineage diff
+  const [diffBaseVersion, setDiffBaseVersion] = useState("");
+  const [diffComparisonVersion, setDiffComparisonVersion] = useState("");
+  const [lineageDiff, setLineageDiff] = useState<LineageDiffResponse | null>(null);
+  const [lineageDiffLoading, setLineageDiffLoading] = useState(false);
+  const [lineageDiffError, setLineageDiffError] = useState<string | null>(null);
+  const [lineageDiffReportLoading, setLineageDiffReportLoading] = useState(false);
+
   // M38: signal quality drilldown
   const [signalDrilldown, setSignalDrilldown] = useState<SignalQualityDrilldownResponse | null>(null);
   const [signalDrilldownId, setSignalDrilldownId] = useState<string | null>(null);
@@ -10263,6 +10463,48 @@ export default function StrategyDetail() {
     } finally {
       setComputingReliability(false);
     }
+  }
+
+  // M95: lineage diff handlers
+  async function handleCompareVersions() {
+    if (!strategy || !diffBaseVersion || !diffComparisonVersion) return;
+    if (diffBaseVersion === diffComparisonVersion) {
+      setLineageDiffError("Select two different versions to compare.");
+      return;
+    }
+    setLineageDiffLoading(true);
+    setLineageDiffError(null);
+    setLineageDiff(null);
+    try {
+      const result = await getLineageDiff(strategy.id, diffBaseVersion, diffComparisonVersion);
+      setLineageDiff(result);
+    } catch (e: unknown) {
+      setLineageDiffError(e instanceof Error ? e.message : "Comparison failed.");
+    } finally { setLineageDiffLoading(false); }
+  }
+
+  async function handleDownloadDiffReport(format: "json" | "markdown") {
+    if (!strategy || !diffBaseVersion || !diffComparisonVersion) return;
+    setLineageDiffReportLoading(true);
+    try {
+      if (format === "markdown") {
+        const content = await getLineageDiffReport(strategy.id, diffBaseVersion, diffComparisonVersion, "markdown") as string;
+        const blob = new Blob([content], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `lineage-diff-${diffBaseVersion}-vs-${diffComparisonVersion}.md`; a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const result = await getLineageDiffReport(strategy.id, diffBaseVersion, diffComparisonVersion, "json") as import("@/types").LineageDiffReportResponse;
+        const blob = new Blob([result.content], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `lineage-diff-${diffBaseVersion}-vs-${diffComparisonVersion}.json`; a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e: unknown) {
+      showPageFeedback(e instanceof Error ? e.message : "Report failed.", true);
+    } finally { setLineageDiffReportLoading(false); }
   }
 
   const backLink = (
@@ -11074,6 +11316,21 @@ export default function StrategyDetail() {
 
       {/* M35: Version Lineage */}
       {versionLineage && <VersionLineagePanel lineage={versionLineage} />}
+
+      {/* M95: Version Diff Panel */}
+      <VersionDiffPanel
+        versions={versionLineage?.versions ?? []}
+        baseVersion={diffBaseVersion}
+        comparisonVersion={diffComparisonVersion}
+        onBaseChange={setDiffBaseVersion}
+        onComparisonChange={setDiffComparisonVersion}
+        onCompare={handleCompareVersions}
+        onDownload={handleDownloadDiffReport}
+        loading={lineageDiffLoading}
+        reportLoading={lineageDiffReportLoading}
+        diff={lineageDiff}
+        error={lineageDiffError}
+      />
 
       {/* M57: Strategy Change Impact Analysis */}
       <ChangeImpactPanel strategyId={strategy.id} />

@@ -130,6 +130,9 @@ import type {
   AuthTokenResponse,
   CurrentUserResponse,
   AuthStatusResponse,
+  ComparableVersionsResponse,
+  LineageDiffResponse,
+  LineageDiffReportResponse,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -1144,6 +1147,42 @@ export async function getStrategyVersionLineage(
   return request<StrategyVersionLineageResponse>(
     `/api/strategies/${strategyId}/version-lineage`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// M95: Strategy Lineage Diff
+// ---------------------------------------------------------------------------
+
+export async function getLineageVersions(
+  strategyId: string,
+): Promise<ComparableVersionsResponse> {
+  return request<ComparableVersionsResponse>(`/api/strategies/${strategyId}/lineage/versions`);
+}
+
+export async function getLineageDiff(
+  strategyId: string,
+  baseVersion: string,
+  comparisonVersion: string,
+): Promise<LineageDiffResponse> {
+  const qs = new URLSearchParams({ base_version: baseVersion, comparison_version: comparisonVersion });
+  return request<LineageDiffResponse>(`/api/strategies/${strategyId}/lineage/diff?${qs}`);
+}
+
+export async function getLineageDiffReport(
+  strategyId: string,
+  baseVersion: string,
+  comparisonVersion: string,
+  format: "json" | "markdown" = "json",
+): Promise<LineageDiffReportResponse | string> {
+  const qs = new URLSearchParams({ base_version: baseVersion, comparison_version: comparisonVersion, format });
+  if (format === "markdown") {
+    const resp = await fetch(`${API_BASE_URL}/api/strategies/${strategyId}/lineage/diff/report?${qs}`, {
+      headers: { ...getAuthHeaders(), Accept: "text/markdown" },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.text();
+  }
+  return request<LineageDiffReportResponse>(`/api/strategies/${strategyId}/lineage/diff/report?${qs}`);
 }
 
 // ---------------------------------------------------------------------------

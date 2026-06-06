@@ -3054,6 +3054,67 @@ export interface PromotionPacketExportResponse {
 }
 
 // ---------------------------------------------------------------------------
+// M95: Strategy Lineage Diff
+// ---------------------------------------------------------------------------
+
+export interface LineageDiffItem {
+  key: string;
+  label: string;
+  base_value: unknown;
+  comparison_value: unknown;
+  delta: unknown;
+  status: "improved" | "worsened" | "changed" | "unchanged" | "missing" | "introduced" | "resolved";
+  explanation: string;
+}
+
+export interface LineageDiffSection {
+  key: string;
+  title: string;
+  status: "improved" | "worse" | "changed" | "unchanged" | "missing";
+  items: LineageDiffItem[];
+}
+
+export interface LineageDiffResponse {
+  strategy_id: string;
+  base_version: string;
+  comparison_version: string;
+  verdict: "improved" | "mixed" | "worse" | "unchanged" | "insufficient_data";
+  trust_delta: number | null;
+  primary_change: string | null;
+  primary_risk: string | null;
+  summary: string;
+  sections: LineageDiffSection[];
+  metric_deltas: LineageDiffItem[];
+  blockers_introduced: LineageDiffItem[];
+  blockers_resolved: LineageDiffItem[];
+  suggested_actions: string[];
+  generated_at: string;
+  disclaimer: string;
+}
+
+export interface LineageDiffReportResponse {
+  strategy_id: string;
+  base_version: string;
+  comparison_version: string;
+  format: string;
+  content: string;
+  generated_at: string;
+}
+
+export interface ComparableVersionItem {
+  version_id: string;
+  version_label: string;
+  created_at: string;
+  git_commit: string | null;
+}
+
+export interface ComparableVersionsResponse {
+  strategy_id: string;
+  versions: ComparableVersionItem[];
+  comparable: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates
 // ---------------------------------------------------------------------------
 
