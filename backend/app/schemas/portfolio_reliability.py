@@ -76,6 +76,9 @@ class PortfolioReliabilityStrategyRow(BaseModel):
     evidence_verification_verdict: str | None = None
     evidence_chain_status: str | None = None
     verification_primary_concern: str | None = None
+    backtest_reality_score: float | None = None
+    backtest_reality_verdict: str | None = None
+    backtest_reality_primary_concern: str | None = None
 
 
 class PortfolioReliabilitySummary(BaseModel):

@@ -346,6 +346,19 @@ def _aggregate_strategy(strategy, db: Session) -> dict:
     except Exception:
         pass
 
+    # ---- backtest reality (M93) ----
+    backtest_reality_score = None
+    backtest_reality_verdict = None
+    backtest_reality_primary_concern = None
+    try:
+        from app.services.backtest_reality_score import compute_backtest_reality_check as _br
+        br_data = _br(sid, db)
+        backtest_reality_score = br_data.backtest_reality_score
+        backtest_reality_verdict = br_data.verdict
+        backtest_reality_primary_concern = br_data.primary_concern
+    except Exception:
+        pass
+
     # ---- regression: latest run failed_count ----
     regression_failed_count = 0
     try:
@@ -450,6 +463,9 @@ def _aggregate_strategy(strategy, db: Session) -> dict:
         "evidence_verification_verdict": evidence_verification_verdict,
         "evidence_chain_status": evidence_chain_status,
         "verification_primary_concern": verification_primary_concern,
+        "backtest_reality_score": backtest_reality_score,
+        "backtest_reality_verdict": backtest_reality_verdict,
+        "backtest_reality_primary_concern": backtest_reality_primary_concern,
     }
 
 

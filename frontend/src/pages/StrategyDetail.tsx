@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type {
   BacktestAudit,
@@ -101,6 +101,8 @@ import type {
   StrategyReliabilitySnapshot,
   EvidenceVerificationResponse,
   EvidenceVerificationCheck,
+  BacktestRealityResponse,
+  BacktestRealityCheck,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -132,6 +134,7 @@ import {
   refreshStrategyShadowMonitor,
   getStrategyShadowMonitorReport,
   refreshStrategyEvidenceVerification,
+  refreshStrategyBacktestReality,
   getStrategyPromotionGates,
   getStrategyEvidenceGraph,
   createDefaultRegressionTests,
@@ -5551,6 +5554,152 @@ function EvidenceVerificationPanel({
 }
 
 // ---------------------------------------------------------------------------
+// M93: Backtest Reality Panel
+// ---------------------------------------------------------------------------
+
+function BacktestRealityPanel({
+  reality,
+  onRefresh,
+  refreshing,
+  error,
+}: {
+  reality: BacktestRealityResponse | null;
+  onRefresh: () => void;
+  refreshing: boolean;
+  error: string | null;
+}) {
+  const [checksOpen, setChecksOpen] = React.useState(false);
+
+  const verdictColor = (verdict: string) => {
+    if (verdict === "realistic" || verdict === "acceptable") return "text-teal-400";
+    if (verdict === "review") return "text-amber-400";
+    if (verdict === "weak") return "text-red-400";
+    return "text-text-muted";
+  };
+
+  const statusColor = (status: BacktestRealityCheck["status"]) => {
+    if (status === "pass") return "text-teal-400";
+    if (status === "watch") return "text-amber-400";
+    if (status === "fail") return "text-red-400";
+    return "text-text-muted";
+  };
+
+  return (
+    <div className="rounded-card border border-border bg-bg-card">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <p className="caption">Backtest Reality Check</p>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="font-mono text-2xs text-accent-500 hover:text-accent-300 disabled:opacity-50"
+        >
+          {refreshing ? "refreshing…" : "↺ Refresh"}
+        </button>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="px-4 py-2 font-mono text-xs text-red-400">{error}</div>
+      )}
+
+      {/* Empty state */}
+      {!reality && !error && (
+        <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+          <p className="font-mono text-xs text-text-muted">
+            No backtest reality data yet.
+          </p>
+          <p className="font-mono text-2xs text-text-muted max-w-sm">
+            Run a reality check to assess whether backtest results are reliable and free
+            from common data-mining biases.
+          </p>
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="rounded border border-border px-3 py-1.5 font-mono text-2xs text-accent-500 hover:text-accent-300 disabled:opacity-50"
+          >
+            {refreshing ? "Running…" : "Run Reality Check"}
+          </button>
+        </div>
+      )}
+
+      {/* Data */}
+      {reality && (
+        <div className="space-y-3 p-4">
+          {/* Verdict row */}
+          <div className="flex items-center gap-4">
+            <span className={`font-mono text-sm font-bold ${verdictColor(reality.verdict)}`}>
+              {reality.verdict.replace(/_/g, " ").toUpperCase()}
+            </span>
+            <span className="font-mono text-xs text-text-muted">
+              Score: <span className="text-text-primary">{reality.backtest_reality_score.toFixed(0)}</span>/100
+            </span>
+          </div>
+
+          {/* Primary concern */}
+          {reality.primary_concern && (
+            <p className="font-mono text-xs text-amber-400">{reality.primary_concern}</p>
+          )}
+
+          {/* Collapsible checks table */}
+          <div>
+            <button
+              onClick={() => setChecksOpen((o) => !o)}
+              className="font-mono text-2xs text-text-muted hover:text-text-primary"
+            >
+              {checksOpen ? "▾ Hide checks" : "▸ Show checks"} ({reality.checks.length})
+            </button>
+            {checksOpen && (
+              <div className="mt-2 overflow-x-auto rounded border border-border">
+                <table className="w-full font-mono text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-bg-700 text-left text-text-muted">
+                      <th className="px-3 py-1.5">Check</th>
+                      <th className="px-3 py-1.5">Status</th>
+                      <th className="px-3 py-1.5">Severity</th>
+                      <th className="px-3 py-1.5">Explanation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reality.checks.map((c) => (
+                      <tr key={c.key} className="border-b border-border last:border-0">
+                        <td className="px-3 py-1.5 text-text-primary">{c.title}</td>
+                        <td className={`px-3 py-1.5 font-semibold ${statusColor(c.status)}`}>
+                          {c.status}
+                        </td>
+                        <td className="px-3 py-1.5 text-text-secondary">{c.severity}</td>
+                        <td className="px-3 py-1.5 text-text-secondary max-w-xs truncate" title={c.explanation}>
+                          {c.explanation}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Suggested actions */}
+          {reality.suggested_actions.length > 0 && (
+            <div className="space-y-1">
+              <p className="font-mono text-2xs text-text-muted uppercase tracking-wide">Suggested Actions</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {reality.suggested_actions.map((action, i) => (
+                  <li key={i} className="font-mono text-xs text-text-secondary">{action}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Disclaimer */}
+          <p className="font-mono text-2xs text-text-muted italic">{reality.disclaimer}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates Panel
 // ---------------------------------------------------------------------------
 
@@ -9720,6 +9869,11 @@ export default function StrategyDetail() {
   const [evidenceVerifError, setEvidenceVerifError] = useState<string | null>(null);
   const [evidenceVerifReportLoading] = useState(false);
 
+  // M93: backtest reality check
+  const [backtestReality, setBacktestReality] = useState<BacktestRealityResponse | null>(null);
+  const [backtestRealityRefreshing, setBacktestRealityRefreshing] = useState(false);
+  const [backtestRealityError, setBacktestRealityError] = useState<string | null>(null);
+
   // M51: promotion gates
   const [promotionGates, setPromotionGates] = useState<StrategyPromotionGateResponse | null>(null);
   // promotionTarget tracks the currently-selected target stage for the promotion gates panel
@@ -9796,6 +9950,18 @@ export default function StrategyDetail() {
     } catch (e: unknown) {
       setEvidenceVerifError(e instanceof Error ? e.message : "Refresh failed.");
     } finally { setEvidenceVerifRefreshing(false); }
+  }
+
+  async function handleRefreshBacktestReality() {
+    if (!strategy) return;
+    setBacktestRealityRefreshing(true);
+    setBacktestRealityError(null);
+    try {
+      const result = await refreshStrategyBacktestReality(strategy.id);
+      setBacktestReality(result);
+    } catch (e: unknown) {
+      setBacktestRealityError(e instanceof Error ? e.message : "Refresh failed.");
+    } finally { setBacktestRealityRefreshing(false); }
   }
 
   async function handleCompareConfig() {
@@ -10465,6 +10631,17 @@ export default function StrategyDetail() {
           </span>
         </div>
       )}
+      {/* M93: Compact backtest reality badge */}
+      {backtestReality && backtestReality.verdict !== "insufficient_data" && (
+        <div className="rounded border border-border bg-bg-700 px-3 py-2 flex items-center gap-3">
+          <p className="font-mono text-2xs text-text-muted">Reality:</p>
+          <span className={"font-mono text-xs font-semibold " +
+            (backtestReality.verdict === "weak" ? "text-red-400" :
+             backtestReality.verdict === "review" ? "text-amber-400" : "text-teal-400")}>
+            {backtestReality.verdict.replace(/_/g, " ")} ({backtestReality.backtest_reality_score.toFixed(0)})
+          </span>
+        </div>
+      )}
         </>
       )}
 
@@ -10721,6 +10898,14 @@ export default function StrategyDetail() {
         refreshing={shadowRefreshing}
         reportLoading={shadowReportLoading}
         error={shadowRefreshError}
+      />
+
+      {/* M93: Backtest Reality Check */}
+      <BacktestRealityPanel
+        reality={backtestReality}
+        onRefresh={handleRefreshBacktestReality}
+        refreshing={backtestRealityRefreshing}
+        error={backtestRealityError}
       />
 
       {/* M58: Run Replay Pack */}

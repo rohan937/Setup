@@ -176,6 +176,7 @@ class AlertRuleType(StrEnum):
     assumption_health_degraded = "assumption_health_degraded"
     run_missing_linked_evidence = "run_missing_linked_evidence"
     evidence_verification_failed = "evidence_verification_failed"
+    backtest_reality_weak = "backtest_reality_weak"
 
 
 class AlertStatus(StrEnum):

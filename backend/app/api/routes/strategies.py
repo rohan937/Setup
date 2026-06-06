@@ -4476,6 +4476,157 @@ def get_run_drift(
 
 
 # ---------------------------------------------------------------------------
+# M93: Backtest Reality Check endpoints
+# ---------------------------------------------------------------------------
+
+from app.schemas.backtest_reality import (  # noqa: E402
+    BacktestRealityResponse,
+    BacktestRealityCheckOut,
+    BacktestRealityReportResponse,
+)
+from app.services.backtest_reality_score import (  # noqa: E402
+    compute_backtest_reality_check,
+    generate_backtest_reality_report,
+    BacktestRealityData,
+)
+
+
+def _build_reality_response(data: BacktestRealityData) -> BacktestRealityResponse:
+    """Builds BacktestRealityResponse from BacktestRealityData."""
+    checks = [
+        BacktestRealityCheckOut(
+            key=c.key,
+            title=c.title,
+            status=c.status,
+            severity=c.severity,
+            explanation=c.explanation,
+            recommended_fix=c.recommended_fix,
+            evidence_type=c.evidence_type,
+            evidence_id=c.evidence_id,
+        )
+        for c in data.checks
+    ]
+
+    return BacktestRealityResponse(
+        strategy_id=data.strategy_id,
+        run_id=data.run_id,
+        strategy_name=data.strategy_name,
+        backtest_reality_score=data.backtest_reality_score,
+        verdict=data.verdict,
+        severity=data.severity,
+        primary_concern=data.primary_concern,
+        checks=checks,
+        top_concerns=data.top_concerns,
+        suggested_actions=data.suggested_actions,
+        generated_at=data.generated_at,
+        disclaimer=data.disclaimer,
+    )
+
+
+@router.get(
+    "/strategies/{strategy_id}/backtest-reality",
+    response_model=BacktestRealityResponse,
+    tags=["strategies"],
+)
+def get_backtest_reality(
+    strategy_id: uuid.UUID,
+    run_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> BacktestRealityResponse:
+    """Return Backtest Reality Check for a strategy.
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data: BacktestRealityData = compute_backtest_reality_check(
+            strategy_id, db, run_id=run_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_reality_response(data)
+
+
+@router.post(
+    "/strategies/{strategy_id}/backtest-reality/refresh",
+    response_model=BacktestRealityResponse,
+    tags=["strategies"],
+)
+def refresh_backtest_reality(
+    strategy_id: uuid.UUID,
+    run_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> BacktestRealityResponse:
+    """Refresh Backtest Reality Check for a strategy (same logic as GET).
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data: BacktestRealityData = compute_backtest_reality_check(
+            strategy_id, db, run_id=run_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_reality_response(data)
+
+
+@router.get(
+    "/strategies/{strategy_id}/backtest-reality/report",
+    tags=["strategies"],
+)
+def get_backtest_reality_report(
+    strategy_id: uuid.UUID,
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+):
+    """Return a full Backtest Reality report for a strategy.
+
+    Supports ``format=json`` (default) or ``format=markdown``.
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    if format not in ("json", "markdown"):
+        raise HTTPException(
+            status_code=400,
+            detail="format must be 'json' or 'markdown'",
+        )
+
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        content = generate_backtest_reality_report(strategy_id, db, format=format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if format == "markdown":
+        return PlainTextResponse(content=content, media_type="text/markdown")
+
+    from datetime import datetime, timezone  # noqa: E402
+
+    return BacktestRealityReportResponse(
+        strategy_id=strategy_id,
+        strategy_name=strategy.name,
+        format="json",
+        content=content,
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
 # M92: Evidence Verification endpoints
 # ---------------------------------------------------------------------------
 

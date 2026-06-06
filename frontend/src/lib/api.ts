@@ -105,6 +105,8 @@ import type {
   ShadowMonitorReportResponse,
   EvidenceVerificationResponse,
   EvidenceVerificationReportResponse,
+  BacktestRealityResponse,
+  BacktestRealityReportResponse,
   StrategyPromotionGateResponse,
   StrategyEvidenceGraphResponse,
   StrategyRegressionTest,
@@ -1407,6 +1409,38 @@ export async function getStrategyEvidenceVerificationReport(strategyId: string, 
     return resp.text();
   }
   return request<EvidenceVerificationReportResponse>(`/api/strategies/${strategyId}/evidence-verification/report?format=json`);
+}
+
+// ---------------------------------------------------------------------------
+// M93: Backtest Reality Check
+// ---------------------------------------------------------------------------
+
+export async function getStrategyBacktestReality(
+  strategyId: string,
+  runId?: string,
+): Promise<BacktestRealityResponse> {
+  const qs = runId ? `?run_id=${runId}` : "";
+  return request<BacktestRealityResponse>(`/api/strategies/${strategyId}/backtest-reality${qs}`);
+}
+
+export async function refreshStrategyBacktestReality(
+  strategyId: string,
+  runId?: string,
+): Promise<BacktestRealityResponse> {
+  const qs = runId ? `?run_id=${runId}` : "";
+  return request<BacktestRealityResponse>(`/api/strategies/${strategyId}/backtest-reality/refresh${qs}`, { method: "POST" });
+}
+
+export async function getStrategyBacktestRealityReport(
+  strategyId: string,
+  format: "json" | "markdown" = "json",
+): Promise<BacktestRealityReportResponse | string> {
+  if (format === "markdown") {
+    const resp = await fetch(`/api/strategies/${strategyId}/backtest-reality/report?format=markdown`, { headers: { Accept: "text/markdown" }, credentials: "include" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.text();
+  }
+  return request<BacktestRealityReportResponse>(`/api/strategies/${strategyId}/backtest-reality/report?format=json`);
 }
 
 // ---------------------------------------------------------------------------

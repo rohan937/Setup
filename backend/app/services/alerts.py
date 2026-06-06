@@ -1048,6 +1048,29 @@ def _collect_lifecycle_candidates(
         except Exception:
             pass
 
+        # backtest_reality_weak (M93)
+        try:
+            from app.services.backtest_reality_score import compute_backtest_reality_check as _brc
+            br = _brc(strategy.id, db)
+            if br.verdict in ("weak", "review") and br.backtest_reality_score < 60:
+                sev = "critical" if br.backtest_reality_score < 35 else "high"
+                candidates.append(AlertCandidate(
+                    rule_type=str(AlertRuleType.backtest_reality_weak),
+                    severity=sev,
+                    title=f"Backtest reality {br.verdict}: {strategy.name}",
+                    description=(
+                        f"Backtest Reality Check for '{strategy.name}' returned "
+                        f"{br.verdict} (score: {br.backtest_reality_score:.0f}/100)."
+                        + (" " + br.primary_concern[:100] if br.primary_concern else "")
+                    ),
+                    source_type="strategy",
+                    source_id=sid_str,
+                    strategy_id=sid_hex,
+                    metadata={"verdict": br.verdict, "score": br.backtest_reality_score},
+                ))
+        except Exception:
+            pass
+
     return candidates
 
 

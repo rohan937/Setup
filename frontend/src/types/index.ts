@@ -3002,6 +3002,44 @@ export interface EvidenceVerificationReportResponse {
 }
 
 // ---------------------------------------------------------------------------
+// M93: Backtest Reality Check
+// ---------------------------------------------------------------------------
+
+export interface BacktestRealityCheck {
+  key: string;
+  title: string;
+  status: "pass" | "watch" | "fail" | "missing";
+  severity: "low" | "medium" | "high" | "critical";
+  explanation: string;
+  recommended_fix: string | null;
+  evidence_type: string;
+  evidence_id: string | null;
+}
+
+export interface BacktestRealityResponse {
+  strategy_id: string;
+  run_id: string | null;
+  strategy_name: string;
+  backtest_reality_score: number;
+  verdict: "realistic" | "acceptable" | "review" | "weak" | "insufficient_data";
+  severity: string;
+  primary_concern: string | null;
+  checks: BacktestRealityCheck[];
+  top_concerns: string[];
+  suggested_actions: string[];
+  generated_at: string;
+  disclaimer: string;
+}
+
+export interface BacktestRealityReportResponse {
+  strategy_id: string;
+  strategy_name: string;
+  format: string;
+  content: string;
+  generated_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates
 // ---------------------------------------------------------------------------
 
@@ -4429,6 +4467,10 @@ export interface PortfolioReliabilityRow {
   evidence_verification_verdict?: string | null;
   evidence_chain_status?: string | null;
   verification_primary_concern?: string | null;
+  // M93 — backtest reality fields.
+  backtest_reality_score?: number | null;
+  backtest_reality_verdict?: string | null;
+  backtest_reality_primary_concern?: string | null;
 }
 
 // ---------------------------------------------------------------------------
