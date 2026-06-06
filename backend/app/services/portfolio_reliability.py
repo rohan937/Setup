@@ -277,6 +277,30 @@ def _aggregate_strategy(strategy, db: Session) -> dict:
     except Exception:
         pass
 
+    # ---- pending review (M87): active strategy review for this strategy ----
+    pending_review = None
+    try:
+        from app.models.strategy_review import StrategyReview
+
+        active = (
+            db.query(StrategyReview)
+            .filter(
+                StrategyReview.strategy_id == str(sid),
+                StrategyReview.status.in_(["submitted", "changes_requested"]),
+            )
+            .order_by(StrategyReview.created_at.desc())
+            .first()
+        )
+        if active is not None:
+            pending_review = {
+                "review_id": str(active.id),
+                "target_stage": active.target_stage,
+                "status": active.status,
+                "reviewer_user_id": active.reviewer_user_id,
+            }
+    except Exception:
+        pending_review = None
+
     # ---- regression: latest run failed_count ----
     regression_failed_count = 0
     try:
@@ -371,6 +395,7 @@ def _aggregate_strategy(strategy, db: Session) -> dict:
         "regression_failed_count": regression_failed_count,
         "primary_concern": primary_concern,
         "next_recommended_stage": next_recommended_stage,
+        "pending_review": pending_review,
     }
 
 

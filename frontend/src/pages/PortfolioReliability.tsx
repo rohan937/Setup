@@ -66,6 +66,20 @@ function severityChipClass(s: string): string {
   return SEVERITY_CHIP[s] ?? "bg-bg-700 text-text-muted border-border";
 }
 
+// M87 — review-status chip palette (mirrors the workflow component).
+const REVIEW_STATUS_CHIP: Record<string, string> = {
+  draft: "border-border bg-bg-700 text-text-muted",
+  submitted: "border-blue-800/50 bg-blue-950/50 text-blue-300",
+  approved: "border-teal-800/50 bg-teal-950/50 text-teal-300",
+  rejected: "border-red-800/50 bg-red-950/50 text-red-300",
+  changes_requested: "border-amber-800/50 bg-amber-950/50 text-amber-300",
+  cancelled: "border-border bg-bg-700 text-text-muted",
+};
+
+function reviewStatusChipClass(s: string): string {
+  return REVIEW_STATUS_CHIP[s] ?? "border-border bg-bg-700 text-text-muted";
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-US", {
@@ -466,6 +480,10 @@ export default function PortfolioReliability() {
 
   function openBlocker(strategyId: string, tab: string) {
     navigate(`/strategies/${strategyId}?tab=${encodeURIComponent(tab)}`);
+  }
+
+  function openReview(strategyId: string) {
+    navigate(`/strategies/${strategyId}?tab=governance`);
   }
 
   const summary = data?.summary;
@@ -877,6 +895,7 @@ export default function PortfolioReliability() {
                     <th className={TH}>Promotion stage</th>
                     <th className={TH}>Open alerts</th>
                     <th className={TH}>Top blocker</th>
+                    <th className={TH}>Review</th>
                     <th className={TH}>Stale evidence</th>
                     <th className={TH}>Missing report</th>
                     <th className={TH}>Recent score change</th>
@@ -889,7 +908,7 @@ export default function PortfolioReliability() {
                   {filtered.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={15}
+                        colSpan={16}
                         className="px-4 py-10 text-center text-sm text-text-muted"
                       >
                         No strategies match the selected filters.
@@ -970,6 +989,22 @@ export default function PortfolioReliability() {
                           )}
                         </td>
                         <td className={TD}>
+                          {r.pending_review ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span
+                                className={`inline-flex w-fit items-center rounded-chip border px-1.5 py-0.5 font-mono text-2xs ${reviewStatusChipClass(r.pending_review.status)}`}
+                              >
+                                {titleCase(r.pending_review.status)}
+                              </span>
+                              <span className="text-2xs text-text-muted whitespace-nowrap">
+                                → {titleCase(r.pending_review.target_stage)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-text-muted">—</span>
+                          )}
+                        </td>
+                        <td className={TD}>
                           {r.stale_evidence_count > 0 ? (
                             <span className="font-mono text-sm tabular-nums text-orange-300">
                               {r.stale_evidence_count}
@@ -1010,6 +1045,14 @@ export default function PortfolioReliability() {
                                 className="text-left font-mono text-2xs text-orange-300 hover:text-orange-200 whitespace-nowrap"
                               >
                                 Open blocker →
+                              </button>
+                            )}
+                            {r.pending_review && (
+                              <button
+                                onClick={() => openReview(r.strategy_id)}
+                                className="text-left font-mono text-2xs text-accent-500 hover:text-accent-300 whitespace-nowrap"
+                              >
+                                Open review →
                               </button>
                             )}
                           </div>

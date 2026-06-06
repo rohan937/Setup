@@ -1892,6 +1892,167 @@ export async function logoutUser(): Promise<void> {
   clearAuthToken();
 }
 
+// ---------------------------------------------------------------------------
+// M87 — Strategy Review Workflow
+// ---------------------------------------------------------------------------
+
+/**
+ * Structured error raised when approving a review is blocked (HTTP 400 with a
+ * `detail` payload of { message, blockers }). Carries the blocker list so the
+ * UI can surface the precise, deterministic reasons inline instead of a fake
+ * success.
+ */
+export class ReviewBlockedError extends HttpError {
+  readonly blockers: import("@/types").ReviewBlocker[];
+  constructor(
+    status: number,
+    message: string,
+    blockers: import("@/types").ReviewBlocker[],
+  ) {
+    super(status, message);
+    this.name = "ReviewBlockedError";
+    this.blockers = blockers;
+  }
+}
+
+export async function getStrategyReviews(
+  strategyId: string,
+): Promise<{ items: import("@/types").StrategyReview[] }> {
+  return request<{ items: import("@/types").StrategyReview[] }>(
+    `/api/strategies/${strategyId}/reviews`,
+  );
+}
+
+export async function createStrategyReview(
+  strategyId: string,
+  body: { target_stage: string; as_draft?: boolean },
+): Promise<import("@/types").StrategyReview> {
+  return request<import("@/types").StrategyReview>(
+    `/api/strategies/${strategyId}/reviews`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function getStrategyReview(
+  reviewId: string,
+): Promise<import("@/types").StrategyReviewDetail> {
+  return request<import("@/types").StrategyReviewDetail>(
+    `/api/strategy-reviews/${reviewId}`,
+  );
+}
+
+export async function submitReview(
+  reviewId: string,
+): Promise<import("@/types").StrategyReview> {
+  return request<import("@/types").StrategyReview>(
+    `/api/strategy-reviews/${reviewId}/submit`,
+    { method: "POST" },
+  );
+}
+
+/**
+ * Approve a review. On HTTP 400 the backend returns
+ * `detail = { message, blockers: [...] }`; this is surfaced as a
+ * {@link ReviewBlockedError} so the caller can render the blockers inline
+ * rather than treating it as a generic failure (or a fake success).
+ */
+export async function approveReview(
+  reviewId: string,
+): Promise<import("@/types").StrategyReview> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/strategy-reviews/${reviewId}/approve`,
+    { method: "POST", headers: getAuthHeaders() },
+  );
+  if (!res.ok) {
+    let detail: unknown = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { detail?: unknown };
+      detail = body.detail ?? detail;
+    } catch {
+      /* leave default */
+    }
+    if (
+      res.status === 400 &&
+      detail &&
+      typeof detail === "object" &&
+      Array.isArray((detail as { blockers?: unknown }).blockers)
+    ) {
+      const d = detail as {
+        message?: string;
+        blockers: import("@/types").ReviewBlocker[];
+      };
+      throw new ReviewBlockedError(
+        res.status,
+        d.message ?? "Approval is blocked by outstanding requirements.",
+        d.blockers,
+      );
+    }
+    const message =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? (detail as { msg: string }[]).map((e) => e.msg).join(", ")
+          : ((detail as { message?: string }).message ?? `HTTP ${res.status}`);
+    throw new HttpError(res.status, message);
+  }
+  return (await res.json()) as import("@/types").StrategyReview;
+}
+
+export async function rejectReview(
+  reviewId: string,
+  note: string,
+): Promise<import("@/types").StrategyReview> {
+  return request<import("@/types").StrategyReview>(
+    `/api/strategy-reviews/${reviewId}/reject`,
+    { method: "POST", body: JSON.stringify({ note }) },
+  );
+}
+
+export async function requestReviewChanges(
+  reviewId: string,
+  note: string,
+): Promise<import("@/types").StrategyReview> {
+  return request<import("@/types").StrategyReview>(
+    `/api/strategy-reviews/${reviewId}/request-changes`,
+    { method: "POST", body: JSON.stringify({ note }) },
+  );
+}
+
+export async function addReviewComment(
+  reviewId: string,
+  comment: string,
+): Promise<import("@/types").ReviewComment> {
+  return request<import("@/types").ReviewComment>(
+    `/api/strategy-reviews/${reviewId}/comments`,
+    { method: "POST", body: JSON.stringify({ comment }) },
+  );
+}
+
+export async function getReviewPacket(
+  reviewId: string,
+  format: "json" | "markdown",
+): Promise<import("@/types").ReviewPacket> {
+  return request<import("@/types").ReviewPacket>(
+    `/api/strategy-reviews/${reviewId}/packet?format=${format}`,
+  );
+}
+
+export async function getPendingReviews(): Promise<{
+  items: import("@/types").StrategyReview[];
+}> {
+  return request<{ items: import("@/types").StrategyReview[] }>(
+    "/api/strategy-reviews/pending",
+  );
+}
+
+export async function getReviewDecisions(): Promise<{
+  items: import("@/types").StrategyReview[];
+}> {
+  return request<{ items: import("@/types").StrategyReview[] }>(
+    "/api/strategy-reviews/decisions",
+  );
+}
+
 // First-owner bootstrap: promote the current user to owner of the default
 // workspace. The backend only permits this while no owner exists anywhere.
 export async function bootstrapFirstOwner(): Promise<CurrentUserResponse> {

@@ -81,15 +81,22 @@ def compute_strategy_lifecycle(strategy_id: uuid.UUID, db: Session) -> dict:
     except Exception:
         readiness = None
 
-    current = _infer_current_stage(
-        has_runs=bool(runs),
-        has_backtest=has_backtest,
-        has_paper=has_paper,
-        has_live=has_live,
-        gate_current=gate_current,
-        gate_verdict=gate_verdict,
-        readiness_verdict=readiness_verdict,
-    )
+    # M87: prefer the persisted governance stage when it has been set by an
+    # approved strategy review. When NULL (the default), fall back to the
+    # existing inference unchanged so behaviour for un-reviewed strategies is
+    # identical to M76.
+    if strategy.lifecycle_stage and strategy.lifecycle_stage in _STAGE_KEYS:
+        current = strategy.lifecycle_stage
+    else:
+        current = _infer_current_stage(
+            has_runs=bool(runs),
+            has_backtest=has_backtest,
+            has_paper=has_paper,
+            has_live=has_live,
+            gate_current=gate_current,
+            gate_verdict=gate_verdict,
+            readiness_verdict=readiness_verdict,
+        )
     current_idx = _STAGE_KEYS.index(current)
     next_stage = _STAGE_KEYS[current_idx + 1] if current_idx + 1 < len(_STAGE_KEYS) else None
 

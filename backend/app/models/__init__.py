@@ -39,6 +39,11 @@ from app.models.config_policy import (
     StrategyConfigPolicyResult,
 )
 from app.models.review_case import ResearchReviewCase, ResearchReviewCaseEvent
+from app.models.strategy_review import (
+    StrategyReview,
+    StrategyReviewComment,
+    StrategyReviewEvent,
+)
 from app.models.evidence_sla import EvidenceSLAPolicy, EvidenceSLAEvaluation, EvidenceSLAResult
 from app.models.experiment import StrategyExperiment, StrategyExperimentRun, StrategyExperimentAnalysis
 from app.models.reliability_snapshot import StrategyReliabilitySnapshot
@@ -78,6 +83,9 @@ __all__ = [
     "StrategyConfigPolicyResult",
     "ResearchReviewCase",
     "ResearchReviewCaseEvent",
+    "StrategyReview",
+    "StrategyReviewComment",
+    "StrategyReviewEvent",
     "EvidenceSLAPolicy",
     "EvidenceSLAEvaluation",
     "EvidenceSLAResult",

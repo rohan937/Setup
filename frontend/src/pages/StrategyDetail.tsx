@@ -164,6 +164,8 @@ import EvidenceBundleUploader from "@/components/EvidenceBundleUploader";
 import EvidenceRepairModal from "@/components/EvidenceRepairModal";
 import StrategyCommandMenu from "@/components/StrategyCommandMenu";
 import StrategyAlertsCard from "@/components/StrategyAlertsCard";
+import StrategyReviewWorkflow from "@/components/StrategyReviewWorkflow";
+import StrategyReviewStatusCard from "@/components/StrategyReviewStatusCard";
 import { useAuth } from "@/context/AuthContext";
 import StrategyLifecycleBar from "@/components/StrategyLifecycleBar";
 import PanelEmptyState from "@/components/PanelEmptyState";
@@ -9794,6 +9796,12 @@ export default function StrategyDetail() {
           {/* M85: Open reliability alerts for this strategy */}
           <StrategyAlertsCard strategyId={strategy.id} />
 
+          {/* M87: Promotion review status */}
+          <StrategyReviewStatusCard
+            strategyId={strategy.id}
+            onOpenReview={() => setActiveTab("governance")}
+          />
+
           {/* M64: Strategy Reliability Command Center */}
           <CommandCenterPanel strategyId={strategy.id} />
 
@@ -10215,6 +10223,9 @@ export default function StrategyDetail() {
       {/* ===================== GOVERNANCE TAB ===================== */}
       {onTab("governance") && (
         <>
+      {/* M87: Strategy Review Workflow */}
+      <StrategyReviewWorkflow strategyId={id!} />
+
       {/* M51: Promotion Gates */}
       {promotionGates && (
         <PromotionGatesPanel

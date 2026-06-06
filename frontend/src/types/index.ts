@@ -4321,6 +4321,96 @@ export interface PortfolioReliabilityRow {
   days_since_latest_run: number | null;
   owner_name: string | null;
   regression_failed_count: number;
+  // M87 — pending review summary (null when no open review exists).
+  pending_review: {
+    review_id: string;
+    target_stage: string;
+    status: StrategyReviewStatus;
+    reviewer_user_id: string | null;
+  } | null;
+}
+
+// ---------------------------------------------------------------------------
+// M87 — Strategy Review Workflow
+// ---------------------------------------------------------------------------
+
+export type StrategyReviewStatus =
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "rejected"
+  | "changes_requested"
+  | "cancelled";
+
+export type ReviewChecklistItemStatus = "pass" | "warn" | "fail" | "missing";
+
+export interface StrategyReview {
+  id: string;
+  strategy_id: string;
+  target_stage: string;
+  current_stage_at_submission: string | null;
+  status: StrategyReviewStatus;
+  submitted_by_user_id: string | null;
+  reviewer_user_id: string | null;
+  submitted_at: string | null;
+  decided_at: string | null;
+  decision: string | null;
+  decision_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewChecklistItem {
+  key: string;
+  title: string;
+  category: string;
+  status: ReviewChecklistItemStatus;
+  required: boolean;
+  detail: string | null;
+  suggested_action: string | null;
+}
+
+export interface ReviewBlocker {
+  title: string;
+  reason: string;
+  suggested_action: string;
+}
+
+export interface ReviewChecklist {
+  target_stage: string;
+  current_stage: string;
+  items: ReviewChecklistItem[];
+  can_approve: boolean;
+  blockers: ReviewBlocker[];
+  disclaimer: string;
+}
+
+export interface ReviewComment {
+  id: string;
+  author_user_id: string | null;
+  comment: string;
+  created_at: string;
+}
+
+export interface ReviewEvent {
+  id: string;
+  actor_user_id: string | null;
+  action: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface StrategyReviewDetail {
+  review: StrategyReview;
+  checklist: ReviewChecklist;
+  comments: ReviewComment[];
+  events: ReviewEvent[];
+}
+
+export interface ReviewPacket {
+  filename: string;
+  format: string;
+  content: string;
 }
 
 export interface PortfolioReliabilitySummary {

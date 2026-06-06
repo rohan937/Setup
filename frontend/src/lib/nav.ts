@@ -16,6 +16,7 @@ export const navItems: NavItem[] = [
   // Governance
   { label: "Alerts",             path: "/alerts",             section: "Governance" },
   { label: "Review Cases",       path: "/review-cases",       section: "Governance" },
+  { label: "Strategy Reviews",   path: "/governance/strategy-reviews", section: "Governance" },
   { label: "Promotion Gates",    path: "/promotion-gates",    section: "Governance" },
   { label: "Regression Tests",   path: "/regression-tests",   section: "Governance" },
   { label: "Policies",           path: "/policies",           section: "Governance" },

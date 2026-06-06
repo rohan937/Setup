@@ -22,6 +22,7 @@ import NotFound from "@/pages/NotFound";
 import CommandCenter from "@/pages/CommandCenter";
 import Experiments from "@/pages/Experiments";
 import ReviewCases from "@/pages/ReviewCases";
+import StrategyReviews from "@/pages/StrategyReviews";
 import PromotionGates from "@/pages/PromotionGates";
 import RegressionTests from "@/pages/RegressionTests";
 import Policies from "@/pages/Policies";
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="live-drift" element={<LiveDrift />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="review-cases" element={<ReviewCases />} />
+        <Route path="governance/strategy-reviews" element={<StrategyReviews />} />
         <Route path="promotion-gates" element={<PromotionGates />} />
         <Route path="regression-tests" element={<RegressionTests />} />
         <Route path="policies" element={<Policies />} />

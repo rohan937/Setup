@@ -30,6 +30,10 @@ class Strategy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="active"
     )
+    # M87: governance-approved/promoted lifecycle stage. NULL => use the
+    # computed lifecycle (app.services.strategy_lifecycle). See
+    # constants.LIFECYCLE_STAGES for valid values.
+    lifecycle_stage: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Relationships
     project: Mapped["Project"] = relationship(  # noqa: F821

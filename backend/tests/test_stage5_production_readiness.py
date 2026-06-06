@@ -249,8 +249,8 @@ class TestConfigDefaults:
 # ---------------------------------------------------------------------------
 
 class TestMigrationConsistency:
-    def test_migration_head_is_0027(self):
-        """Regression guard: the latest migration is 0027_m85_alert_lifecycle.
+    def test_migration_head_is_0028(self):
+        """Regression guard: the latest migration is 0028_m87_strategy_reviews.
 
         If new migrations are added without updating this test, it will fail —
         a reminder to confirm the new migration is intentional.
@@ -264,8 +264,8 @@ class TestMigrationConsistency:
         # Collect all migration files
         migration_files = sorted(migrations_dir.glob("*.py"))
         latest = migration_files[-1].name if migration_files else ""
-        assert latest.startswith("0027"), (
-            f"Expected latest migration to be 0027_m85_alert_lifecycle, got {latest}. "
+        assert latest.startswith("0028"), (
+            f"Expected latest migration to be 0028_m87_strategy_reviews, got {latest}. "
             "If a new migration was intentionally added, update this test."
         )
 
