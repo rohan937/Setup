@@ -95,6 +95,7 @@ import type {
   StrategyEvidenceFreshnessResponse,
   ActionQueueResponse,
   StrategyLifecycleResponse,
+  LifecyclePipelineSummaryResponse,
   RepairOptionsResponse,
   RunLinkUpdateRequest,
   RunLinkSummary,
@@ -1460,6 +1461,13 @@ export async function getStrategyLifecycle(
 ): Promise<StrategyLifecycleResponse> {
   return request<StrategyLifecycleResponse>(
     `/api/strategies/${strategyId}/lifecycle`,
+  );
+}
+
+// M104: org-level lifecycle pipeline stage summary
+export async function getLifecyclePipelineSummary(): Promise<LifecyclePipelineSummaryResponse> {
+  return request<LifecyclePipelineSummaryResponse>(
+    "/api/lifecycle/pipeline-summary",
   );
 }
 

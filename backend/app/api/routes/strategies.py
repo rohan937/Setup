@@ -4287,6 +4287,31 @@ def get_strategy_lifecycle(
     return StrategyLifecycleResponse(**payload)
 
 
+# M104: Lifecycle pipeline stage summary (read-only)
+from app.schemas.lifecycle_pipeline import (  # noqa: E402
+    LifecyclePipelineSummaryResponse,
+    LifecycleStageCount,
+)
+from app.services.lifecycle_pipeline import get_lifecycle_stage_summary  # noqa: E402
+
+
+@router.get(
+    "/lifecycle/pipeline-summary",
+    response_model=LifecyclePipelineSummaryResponse,
+    tags=["strategies"],
+)
+def get_lifecycle_pipeline_summary(db: Session = Depends(get_db)):
+    """Stage-count summary across strategies. Read-only."""
+    data = get_lifecycle_stage_summary(db)
+    return LifecyclePipelineSummaryResponse(
+        generated_at=data["generated_at"],
+        total_strategies=data["total_strategies"],
+        stages=[LifecycleStageCount(**s) for s in data["stages"]],
+        blocked_total=data["blocked_total"],
+        disclaimer=data["disclaimer"],
+    )
+
+
 @router.get(
     "/strategies/{strategy_id}/action-queue",
     response_model=ActionQueueResponse,

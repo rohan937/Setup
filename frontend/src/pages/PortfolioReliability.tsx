@@ -25,6 +25,7 @@ import {
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import { SkeletonCard } from "@/components/Skeleton";
+import LifecycleStageBadge from "@/components/LifecycleStageBadge";
 import { startWalkthrough } from "@/lib/demoWalkthrough";
 
 // ---------------------------------------------------------------------------
@@ -966,8 +967,11 @@ export default function PortfolioReliability() {
                             {r.health_classification}
                           </span>
                         </td>
-                        <td className={`${TD} text-xs text-text-secondary whitespace-nowrap`}>
-                          {titleCase(r.promotion_stage)}
+                        <td className={`${TD} whitespace-nowrap`}>
+                          <LifecycleStageBadge
+                            stage={r.promotion_stage}
+                            blocked={r.health_classification === "blocked"}
+                          />
                         </td>
                         <td className={TD}>
                           {r.open_alert_count > 0 ? (

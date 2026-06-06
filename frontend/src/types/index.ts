@@ -4676,6 +4676,22 @@ export interface StrategyLifecycleResponse {
   disclaimer: string;
 }
 
+// M104: Lifecycle pipeline stage summary (org-level snapshot)
+export interface LifecycleStageCount {
+  key: string;
+  label: string;
+  count: number;
+  blocked_count: number;
+}
+
+export interface LifecyclePipelineSummaryResponse {
+  generated_at: string;
+  total_strategies: number;
+  stages: LifecycleStageCount[];
+  blocked_total: number;
+  disclaimer: string;
+}
+
 // ---------------------------------------------------------------------------
 // M86: Portfolio Reliability
 // ---------------------------------------------------------------------------

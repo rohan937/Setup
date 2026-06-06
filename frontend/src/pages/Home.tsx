@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { ActionItem, PortfolioOverview, Strategy } from "@/types";
+import type {
+  ActionItem,
+  LifecyclePipelineSummaryResponse,
+  PortfolioOverview,
+  Strategy,
+} from "@/types";
 import {
   getPortfolioOverview,
   getStrategies,
   getStrategyActionQueue,
+  getLifecyclePipelineSummary,
   getFrontendEnvironment,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -48,6 +54,16 @@ interface HomeAction {
   item: ActionItem;
 }
 
+// Stage band color for the lifecycle pipeline metric numbers (M102 tokens).
+const STAGE_METRIC_COLOR: Record<string, string> = {
+  research: "text-text-secondary",
+  backtest: "text-accent-300",
+  backtest_review: "text-accent-300",
+  paper_candidate: "text-research-300",
+  shadow: "text-research-300",
+  production_candidate: "text-fidelity-high",
+};
+
 const DEMO_ROLES: { key: keyof typeof DEMO_STRATEGY_NAMES; role: string; meaning: string }[] = [
   { key: "aapl", role: "Healthy", meaning: "well-instrumented; high coverage and trust" },
   { key: "fxCarry", role: "Review", meaning: "decent research but stale / incomplete evidence" },
@@ -67,6 +83,7 @@ export default function Home() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [actions, setActions] = useState<HomeAction[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pipeline, setPipeline] = useState<LifecyclePipelineSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const env = getFrontendEnvironment();
@@ -81,6 +98,7 @@ export default function Home() {
 
   useEffect(() => {
     getPortfolioOverview({ limit_per_section: 10 }).then(setPortfolio).catch(() => setPortfolio(null));
+    getLifecyclePipelineSummary().then(setPipeline).catch(() => setPipeline(null));
     getStrategies("active")
       .then((list) => {
         setStrategies(list);
@@ -215,6 +233,81 @@ export default function Home() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* 2b. Lifecycle pipeline — stage stepper overview */}
+      <section className="animate-fade-in space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="section-title">Lifecycle pipeline</h2>
+          {pipeline && pipeline.total_strategies > 0 && (
+            <span className="font-mono text-2xs text-text-muted">
+              {pipeline.total_strategies} total
+              {pipeline.blocked_total > 0 && (
+                <span className="ml-1 text-fidelity-medium">
+                  · {pipeline.blocked_total} blocked
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+        {!pipeline ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-card border border-border bg-bg-700 p-4 shadow-card"
+              >
+                <Skeleton className="h-8 w-10" />
+                <Skeleton className="mt-3 h-3 w-20" />
+              </div>
+            ))}
+          </div>
+        ) : pipeline.total_strategies === 0 ? (
+          <Card>
+            <EmptyState
+              title="No strategies yet"
+              description="Create your first strategy to start tracking it through the research lifecycle."
+              action={{ label: "View Strategies", to: "/strategies" }}
+            />
+          </Card>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {pipeline.stages.map((stage) => (
+                <Link
+                  key={stage.key}
+                  to="/strategies"
+                  className="card-hover-lift card-interactive group flex flex-col rounded-card border border-border bg-bg-700 p-4 shadow-card"
+                >
+                  <p
+                    className={`metric-value text-metric-sm ${
+                      stage.count > 0
+                        ? STAGE_METRIC_COLOR[stage.key] ?? "text-text-primary"
+                        : "text-text-muted"
+                    }`}
+                  >
+                    {stage.count}
+                  </p>
+                  <p className="caption mt-2 truncate group-hover:text-text-secondary">
+                    {stage.label}
+                  </p>
+                  {stage.blocked_count > 0 && (
+                    <span className="mt-2 inline-flex w-fit items-center gap-1 text-2xs text-fidelity-medium">
+                      <span
+                        aria-hidden="true"
+                        className="status-dot-pulse inline-block h-1.5 w-1.5 rounded-full bg-fidelity-medium"
+                      />
+                      {stage.blocked_count} blocked
+                    </span>
+                  )}
+                </Link>
+              ))}
+            </div>
+            {pipeline.disclaimer && (
+              <p className="text-2xs text-text-muted">{pipeline.disclaimer}</p>
+            )}
+          </>
+        )}
       </section>
 
       {/* 3. Today — recommended actions + guided demo */}

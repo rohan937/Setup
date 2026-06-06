@@ -200,7 +200,7 @@ import StrategyAlertsCard from "@/components/StrategyAlertsCard";
 import StrategyReviewWorkflow from "@/components/StrategyReviewWorkflow";
 import StrategyReviewStatusCard from "@/components/StrategyReviewStatusCard";
 import { useAuth } from "@/context/AuthContext";
-import StrategyLifecycleBar from "@/components/StrategyLifecycleBar";
+import LifecyclePipeline from "@/components/LifecyclePipeline";
 import PanelEmptyState from "@/components/PanelEmptyState";
 import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
 import RunLogDrawer from "@/components/RunLogDrawer";
@@ -11489,13 +11489,13 @@ export default function StrategyDetail() {
       {/* OVERVIEW TAB — executive summary */}
       {onTab("overview") && (
         <>
-          {/* M76: strategy lifecycle visual */}
-          {lifecycle && (
-            <StrategyLifecycleBar
-              data={lifecycle}
-              onBlockerAction={handleLifecycleBlocker}
-            />
-          )}
+          {/* M104: prominent lifecycle pipeline (replaces M76 StrategyLifecycleBar) */}
+          <LifecyclePipeline
+            lifecycle={lifecycle}
+            compact={false}
+            onBlockerAction={handleLifecycleBlocker}
+            onOpenGovernance={() => setActiveTab("governance")}
+          />
 
           {/* M74: backend-driven Action Queue; M73 local queue is the graceful fallback */}
           {actionQueue ? (
@@ -12123,6 +12123,12 @@ export default function StrategyDetail() {
       {/* ===================== GOVERNANCE TAB ===================== */}
       {onTab("governance") && (
         <>
+      {/* M104: compact lifecycle pipeline for governance context */}
+      <div className="rounded-card border border-border bg-bg-700 p-5 shadow-card">
+        <LifecyclePipeline lifecycle={lifecycle} compact onOpenGovernance={undefined} />
+        <p className="mt-3 font-mono text-2xs text-text-muted italic">Lifecycle progression is based on evidence quality, promotion gates, review status, and readiness checks. It is not trading advice.</p>
+      </div>
+
       {/* M87: Strategy Review Workflow */}
       <StrategyReviewWorkflow strategyId={id!} />
 
