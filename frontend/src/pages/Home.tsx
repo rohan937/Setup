@@ -12,6 +12,7 @@ import NoWorkspaceNotice from "@/components/NoWorkspaceNotice";
 import PageHeader from "@/components/PageHeader";
 import Card from "@/components/Card";
 import EmptyState from "@/components/EmptyState";
+import { Skeleton, SkeletonText } from "@/components/Skeleton";
 import { canSeedDemo, roleBadgeClasses } from "@/lib/permissions";
 import {
   startWalkthrough,
@@ -150,11 +151,28 @@ export default function Home() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="relative space-y-10">
+      {/* Ambient hero glow — subtle, institutional, behind content */}
+      <div
+        className="pointer-events-none absolute left-0 right-0 top-0 -z-10 h-64 overflow-hidden"
+        aria-hidden="true"
+      >
+        <div className="animate-gradient-drift absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-brand/10 blur-3xl" />
+        <div
+          className="animate-gradient-drift absolute -top-16 left-1/2 h-64 w-64 rounded-full bg-research/10 blur-3xl"
+          style={{ animationDelay: "-6s" }}
+        />
+        <div
+          className="animate-gradient-drift absolute -top-20 right-1/4 h-56 w-56 rounded-full bg-teal-500/8 blur-3xl"
+          style={{ animationDelay: "-3s" }}
+        />
+      </div>
+
       <NoWorkspaceNotice />
 
       {/* 1. Command-center header */}
       <PageHeader
+        className="animate-fade-in"
         tag="Research Command Center"
         title={`Welcome back, ${userName}`}
         subtitle="Your research reliability workspace — monitor evidence health, triage the highest-priority actions, and keep every strategy promotion-ready."
@@ -178,7 +196,7 @@ export default function Home() {
       </PageHeader>
 
       {/* 2. Workspace snapshot — hero metrics */}
-      <section className="space-y-4">
+      <section className="animate-slide-up space-y-4">
         <h2 className="section-title">Workspace snapshot</h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
           {snapshot.map((c) => (
@@ -186,9 +204,13 @@ export default function Home() {
               key={c.label}
               className="card-interactive rounded-card border border-border bg-bg-700 p-5 shadow-card"
             >
-              <p className={`metric-value text-metric-sm ${metricColor(c.value, c.tone)}`}>
-                {loading ? "…" : c.value}
-              </p>
+              {loading ? (
+                <Skeleton className="h-8 w-12" />
+              ) : (
+                <p className={`metric-value text-metric-sm ${metricColor(c.value, c.tone)}`}>
+                  {c.value}
+                </p>
+              )}
               <p className="caption mt-2">{c.label}</p>
             </div>
           ))}
@@ -196,7 +218,7 @@ export default function Home() {
       </section>
 
       {/* 3. Today — recommended actions + guided demo */}
-      <section className="space-y-4">
+      <section className="animate-fade-in space-y-4">
         <div className="flex items-center justify-between gap-4">
           <h2 className="section-title">Today</h2>
           <Link to="/command-center" className="text-sm text-accent-500 hover:text-accent-300">
@@ -214,7 +236,17 @@ export default function Home() {
             </div>
             <div className="flex-1 divide-y divide-border">
               {loading ? (
-                <p className="px-6 py-8 text-sm text-text-muted animate-pulse">Loading actions…</p>
+                <div className="space-y-4 px-6 py-5">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <Skeleton className="h-3.5 w-2/5" />
+                        <SkeletonText lines={1} />
+                      </div>
+                      <Skeleton className="h-3 w-12 shrink-0" />
+                    </div>
+                  ))}
+                </div>
               ) : actions.length === 0 ? (
                 <div className="px-6 py-8">
                   <EmptyState

@@ -71,4 +71,36 @@
   .card-interactive {
     @apply transition-all duration-150 hover:shadow-card-hover hover:border-border-strong;
   }
+
+  /* State glow utilities — subtle, state-aware (M102). */
+  .state-glow-success { @apply shadow-glow-success; }
+  .state-glow-warning { @apply shadow-glow-warning; }
+  .state-glow-danger  { @apply shadow-glow-danger; }
+  .state-glow-primary { @apply shadow-glow-primary; }
+  .state-glow-research{ @apply shadow-glow-research; }
+
+  /* Hover lift — premium, no layout shift (transform only). */
+  .card-hover-lift { @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lift hover:border-border-strong; }
+
+  /* Shimmer skeleton block. */
+  .skeleton { @apply relative overflow-hidden rounded-control bg-bg-600/60; }
+  .skeleton::after { content: ""; @apply absolute inset-0 animate-shimmer; background-image: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); background-size: 200% 100%; }
+
+  /* Status dot soft pulse. */
+  .status-dot-pulse { @apply animate-soft-pulse; }
+}
+
+/* M102 reduced-motion guard — animations/transitions become instant, no layout change. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton::after {
+    animation: none !important;
+  }
 }

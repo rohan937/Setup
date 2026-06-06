@@ -12,7 +12,7 @@ export default function Card({ label, children, className = "", accent = false }
   return (
     <div
       className={[
-        "card-interactive rounded-card border border-border bg-bg-700 shadow-card",
+        "card-hover-lift animate-fade-in rounded-card border border-border bg-bg-700 shadow-card",
         accent ? "border-t-2 border-t-brand" : "",
         className,
       ]

@@ -16,6 +16,15 @@ function colorForScore(score: number): string {
   return "text-fidelity-low";
 }
 
+// Hover-only state glow keyed to the score band. Cards stay calm at rest and
+// reveal a subtle band-colored ring on hover (never a constant glow).
+function hoverGlowForScore(score: number): string {
+  if (score >= 85) return "hover:shadow-glow-success";
+  if (score >= 70) return "hover:shadow-glow-primary";
+  if (score >= 50) return "hover:shadow-glow-warning";
+  return "hover:shadow-glow-danger";
+}
+
 export default function ScoreCard({
   label,
   description,
@@ -25,9 +34,28 @@ export default function ScoreCard({
 }: ScoreCardProps) {
   const hasScore = score !== undefined && score !== null;
   const valueColor = hasScore ? accentColor ?? colorForScore(score as number) : "text-text-muted";
+  const hoverGlow = hasScore ? hoverGlowForScore(score as number) : "";
+
+  // Very subtle static border tint for a critical verdict (blocked/critical/failed)
+  // at a failing score. No constant pulse — score cards stay calm.
+  const verdictLc = (verdict ?? "").toLowerCase();
+  const isCritical =
+    hasScore &&
+    (score as number) < 50 &&
+    /blocked|critical|failed/.test(verdictLc);
+  const criticalBorder = isCritical ? "border-fidelity-low/30" : "border-border";
 
   return (
-    <div className="card-interactive rounded-card border border-border bg-bg-700 p-6 shadow-card">
+    <div
+      className={[
+        "rounded-card border bg-bg-700 p-6 shadow-card",
+        criticalBorder,
+        "card-hover-lift animate-fade-in",
+        hoverGlow,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <p className="caption mb-3">{label}</p>
 
       <div className="flex items-baseline gap-2">

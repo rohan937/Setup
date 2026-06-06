@@ -54,6 +54,35 @@ const HEALTH_COLORS: Record<string, string> = {
 
 const DEFAULT = "border-border-strong bg-bg-600/60 text-text-secondary";
 
+// Values that represent live/attention states get a small leading status dot.
+// Attention states (active/running/open/critical/blocked/failed/review/watch)
+// softly pulse; calm states (healthy/ready/completed/stable/verified) get a
+// static dot. Informational badges (asset_class, run_type) get no dot.
+const DOT_PULSE = new Set([
+  "active",
+  "running",
+  "open",
+  "critical",
+  "blocked",
+  "failed",
+  "review",
+  "watch",
+]);
+
+const DOT_STATIC = new Set([
+  "healthy",
+  "ready",
+  "completed",
+  "stable",
+  "verified",
+]);
+
+function dotFor(value: string): "pulse" | "static" | null {
+  if (DOT_PULSE.has(value)) return "pulse";
+  if (DOT_STATIC.has(value)) return "static";
+  return null;
+}
+
 type BadgeVariant = "status" | "asset_class" | "run_type" | "run_status" | "health";
 
 interface BadgeProps {
@@ -73,10 +102,20 @@ function colorFor(value: string, variant?: BadgeVariant): string {
 }
 
 export default function Badge({ value, variant }: BadgeProps) {
+  const dot = dotFor(value);
+
   return (
     <span
       className={`inline-flex items-center rounded-chip border px-2 py-0.5 font-mono text-2xs font-medium uppercase tracking-eyebrow ${colorFor(value, variant)}`}
     >
+      {dot ? (
+        <span
+          aria-hidden="true"
+          className={`mr-1 inline-block h-1.5 w-1.5 rounded-full bg-current ${
+            dot === "pulse" ? "status-dot-pulse" : ""
+          }`}
+        />
+      ) : null}
       {value}
     </span>
   );

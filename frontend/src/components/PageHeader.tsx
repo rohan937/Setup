@@ -4,12 +4,13 @@ interface PageHeaderProps {
   title: string;
   subtitle?: string;
   tag?: string;        // optional monospace category tag, e.g. "RESEARCH"
+  className?: string;
   children?: ReactNode;
 }
 
-export default function PageHeader({ title, subtitle, tag, children }: PageHeaderProps) {
+export default function PageHeader({ title, subtitle, tag, className = "", children }: PageHeaderProps) {
   return (
-    <div className="mb-8 flex items-start justify-between gap-4">
+    <div className={`mb-8 flex items-start justify-between gap-4 ${className}`}>
       <div>
         {tag && <p className="caption mb-2">{tag}</p>}
         <h1 className="page-title">{title}</h1>

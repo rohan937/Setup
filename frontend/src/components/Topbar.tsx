@@ -59,14 +59,20 @@ export default function Topbar() {
 
 function ApiStatus({ state }: { state: BackendState }) {
   const cfg = {
-    loading: { dot: "bg-text-muted",         text: "text-text-muted",     label: "API connecting" },
-    online:  { dot: "bg-fidelity-high",       text: "text-fidelity-high",  label: "API online" },
-    offline: { dot: "bg-fidelity-low animate-pulse", text: "text-fidelity-low", label: "API offline" },
+    loading: { dot: "bg-text-muted",    ring: "bg-text-muted/30",    text: "text-text-muted",     label: "API connecting" },
+    online:  { dot: "bg-fidelity-high", ring: "bg-fidelity-high/40", text: "text-fidelity-high",  label: "API online" },
+    offline: { dot: "bg-fidelity-low",  ring: "bg-fidelity-low/40",  text: "text-fidelity-low",   label: "API offline" },
   }[state.status];
 
   return (
     <span className="flex items-center gap-1.5">
-      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+      <span className="relative flex h-1.5 w-1.5 items-center justify-center">
+        <span
+          className={`absolute inline-flex h-2.5 w-2.5 rounded-full animate-soft-pulse ${cfg.ring}`}
+          aria-hidden="true"
+        />
+        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+      </span>
       <span className={`font-mono text-2xs uppercase tracking-widest ${cfg.text}`}>
         {cfg.label}
       </span>

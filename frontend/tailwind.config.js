@@ -98,6 +98,28 @@ export default {
         card:         "0 1px 3px rgba(0,0,0,0.3), 0 8px 24px -8px rgba(0,0,0,0.5)",
         "card-hover": "0 2px 4px rgba(0,0,0,0.35), 0 12px 32px -8px rgba(0,0,0,0.6)",
         glow:         "0 0 0 1px rgba(79,140,255,0.15), 0 0 24px rgba(79,140,255,0.12)",
+        // M102 state-aware glows — subtle low-opacity rings, never neon.
+        "glow-success":  "0 0 0 1px rgba(0,212,146,0.25), 0 0 20px -4px rgba(0,212,146,0.25)",
+        "glow-warning":  "0 0 0 1px rgba(255,181,71,0.25), 0 0 20px -4px rgba(255,181,71,0.22)",
+        "glow-danger":   "0 0 0 1px rgba(255,107,107,0.25), 0 0 20px -4px rgba(255,107,107,0.22)",
+        "glow-primary":  "0 0 0 1px rgba(79,140,255,0.25), 0 0 20px -4px rgba(79,140,255,0.22)",
+        "glow-research": "0 0 0 1px rgba(139,92,246,0.25), 0 0 20px -4px rgba(139,92,246,0.22)",
+        "lift":          "0 4px 16px -4px rgba(0,0,0,0.55)",
+      },
+      // M102 motion tokens — calm, institutional. Static by default.
+      keyframes: {
+        "fade-in": { "0%": { opacity: "0" }, "100%": { opacity: "1" } },
+        "slide-up": { "0%": { opacity: "0", transform: "translateY(8px)" }, "100%": { opacity: "1", transform: "translateY(0)" } },
+        "soft-pulse": { "0%,100%": { opacity: "1" }, "50%": { opacity: "0.55" } },
+        "gradient-drift": { "0%": { transform: "translate3d(0,0,0) scale(1)" }, "50%": { transform: "translate3d(3%,-3%,0) scale(1.08)" }, "100%": { transform: "translate3d(0,0,0) scale(1)" } },
+        "shimmer": { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
+      },
+      animation: {
+        "fade-in": "fade-in 0.3s ease-out both",
+        "slide-up": "slide-up 0.35s ease-out both",
+        "soft-pulse": "soft-pulse 2.4s ease-in-out infinite",
+        "gradient-drift": "gradient-drift 16s ease-in-out infinite",
+        "shimmer": "shimmer 1.6s ease-in-out infinite",
       },
     },
   },

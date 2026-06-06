@@ -11,9 +11,9 @@ interface StrategyLifecycleBarProps {
 }
 
 const stageNodeClasses: Record<LifecycleStage["state"], string> = {
-  completed: "border-fidelity-high/40 bg-fidelity-high/10 text-fidelity-high",
-  current: "border-accent-500 bg-accent-500/20 text-accent-200",
-  blocked: "border-fidelity-medium/50 bg-fidelity-medium/10 text-fidelity-medium",
+  completed: "border-fidelity-high/40 bg-fidelity-high/10 text-fidelity-high state-glow-success",
+  current: "border-accent-500 bg-accent-500/20 text-accent-200 state-glow-primary",
+  blocked: "border-fidelity-medium/60 bg-fidelity-medium/10 text-fidelity-medium",
   upcoming: "border-border bg-bg-800 text-text-muted",
 };
 
@@ -50,7 +50,7 @@ export default function StrategyLifecycleBar({
   compact = false,
 }: StrategyLifecycleBarProps) {
   return (
-    <div className="rounded-card border border-border bg-bg-700 shadow-card">
+    <div className="rounded-card border border-border bg-bg-700 shadow-card animate-fade-in">
       <div
         className={
           "border-b border-border " +
@@ -84,9 +84,11 @@ export default function StrategyLifecycleBar({
                 <div className="flex w-20 flex-col items-center">
                   <div
                     className={
-                      "flex h-7 w-7 items-center justify-center rounded-full border text-2xs font-semibold " +
+                      "flex h-7 w-7 items-center justify-center rounded-full border text-2xs font-semibold transition-all duration-200 " +
                       stageNodeClasses[stage.state] +
-                      (stage.state === "current" ? " ring-2 ring-accent-500/30" : "")
+                      (stage.state === "current"
+                        ? " ring-2 ring-accent-500/30 animate-soft-pulse"
+                        : "")
                     }
                   >
                     {stage.index + 1}

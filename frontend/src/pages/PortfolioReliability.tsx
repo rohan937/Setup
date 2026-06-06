@@ -24,6 +24,7 @@ import {
 } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
+import { SkeletonCard } from "@/components/Skeleton";
 import { startWalkthrough } from "@/lib/demoWalkthrough";
 
 // ---------------------------------------------------------------------------
@@ -566,9 +567,7 @@ export default function PortfolioReliability() {
         </div>
       )}
 
-      {loading && (
-        <p className="text-xs text-text-muted">Loading portfolio reliability…</p>
-      )}
+      {loading && <SkeletonCard />}
 
       {!loading && !error && data && rows.length === 0 && (
         <EmptyState
