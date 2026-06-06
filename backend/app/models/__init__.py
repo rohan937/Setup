@@ -43,6 +43,7 @@ from app.models.experiment import StrategyExperiment, StrategyExperimentRun, Str
 from app.models.reliability_snapshot import StrategyReliabilitySnapshot
 from app.models.workspace_member import WorkspaceMember
 from app.models.auth_user import AuthUser
+from app.models.auth_email_token import AuthEmailToken
 
 __all__ = [
     "Organization",
@@ -84,4 +85,5 @@ __all__ = [
     "StrategyReliabilitySnapshot",
     "WorkspaceMember",
     "AuthUser",
+    "AuthEmailToken",
 ]

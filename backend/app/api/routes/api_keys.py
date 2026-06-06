@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.constants import EventType, Severity
-from app.core.rbac import require_can_manage_api_keys
+from app.core.rbac import require_can_manage_api_keys, require_verified_email
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.audit_timeline_event import AuditTimelineEvent
@@ -53,6 +53,7 @@ def create_api_key(
     body: ApiKeyCreateRequest,
     db: Session = Depends(get_db),
     _member=Depends(require_can_manage_api_keys),
+    _verified=Depends(require_verified_email),
 ) -> ApiKeyCreateResponse:
     """Create a new API key.
 

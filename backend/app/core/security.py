@@ -38,6 +38,25 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Email token hashing + password policy (M84)
+# ---------------------------------------------------------------------------
+
+def hash_token(raw: str) -> str:
+    """Return the SHA-256 hex digest of *raw*.
+
+    Used to store only token hashes for email verification / password reset —
+    the raw token is sent to the user once and never persisted.
+    """
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def validate_password_strength(password: str) -> None:
+    """Raise ``ValueError`` if *password* does not meet minimum strength."""
+    if len(password) < 8:
+        raise ValueError("password too short")
+
+
+# ---------------------------------------------------------------------------
 # JWT utilities
 # ---------------------------------------------------------------------------
 

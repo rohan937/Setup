@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.rbac import (
     require_can_seed_demo,
+    require_verified_email,
     require_workspace_admin,
     require_workspace_read_access,
 )
@@ -158,6 +159,7 @@ def seed_demo_endpoint(
     payload: DemoSeedRequest,
     db: Session = Depends(get_db),
     _member=Depends(require_can_seed_demo),
+    _verified=Depends(require_verified_email),
 ) -> DemoSeedResponse:
     """Seed (or reset) the demo dataset. RBAC: Owner/Admin only.
 

@@ -280,6 +280,13 @@ def require_can_seed_demo(
     return ctx
 
 
+def require_verified_email(current_user=Depends(get_optional_current_user)) -> None:
+    """Block JWT-authenticated users whose email is not verified. Local-dev /
+    API-key-only callers (no JWT user) pass through, matching pseudo-owner RBAC."""
+    if current_user is not None and not getattr(current_user, "email_verified", True):
+        raise HTTPException(status_code=403, detail="Email verification required.")
+
+
 def require_workspace_role(*allowed_roles: str):
     """Build a dependency enforcing membership in *allowed_roles*.
 

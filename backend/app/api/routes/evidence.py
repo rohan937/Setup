@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key_if_enabled
-from app.core.rbac import require_workspace_write_access
+from app.core.rbac import require_verified_email, require_workspace_write_access
 from app.db.session import get_db
 from app.models.api_key import ApiKey
 from app.models.organization import Organization
@@ -242,6 +242,7 @@ def ingest_bundle(
     # SDK/CI callers authenticate with an API key (no JWT) and resolve to a
     # permissive local pseudo-owner, so this does not break SDK ingestion.
     _member=Depends(require_workspace_write_access),
+    _verified=Depends(require_verified_email),
 ) -> EvidenceBundleResponse:
     """Ingest a structured evidence bundle for a strategy in a single transaction.
 

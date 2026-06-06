@@ -13,6 +13,7 @@ class UserRegisterRequest(BaseModel):
     email: str
     display_name: str
     password: str
+    invite_token: str | None = None
 
 
 class UserLoginRequest(BaseModel):
@@ -28,6 +29,8 @@ class UserRead(BaseModel):
     display_name: str
     status: str
     is_superuser: bool
+    email_verified: bool = False
+    email_verified_at: datetime | None = None
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -80,3 +83,26 @@ class AuthStatusResponse(BaseModel):
     auth_enabled: bool
     has_users: bool
     registration_enabled: bool
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class MessageResponse(BaseModel):
+    success: bool = True
+    message: str

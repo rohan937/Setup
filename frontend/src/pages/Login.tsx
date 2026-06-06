@@ -100,6 +100,12 @@ export default function Login() {
             >
               {loading ? "Signing in..." : "Sign In"}
             </button>
+
+            <p className="text-center font-mono text-xs text-text-muted">
+              <Link to="/forgot-password" className="text-brand hover:underline">
+                Forgot password?
+              </Link>
+            </p>
           </form>
 
           <p className="mt-4 text-center font-mono text-xs text-text-muted">

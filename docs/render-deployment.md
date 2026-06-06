@@ -119,6 +119,98 @@ have issued API keys via the Developer → API Keys page.
 
 ---
 
+## Transactional Email (Resend)
+
+QuantFidelity sends transactional email for **email verification** and **password
+reset** (added in M84). Two providers are supported, selected by `QF_EMAIL_PROVIDER`:
+
+- `console` (default) — prints the rendered email body, including the
+  verification/reset links, to the server log. Used for local development; no Resend
+  account or API key is needed.
+- `resend` — sends real email via [Resend](https://resend.com).
+
+### `QF_EMAIL_PROVIDER`
+```
+QF_EMAIL_PROVIDER=resend
+```
+`console` (default) or `resend`. Set to `resend` in production so users receive real
+verification and reset emails.
+
+### `QF_RESEND_API_KEY`
+```
+QF_RESEND_API_KEY=<your Resend API key>
+```
+Your Resend API key (secret). **Required when `QF_EMAIL_PROVIDER=resend`.** Never
+commit the real value — set it only in the Render dashboard.
+
+### `QF_EMAIL_FROM`
+```
+QF_EMAIL_FROM=QuantFidelity <noreply@yourdomain.com>
+```
+The sender identity. The domain must be a **Resend-verified domain** in production.
+For staging/testing you may use the built-in `resend.dev` test sender instead.
+
+### `QF_APP_FRONTEND_URL`
+```
+QF_APP_FRONTEND_URL=https://quantfidelity.vercel.app
+```
+Optional. Base URL used to build the links embedded in verification and reset emails.
+**If unset, `QF_FRONTEND_URL` is reused** — most deployments should leave this unset
+and rely on `QF_FRONTEND_URL` rather than configuring the same URL twice.
+
+### `QF_EMAIL_VERIFICATION_EXPIRE_HOURS`
+```
+QF_EMAIL_VERIFICATION_EXPIRE_HOURS=48
+```
+How long an email-verification link stays valid, in hours. Default: **48**.
+
+### `QF_PASSWORD_RESET_EXPIRE_HOURS`
+```
+QF_PASSWORD_RESET_EXPIRE_HOURS=2
+```
+How long a password-reset link stays valid, in hours. Default: **2**.
+
+### `QF_INVITE_ONLY_REGISTRATION`
+```
+QF_INVITE_ONLY_REGISTRATION=false
+```
+`false` (default). When `true`, public registration is disabled and the register
+endpoint returns **403**. Note: invite-token issuance/redemption is **not yet
+implemented**, so enabling this currently blocks all public signup.
+
+### Setting up Resend for production
+
+1. **Create a Resend account** at [resend.com](https://resend.com) and generate an
+   API key.
+2. **Verify your sender domain** in Resend by adding the DNS records it provides. For
+   staging/testing you can skip this and use the built-in `resend.dev` test sender.
+3. **On Render**, set:
+   ```
+   QF_EMAIL_PROVIDER=resend
+   QF_RESEND_API_KEY=<secret>
+   QF_EMAIL_FROM=QuantFidelity <noreply@yourdomain.com>
+   ```
+4. **Local development:** set `QF_EMAIL_PROVIDER=console` (the default). The email body
+   and verification/reset links are printed to the server log — no Resend account
+   needed.
+
+### Verification gating and grandfathered accounts
+
+Existing users were **grandfathered to verified** by migration
+`0026_m84_email_verification`, so current production accounts keep full access.
+Newly-registered users start **unverified** and must click the verification link sent
+to their email.
+
+Unverified users can still log in and view their workspace, but are **blocked from
+sensitive actions**:
+
+- API key creation
+- Evidence ingestion
+- Demo seed
+- Member management
+
+---
+
 ## Verify the deployment
 
 After setting all variables and deploying, check:

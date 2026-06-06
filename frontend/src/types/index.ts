@@ -3973,6 +3973,10 @@ export interface User {
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
+  /** M84: whether the user's email has been verified. */
+  email_verified: boolean;
+  /** M84: ISO timestamp of verification, null if not yet verified. */
+  email_verified_at: string | null;
 }
 
 export interface UserRegisterRequest {

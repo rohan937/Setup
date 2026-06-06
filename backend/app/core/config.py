@@ -110,6 +110,25 @@ class Settings(BaseSettings):
     # local-dev pseudo-owner so existing unauthenticated flows keep working.
     rbac_enabled: bool = True
 
+    # M84: Email verification + password reset
+    # Note: field names omit the "QF_" prefix because pydantic-settings
+    # prepends env_prefix="QF_" automatically.
+    # QF_EMAIL_PROVIDER: 'console' | 'resend'
+    email_provider: str = "console"
+    # QF_RESEND_API_KEY — Resend API key (only used when provider == 'resend').
+    resend_api_key: str = ""
+    # QF_EMAIL_FROM — From header for outgoing email.
+    email_from: str = "QuantFidelity <onboarding@resend.dev>"
+    # QF_APP_FRONTEND_URL — optional alias for the public frontend URL used to
+    # build email action links (verify / reset). Falls back to QF_FRONTEND_URL.
+    app_frontend_url: str = ""
+    # QF_INVITE_ONLY_REGISTRATION — when True, public registration is disabled.
+    invite_only_registration: bool = False
+    # QF_EMAIL_VERIFICATION_EXPIRE_HOURS — verification token lifetime.
+    email_verification_expire_hours: int = 48
+    # QF_PASSWORD_RESET_EXPIRE_HOURS — password reset token lifetime.
+    password_reset_expire_hours: int = 2
+
     # ---------------------------------------------------------------------------
     # Validators
     # ---------------------------------------------------------------------------
@@ -139,6 +158,17 @@ class Settings(BaseSettings):
             if url not in origins:
                 origins.append(url)
         return origins
+
+    @property
+    def email_link_base(self) -> str:
+        """Base URL for email action links (verify / reset).
+
+        Returns the first non-empty of ``app_frontend_url`` / ``frontend_url``,
+        falling back to the local dev frontend. Trailing slash is stripped so
+        callers can append ``/verify-email?...`` cleanly.
+        """
+        base = self.app_frontend_url or self.frontend_url or "http://localhost:5173"
+        return base.rstrip("/")
 
     @property
     def is_sqlite(self) -> bool:

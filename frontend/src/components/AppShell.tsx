@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import DemoWalkthrough from "./DemoWalkthrough";
+import VerifyEmailBanner from "./VerifyEmailBanner";
 import { getStrategies } from "@/lib/api";
 import { onWalkthroughStart } from "@/lib/demoWalkthrough";
 import type { Strategy } from "@/types";
@@ -27,6 +28,7 @@ export default function AppShell() {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
+        <VerifyEmailBanner />
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-content px-6 py-7">
             <Outlet />

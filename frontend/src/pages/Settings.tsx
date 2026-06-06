@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import Card from "@/components/Card";
-import { createApiKey, getApiKeys, revokeApiKey } from "@/lib/api";
+import {
+  createApiKey,
+  getApiKeys,
+  revokeApiKey,
+  resendVerification,
+  changePassword,
+} from "@/lib/api";
 import type { ApiKey, ApiKeyCreateResponse } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { canManageApiKeys, roleBadgeClasses } from "@/lib/permissions";
@@ -36,6 +42,168 @@ function projectScopeLabel(k: ApiKey): string {
   if (!k.project_id) return "All projects (organization-wide)";
   const shortId = k.project_id.slice(0, 8);
   return k.project_name ? `Project ${shortId} — ${k.project_name}` : `Project ${shortId}`;
+}
+
+function AccountSecuritySection() {
+  const { user } = useAuth();
+
+  const [resending, setResending] = useState(false);
+  const [resendResult, setResendResult] = useState<"sent" | "failed" | null>(null);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changing, setChanging] = useState(false);
+  const [changeError, setChangeError] = useState<string | null>(null);
+  const [changeSuccess, setChangeSuccess] = useState(false);
+
+  async function handleResend() {
+    setResending(true);
+    setResendResult(null);
+    try {
+      await resendVerification();
+      setResendResult("sent");
+    } catch {
+      setResendResult("failed");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setChangeError(null);
+    setChangeSuccess(false);
+
+    if (newPassword.length < 8) {
+      setChangeError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setChangeError("New passwords do not match.");
+      return;
+    }
+
+    setChanging(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setChangeSuccess(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setChangeError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Could not change password.",
+      );
+    } finally {
+      setChanging(false);
+    }
+  }
+
+  return (
+    <div className="mb-6 space-y-4">
+      <h2 className="font-mono text-xs font-semibold uppercase tracking-widest text-text-muted">
+        Account Security
+      </h2>
+
+      {/* Email verification status */}
+      <Card label="Email Verification">
+        {user?.email_verified ? (
+          <p className="font-mono text-xs text-green-400">Email verified ✓</p>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-mono text-xs text-amber-300">Email not verified</p>
+            <div className="flex items-center gap-2">
+              {resendResult === "sent" && (
+                <span className="font-mono text-2xs text-green-400">Sent ✓</span>
+              )}
+              {resendResult === "failed" && (
+                <span className="font-mono text-2xs text-red-400">Failed</span>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleResend()}
+                disabled={resending}
+                className="rounded border border-border px-3 py-1 font-mono text-xs text-text-secondary hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {resending ? "sending…" : "Resend"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Change password */}
+      <Card label="Change Password">
+        <form onSubmit={handleChangePassword} className="space-y-3">
+          <div>
+            <label className="mb-1 block font-mono text-2xs uppercase tracking-widest text-text-muted">
+              Current Password
+            </label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              placeholder="••••••••"
+              className="w-full rounded border border-border bg-bg-secondary px-2 py-1 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block font-mono text-2xs uppercase tracking-widest text-text-muted">
+              New Password
+            </label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              placeholder="••••••••"
+              className="w-full rounded border border-border bg-bg-secondary px-2 py-1 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+            />
+            <p className="mt-1 font-mono text-2xs text-text-muted">
+              Must be at least 8 characters.
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block font-mono text-2xs uppercase tracking-widest text-text-muted">
+              Confirm New Password
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              placeholder="••••••••"
+              className="w-full rounded border border-border bg-bg-secondary px-2 py-1 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+            />
+          </div>
+
+          {changeError && (
+            <p className="font-mono text-2xs text-red-400">{changeError}</p>
+          )}
+          {changeSuccess && (
+            <p className="font-mono text-2xs text-green-400">
+              Password changed successfully.
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={changing}
+            className="rounded border border-border px-3 py-1 font-mono text-xs text-text-secondary hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {changing ? "changing…" : "Change Password"}
+          </button>
+        </form>
+      </Card>
+    </div>
+  );
 }
 
 export default function Settings() {
@@ -294,6 +462,9 @@ client = QuantFidelityClient(
           </pre>
         </Card>
       </div>
+
+      {/* Account Security section */}
+      <AccountSecuritySection />
 
       {/* Local Configuration section */}
       <div className="space-y-4">

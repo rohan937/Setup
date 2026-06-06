@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.rbac import (
     require_can_manage_members,
+    require_verified_email,
     require_workspace_admin,
     require_workspace_read_access,
 )
@@ -55,6 +56,7 @@ def update_workspace_settings(
     body: WorkspaceSettingsUpdate,
     db: Session = Depends(get_db),
     _member=Depends(require_workspace_admin),
+    _verified=Depends(require_verified_email),
 ) -> WorkspaceSettingsRead:
     """Update workspace settings. RBAC: Owner/Admin only."""
     org = svc.get_workspace_settings(db)
@@ -117,6 +119,7 @@ def create_workspace_member(
     body: WorkspaceMemberCreate,
     db: Session = Depends(get_db),
     _member=Depends(require_can_manage_members),
+    _verified=Depends(require_verified_email),
 ) -> WorkspaceMemberRead:
     """Add a new member to the workspace. RBAC: Owner/Admin only."""
     org = svc.get_workspace_settings(db)
@@ -144,6 +147,7 @@ def update_workspace_member(
     body: WorkspaceMemberUpdate,
     db: Session = Depends(get_db),
     _member=Depends(require_can_manage_members),
+    _verified=Depends(require_verified_email),
 ) -> WorkspaceMemberRead:
     """Update a workspace member's fields. RBAC: Owner/Admin only."""
     try:
@@ -166,6 +170,7 @@ def remove_workspace_member(
     member_id: str,
     db: Session = Depends(get_db),
     _member=Depends(require_can_manage_members),
+    _verified=Depends(require_verified_email),
 ) -> dict:
     """Soft-delete a workspace member. RBAC: Owner/Admin only."""
     try:

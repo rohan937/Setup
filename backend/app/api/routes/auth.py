@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import uuid as _uuid_module
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.config import get_settings
-from app.core.security import create_access_token
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    validate_password_strength,
+    verify_password,
+)
 from app.db.session import get_db
 from app.models.auth_user import AuthUser
 from app.models.organization import Organization
@@ -17,12 +23,17 @@ from app.models.workspace_member import WorkspaceMember
 from app.schemas.auth import (
     AuthStatusResponse,
     AuthTokenResponse,
+    ChangePasswordRequest,
     CurrentUserResponse,
     CurrentUserWorkspaceMembership,
+    ForgotPasswordRequest,
+    MessageResponse,
     PermissionSet,
+    ResetPasswordRequest,
     UserLoginRequest,
     UserRead,
     UserRegisterRequest,
+    VerifyEmailRequest,
 )
 from app.services.auth_users import (
     authenticate_user,
@@ -30,6 +41,8 @@ from app.services.auth_users import (
     owner_exists,
     register_user,
 )
+from app.services.email import send_password_reset_email, send_verification_email
+from app.services.email_tokens import consume_email_token, create_email_token
 
 router = APIRouter()
 
@@ -37,6 +50,17 @@ router = APIRouter()
 @router.post("/auth/register", response_model=AuthTokenResponse)
 def register(payload: UserRegisterRequest, db: Session = Depends(get_db)):
     """Register a new user and return a JWT token."""
+    settings = get_settings()
+    if settings.invite_only_registration:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Public registration is disabled (invite-only). "
+                "Contact an administrator for access."
+            ),
+        )
+    # NOTE: full invite-token redemption (payload.invite_token) is intentionally
+    # future work — for now invite_only acts purely as a registration guard.
     try:
         user = register_user(db, payload.email, payload.display_name, payload.password)
         db.commit()
@@ -51,13 +75,124 @@ def register(payload: UserRegisterRequest, db: Session = Depends(get_db)):
                 status_code=422, detail="Password must be at least 8 characters"
             )
         raise HTTPException(status_code=400, detail=msg)
-    settings = get_settings()
+
+    # New users start UNVERIFIED (model default email_verified=False). Issue an
+    # email-verification token and send the link. Email failures must never 500
+    # the registration — the user is created and logged in either way.
+    raw = create_email_token(
+        db, user, "email_verification", settings.email_verification_expire_hours
+    )
+    db.commit()
+    try:
+        send_verification_email(settings, user, raw)
+    except Exception:
+        pass  # never 500 registration on email failure
+
     token = create_access_token(
         str(user.id), user.email, settings.access_token_expire_minutes
     )
     return AuthTokenResponse(
         access_token=token, user=UserRead.model_validate(user)
     )
+
+
+@router.post("/auth/verify-email", response_model=MessageResponse)
+def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
+    """Consume an email-verification token and mark the user verified."""
+    user = consume_email_token(db, payload.token, "email_verification")
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link.")
+    now = datetime.now(timezone.utc)
+    user.email_verified = True
+    user.email_verified_at = now
+    user.updated_at = now
+    db.commit()
+    return MessageResponse(message="Email verified successfully.")
+
+
+@router.post("/auth/resend-verification", response_model=MessageResponse)
+def resend_verification(
+    current_user: AuthUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-send the email-verification link to the current user."""
+    if current_user.email_verified:
+        return MessageResponse(message="Your email is already verified.")
+    settings = get_settings()
+    raw = create_email_token(
+        db,
+        current_user,
+        "email_verification",
+        settings.email_verification_expire_hours,
+    )
+    db.commit()
+    try:
+        send_verification_email(settings, current_user, raw)
+    except Exception:
+        pass
+    return MessageResponse(message="Verification email sent. Check your inbox.")
+
+
+@router.post("/auth/forgot-password", response_model=MessageResponse)
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Begin a password reset. Always returns the same message (no enumeration)."""
+    settings = get_settings()
+    email = payload.email.lower().strip()
+    user = db.query(AuthUser).filter(AuthUser.email == email).first()
+    if user is not None:
+        raw = create_email_token(
+            db, user, "password_reset", settings.password_reset_expire_hours
+        )
+        db.commit()
+        try:
+            send_password_reset_email(settings, user, raw)
+        except Exception:
+            pass
+    # ALWAYS the same response — never reveal whether the email exists.
+    return MessageResponse(
+        message="If an account exists for that email, a password reset link has been sent."
+    )
+
+
+@router.post("/auth/reset-password", response_model=MessageResponse)
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Reset a password using a valid password-reset token."""
+    try:
+        validate_password_strength(payload.new_password)
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="Password must be at least 8 characters"
+        )
+    user = consume_email_token(db, payload.token, "password_reset")
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
+    user.hashed_password = hash_password(payload.new_password)
+    user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return MessageResponse(
+        message="Password reset successful. You can now sign in with your new password."
+    )
+
+
+@router.post("/auth/change-password", response_model=MessageResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Change the current user's password (requires the current password)."""
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    try:
+        validate_password_strength(payload.new_password)
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="Password must be at least 8 characters"
+        )
+    current_user.hashed_password = hash_password(payload.new_password)
+    current_user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return MessageResponse(message="Password changed successfully.")
 
 
 @router.post("/auth/login", response_model=AuthTokenResponse)

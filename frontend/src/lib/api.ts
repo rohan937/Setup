@@ -1747,3 +1747,65 @@ export async function getAuthStatus(): Promise<AuthStatusResponse> {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// M84 — Email verification + password reset + change password
+// ---------------------------------------------------------------------------
+
+/** Generic success envelope returned by the M84 auth endpoints. */
+export interface MessageResponse {
+  success: boolean;
+  message: string;
+}
+
+/** Verify an email address using the token from the verification link. */
+export async function verifyEmail(token: string): Promise<MessageResponse> {
+  return request<MessageResponse>("/api/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+/** Resend the verification email to the currently authenticated user. */
+export async function resendVerification(): Promise<MessageResponse> {
+  return request<MessageResponse>("/api/auth/resend-verification", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+/**
+ * Request a password-reset link. The response is intentionally generic and
+ * never reveals whether an account exists for the given email.
+ */
+export async function forgotPassword(email: string): Promise<MessageResponse> {
+  return request<MessageResponse>("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+/** Reset a password using the token from the reset link. */
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<MessageResponse> {
+  return request<MessageResponse>("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+}
+
+/** Change the authenticated user's password. */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<MessageResponse> {
+  return request<MessageResponse>("/api/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
