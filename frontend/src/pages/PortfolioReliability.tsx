@@ -24,6 +24,7 @@ import {
 } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
+import { startWalkthrough } from "@/lib/demoWalkthrough";
 
 // ---------------------------------------------------------------------------
 // Visual helpers
@@ -495,6 +496,17 @@ export default function PortfolioReliability() {
         title="Portfolio Reliability"
         subtitle="Portfolio-level view of strategy research readiness, evidence health, and blockers."
       />
+
+      {/* M91: Guided demo trigger */}
+      <div className="mb-4 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => startWalkthrough(true)}
+          className="rounded-control border border-accent-500/30 bg-accent-500/10 px-3 py-1.5 text-xs font-medium text-accent-400 hover:bg-accent-500/20 transition-colors"
+        >
+          Start guided demo
+        </button>
+      </div>
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
