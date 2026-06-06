@@ -201,6 +201,7 @@ import StrategyReviewWorkflow from "@/components/StrategyReviewWorkflow";
 import StrategyReviewStatusCard from "@/components/StrategyReviewStatusCard";
 import { useAuth } from "@/context/AuthContext";
 import LifecyclePipeline from "@/components/LifecyclePipeline";
+import ScoreCard from "@/components/ScoreCard";
 import PanelEmptyState from "@/components/PanelEmptyState";
 import { StrategyEditModal, StrategyArchiveModal } from "@/components/StrategyManageModals";
 import RunLogDrawer from "@/components/RunLogDrawer";
@@ -9498,19 +9499,19 @@ function CommandCenterPanel({ strategyId }: { strategyId: string }) {
 type StrategyTab =
   | "overview"
   | "evidence"
-  | "runs"
+  | "reality"
   | "governance"
   | "lineage"
-  | "exports"
+  | "reports"
   | "developer";
 
 const STRATEGY_TABS: { key: StrategyTab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "evidence", label: "Evidence" },
-  { key: "runs", label: "Runs" },
-  { key: "governance", label: "Governance" },
+  { key: "reality", label: "Reality" },
   { key: "lineage", label: "Lineage" },
-  { key: "exports", label: "Exports" },
+  { key: "governance", label: "Governance" },
+  { key: "reports", label: "Reports" },
   { key: "developer", label: "Developer" },
 ];
 
@@ -9588,10 +9589,10 @@ const SEV_LABEL: Record<ActionSeverity, string> = {
 const TAB_LABEL: Record<StrategyTab, string> = {
   overview: "Overview",
   evidence: "Evidence",
-  runs: "Runs",
+  reality: "Reality",
   governance: "Governance",
   lineage: "Lineage",
-  exports: "Exports",
+  reports: "Reports",
   developer: "Developer",
 };
 
@@ -9697,7 +9698,7 @@ function buildActionItems(args: {
       why: "Only research/backtest runs exist. A paper run is typically required before live progression.",
       severity: "low",
       action: "Log a run",
-      tab: "runs",
+      tab: "reality",
     });
   }
 
@@ -9709,7 +9710,7 @@ function buildActionItems(args: {
       why: "A report packages the current evidence into a shareable summary for review.",
       severity: "low",
       action: "Generate report",
-      tab: "exports",
+      tab: "reports",
     });
   }
 
@@ -9838,7 +9839,7 @@ const ACTION_STATUS_LABEL: Record<string, string> = {
 };
 
 const VALID_TABS: StrategyTab[] = [
-  "overview", "evidence", "runs", "governance", "lineage", "exports", "developer",
+  "overview", "evidence", "reality", "governance", "lineage", "reports", "developer",
 ];
 
 function ReadinessSimulatorPanel({
@@ -10588,7 +10589,9 @@ export default function StrategyDetail() {
 
   // M74: honor ?tab= deep links (e.g. from the Command Center action queue).
   useEffect(() => {
-    const tab = searchParams.get("tab");
+    // M105: backward-compat for legacy deep links (?tab=runs / ?tab=exports).
+    const raw = searchParams.get("tab");
+    const tab = raw === "runs" ? "reality" : raw === "exports" ? "reports" : raw;
     if (tab && VALID_TABS.includes(tab as StrategyTab)) {
       setActiveTab(tab as StrategyTab);
     }
@@ -11195,9 +11198,16 @@ export default function StrategyDetail() {
   // and refresh; link_evidence opens the repair modal.
   async function handleActionItem(item: BackendActionItem) {
     if (!id) return;
+    // M105: normalize legacy backend target_tab values to the renamed tabs.
+    const normalizedTarget =
+      item.target_tab === "runs"
+        ? "reality"
+        : item.target_tab === "exports"
+          ? "reports"
+          : item.target_tab;
     const tab =
-      item.target_tab && VALID_TABS.includes(item.target_tab as StrategyTab)
-        ? (item.target_tab as StrategyTab)
+      normalizedTarget && VALID_TABS.includes(normalizedTarget as StrategyTab)
+        ? (normalizedTarget as StrategyTab)
         : null;
     setActionMessage(null);
 
@@ -11207,8 +11217,8 @@ export default function StrategyDetail() {
         setRepairRunId(item.related_object_id);
         setRepairOpen(true);
       } else {
-        setActiveTab("runs");
-        setActionMessage("Open a run in the Runs tab to link its evidence.");
+        setActiveTab("reality");
+        setActionMessage("Open a run in the Reality tab to link its evidence.");
       }
       return;
     }
@@ -11396,61 +11406,37 @@ export default function StrategyDetail() {
         </div>
       )}
 
-      {/* Strategy header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="caption mb-1">{strategy.project_name}</p>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-xl font-semibold tracking-tight text-text-primary">
-              {strategy.name}
-            </h1>
-            <Badge value={strategy.asset_class} variant="asset_class" />
-            <Badge value={strategy.status} variant="status" />
+      {/* Strategy header — M105: control-center header */}
+      <div className="rounded-card border border-border bg-bg-700/60 px-5 py-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="caption mb-1">{strategy.project_name}</p>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="page-title text-text-primary">{strategy.name}</h1>
+              <Badge value={strategy.asset_class} variant="asset_class" />
+              <Badge value={strategy.status} variant="status" />
+            </div>
+            {strategy.description && (
+              <p className="mt-1.5 max-w-2xl text-sm text-text-secondary">{strategy.description}</p>
+            )}
           </div>
-          {strategy.description && (
-            <p className="mt-1.5 max-w-2xl text-sm text-text-secondary">{strategy.description}</p>
-          )}
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <button
-            onClick={handleGenerateReport}
-            disabled={generatingReport}
-            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {generatingReport ? "Generating…" : "Generate Report"}
-          </button>
-          <button
-            onClick={() => setVersionDrawerOpen(true)}
-            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-          >
-            + Create Version
-          </button>
-          <button
-            onClick={() => setConfigSnapshotDrawerOpen(true)}
-            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-          >
-            + Log Config
-          </button>
-          <button
-            onClick={() => setUniverseSnapshotDrawerOpen(true)}
-            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-          >
-            + Log Universe
-          </button>
-          <button
-            onClick={() => setSignalSnapshotDrawerOpen(true)}
-            className="rounded-control border border-border px-3 py-2 font-mono text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-          >
-            + Log Signal
-          </button>
-          <button
-            onClick={() => setRunDrawerOpen(true)}
-            className="rounded-control bg-accent-500 px-3.5 py-2 font-mono text-xs font-medium text-text-inverse hover:bg-accent-600"
-          >
-            + Log Run
-          </button>
-          {/* M75+: full strategy command menu */}
-          <StrategyCommandMenu
+          {/* Action hierarchy: primary actions stay prominent */}
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={handleGenerateReport}
+              disabled={generatingReport}
+              className="rounded-control bg-accent-500 px-3.5 py-2 font-mono text-xs font-medium text-text-inverse hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {generatingReport ? "Generating…" : "Generate Report"}
+            </button>
+            <button
+              onClick={() => setRunDrawerOpen(true)}
+              className="rounded-control border border-accent-500/50 bg-accent-500/10 px-3.5 py-2 font-mono text-xs font-medium text-accent-200 hover:bg-accent-500/20"
+            >
+              + Log Run
+            </button>
+            {/* M75+: full strategy command menu — "More actions" */}
+            <StrategyCommandMenu
             strategyId={id!}
             strategyStatus={strategy.status}
             latestRunId={strategy.runs && strategy.runs.length > 0 ? strategy.runs[0].id : null}
@@ -11474,6 +11460,73 @@ export default function StrategyDetail() {
             onFeedback={showPageFeedback}
             onRefreshed={reloadAll}
           />
+          </div>
+        </div>
+
+        {/* M105: context stats row — inline at-a-glance signals */}
+        {(lifecycle?.current_stage_label ||
+          reliabilityScore?.overall_score != null ||
+          readiness?.verdict_label ||
+          (health && health.open_alert_count > 0)) && (
+          <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3.5">
+            {lifecycle?.current_stage_label && (
+              <span className="inline-flex items-center gap-1.5 rounded-control border border-border bg-bg-800/60 px-2.5 py-1 font-mono text-2xs">
+                <span className="text-text-muted">stage</span>
+                <span className="text-text-primary">{lifecycle.current_stage_label}</span>
+              </span>
+            )}
+            {reliabilityScore?.overall_score != null && (
+              <span className="inline-flex items-center gap-1.5 rounded-control border border-border bg-bg-800/60 px-2.5 py-1 font-mono text-2xs">
+                <span className="text-text-muted">reliability</span>
+                <span className={`tabular-nums ${scoreComponentColor(reliabilityScore.overall_score)}`}>
+                  {reliabilityScore.overall_score.toFixed(1)}
+                </span>
+              </span>
+            )}
+            {readiness?.verdict_label && (
+              <span className="inline-flex items-center gap-1.5 rounded-control border border-border bg-bg-800/60 px-2.5 py-1 font-mono text-2xs">
+                <span className="text-text-muted">readiness</span>
+                <span className={verdictColors(readiness.readiness_verdict)}>{readiness.verdict_label}</span>
+              </span>
+            )}
+            {health && health.open_alert_count > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-control border border-border bg-bg-800/60 px-2.5 py-1 font-mono text-2xs">
+                <span className="text-text-muted">open alerts</span>
+                <span className={health.high_critical_alert_count > 0 ? "text-red-400" : "text-yellow-400"}>
+                  {health.open_alert_count}
+                </span>
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* M105: secondary "log" actions — quieter weight */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="font-mono text-2xs text-text-muted">log evidence</span>
+          <button
+            onClick={() => setVersionDrawerOpen(true)}
+            className="rounded-control border border-border bg-bg-800/40 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Version
+          </button>
+          <button
+            onClick={() => setConfigSnapshotDrawerOpen(true)}
+            className="rounded-control border border-border bg-bg-800/40 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Config
+          </button>
+          <button
+            onClick={() => setUniverseSnapshotDrawerOpen(true)}
+            className="rounded-control border border-border bg-bg-800/40 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Universe
+          </button>
+          <button
+            onClick={() => setSignalSnapshotDrawerOpen(true)}
+            className="rounded-control border border-border bg-bg-800/40 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            + Signal
+          </button>
         </div>
       </div>
 
@@ -11496,6 +11549,53 @@ export default function StrategyDetail() {
             onBlockerAction={handleLifecycleBlocker}
             onOpenGovernance={() => setActiveTab("governance")}
           />
+
+          {/* M105 phase 3: reliability snapshot — all scores at a glance */}
+          <section>
+            <p className="section-title mb-3">Reliability snapshot</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              {reliabilityScore && (
+                <ScoreCard
+                  label="Reliability"
+                  score={reliabilityScore.overall_score}
+                  verdict={reliabilityScore.status}
+                  description="Overall evidence reliability across all dimensions."
+                />
+              )}
+              {readiness && (
+                <ScoreCard
+                  label="Readiness"
+                  score={readiness.readiness_score}
+                  verdict={readiness.verdict_label || readiness.readiness_verdict}
+                  description="Promotion readiness across scored dimensions."
+                />
+              )}
+              {backtestReality && (
+                <ScoreCard
+                  label="Backtest Reality"
+                  score={backtestReality.backtest_reality_score}
+                  verdict={backtestReality.verdict}
+                  description="How realistic the backtest assumptions look."
+                />
+              )}
+              {evidenceVerification && (
+                <ScoreCard
+                  label="Evidence Verification"
+                  score={evidenceVerification.verification_score}
+                  verdict={evidenceVerification.verdict}
+                  description="Integrity of the linked evidence chain."
+                />
+              )}
+              {shadowMonitorV2 && shadowMonitorV2.verdict !== "insufficient_data" && (
+                <ScoreCard
+                  label="Shadow Drift"
+                  score={shadowMonitorV2.drift_score}
+                  verdict={shadowMonitorV2.verdict}
+                  description="Drift between baseline and shadow production runs."
+                />
+              )}
+            </div>
+          </section>
 
           {/* M74: backend-driven Action Queue; M73 local queue is the graceful fallback */}
           {actionQueue ? (
@@ -11536,27 +11636,11 @@ export default function StrategyDetail() {
             onToggle={toggleSimAction}
             onSimulate={handleSimulate}
             onReset={handleResetSimulation}
-            onNavigate={(tab) => setActiveTab(tab as StrategyTab)}
-          />
-
-          {/* M98: Strategy Sandbox */}
-          <StrategySandboxPanel
-            state={sandboxState} result={sandboxResult} loading={sandboxLoading} error={sandboxError}
-            targetStage={sandboxTargetStage} onTargetChange={setSandboxTargetStage}
-            onPreset={applySandboxPreset} onRun={handleRunSandbox} onReset={handleResetSandbox}
-            costBps={sbCostBps} setCostBps={setSbCostBps}
-            slippageBps={sbSlippageBps} setSlippageBps={setSbSlippageBps}
-            fillModel={sbFillModel} setFillModel={setSbFillModel}
-            turnover={sbTurnover} setTurnover={setSbTurnover}
-            tradeCount={sbTradeCount} setTradeCount={setSbTradeCount}
-            maxDrawdown={sbMaxDrawdown} setMaxDrawdown={setSbMaxDrawdown}
-            volatility={sbVolatility} setVolatility={setSbVolatility}
-            sharpe={sbSharpe} setSharpe={setSbSharpe}
-            signalStale={sbSignalStale} setSignalStale={setSbSignalStale}
-            verifFailed={sbVerifFailed} setVerifFailed={setSbVerifFailed}
-            paperDrift={sbPaperDrift} setPaperDrift={setSbPaperDrift}
-            reportMissing={sbReportMissing} setReportMissing={setSbReportMissing}
-            highAlerts={sbHighAlerts} setHighAlerts={setSbHighAlerts}
+            onNavigate={(tab) => {
+              // M105: normalize legacy backend cta_target tab values.
+              const t = tab === "runs" ? "reality" : tab === "exports" ? "reports" : tab;
+              setActiveTab(t as StrategyTab);
+            }}
           />
 
           {/* M85: Open reliability alerts for this strategy */}
@@ -11932,8 +12016,8 @@ export default function StrategyDetail() {
         </>
       )}
 
-      {/* ===================== RUNS TAB ===================== */}
-      {onTab("runs") && (
+      {/* ===================== REALITY TAB ===================== */}
+      {onTab("reality") && (
         <>
       {/* Run evidence */}
       <div className="rounded-card border border-border bg-bg-700">
@@ -11942,9 +12026,16 @@ export default function StrategyDetail() {
         </div>
         <div className="p-4">
           {strategy.runs.length === 0 ? (
-            <p className="text-sm text-text-muted">
-              No runs logged yet. Use “+ Log Run” above, or ingest a bundle from the Developer tab.
-            </p>
+            <PanelEmptyState
+              title="No runs logged yet"
+              description="Run evidence is how this strategy proves it behaves the same in research and reality. Log a backtest, paper, or shadow run to start building the reality record — or ingest an evidence bundle from a pipeline."
+              note="Paper and shadow runs matter most: they show out-of-sample behavior before any promotion."
+              needsWrite
+              actions={[
+                { label: "Log a run", onClick: () => setRunDrawerOpen(true), primary: true },
+                { label: "Ingest a bundle", to: `/developer/evidence-builder?strategyId=${id}` },
+              ]}
+            />
           ) : (
             <div className="divide-y divide-border">
               {strategy.runs.map((r) => (
@@ -12105,6 +12196,29 @@ export default function StrategyDetail() {
         onRefresh={handleRefreshBacktestReality}
         refreshing={backtestRealityRefreshing}
         error={backtestRealityError}
+      />
+
+      {/* M105: What-if review — sandbox moved here from Overview */}
+      <p className="section-title">What-if review</p>
+
+      {/* M98: Strategy Sandbox */}
+      <StrategySandboxPanel
+        state={sandboxState} result={sandboxResult} loading={sandboxLoading} error={sandboxError}
+        targetStage={sandboxTargetStage} onTargetChange={setSandboxTargetStage}
+        onPreset={applySandboxPreset} onRun={handleRunSandbox} onReset={handleResetSandbox}
+        costBps={sbCostBps} setCostBps={setSbCostBps}
+        slippageBps={sbSlippageBps} setSlippageBps={setSbSlippageBps}
+        fillModel={sbFillModel} setFillModel={setSbFillModel}
+        turnover={sbTurnover} setTurnover={setSbTurnover}
+        tradeCount={sbTradeCount} setTradeCount={setSbTradeCount}
+        maxDrawdown={sbMaxDrawdown} setMaxDrawdown={setSbMaxDrawdown}
+        volatility={sbVolatility} setVolatility={setSbVolatility}
+        sharpe={sbSharpe} setSharpe={setSbSharpe}
+        signalStale={sbSignalStale} setSignalStale={setSbSignalStale}
+        verifFailed={sbVerifFailed} setVerifFailed={setSbVerifFailed}
+        paperDrift={sbPaperDrift} setPaperDrift={setSbPaperDrift}
+        reportMissing={sbReportMissing} setReportMissing={setSbReportMissing}
+        highAlerts={sbHighAlerts} setHighAlerts={setSbHighAlerts}
       />
 
       {/* M58: Run Replay Pack */}
@@ -12274,8 +12388,8 @@ export default function StrategyDetail() {
         </>
       )}
 
-      {/* ===================== EXPORTS TAB ===================== */}
-      {onTab("exports") && (
+      {/* ===================== REPORTS TAB ===================== */}
+      {onTab("reports") && (
         <>
       <p className="text-sm text-text-secondary">
         Export this strategy’s full evidence pack, or generate a reliability report using

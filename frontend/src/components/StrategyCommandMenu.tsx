@@ -44,10 +44,10 @@ import type { PermissionContext } from "@/lib/permissions";
 type StrategyTab =
   | "overview"
   | "evidence"
-  | "runs"
+  | "reality"
   | "governance"
   | "lineage"
-  | "exports"
+  | "reports"
   | "developer";
 
 export interface StrategyCommandMenuProps {
@@ -542,8 +542,8 @@ export default function StrategyCommandMenu({
             {(
               [
                 ["evidence", "→ Evidence tab"],
-                ["runs", "→ Runs tab"],
-                ["exports", "→ Exports tab"],
+                ["reality", "→ Reality tab"],
+                ["reports", "→ Reports tab"],
                 ["lineage", "→ Lineage / Audit Trail tab"],
                 ["developer", "→ Developer tab"],
               ] as [StrategyTab, string][]
