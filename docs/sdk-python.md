@@ -182,6 +182,18 @@ bundle = (
 )
 ```
 
+### Grade a bundle before ingest
+
+Use `grade_bundle` (M97) to get a quality grade for an evidence bundle without
+ingesting or mutating any data. It returns a dict with `letter_grade`,
+`verdict`, `stage_sufficiency`, `included`, `missing`, `warnings`, and
+`recommended_fixes`.
+
+```python
+grade = client.grade_bundle(bundle)
+print(grade["letter_grade"], grade["verdict"])
+```
+
 ---
 
 ## Error handling

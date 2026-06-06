@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import PageHeader from "@/components/PageHeader";
 import Button from "@/components/Button";
-import { getStrategies, ingestEvidenceBundle } from "@/lib/api";
-import type { EvidenceBundleResponse, Strategy } from "@/types";
+import BundleGradePanel from "@/components/BundleGradePanel";
+import { getStrategies, gradeEvidenceBundle, ingestEvidenceBundle } from "@/lib/api";
+import type { BundleGradeResponse, EvidenceBundleResponse, Strategy } from "@/types";
 import {
   type BuilderState,
   type BuilderValidationError,
@@ -205,6 +206,11 @@ export default function EvidenceBuilder() {
   const [ingestResult, setIngestResult] = useState<EvidenceBundleResponse | null>(null);
   const [ingestError, setIngestError] = useState<string | null>(null);
 
+  // Grade state (M97)
+  const [gradeResult, setGradeResult] = useState<BundleGradeResponse | null>(null);
+  const [grading, setGrading] = useState(false);
+  const [gradeError, setGradeError] = useState<string | null>(null);
+
   // Validation flash state
   const [validateFlash, setValidateFlash] = useState<"idle" | "ok" | "fail">("idle");
 
@@ -317,6 +323,19 @@ export default function EvidenceBuilder() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleGrade() {
+    setGrading(true);
+    setGradeError(null);
+    try {
+      const result = await gradeEvidenceBundle(bundle);
+      setGradeResult(result);
+    } catch (err) {
+      setGradeError(err instanceof Error ? err.message : "Grading failed.");
+    } finally {
+      setGrading(false);
+    }
+  }
+
   function handleValidate() {
     if (isValid) {
       setValidateFlash("ok");
@@ -330,6 +349,7 @@ export default function EvidenceBuilder() {
     setState(defaultBuilderState());
     setIngestResult(null);
     setIngestError(null);
+    setGradeResult(null);
     setValidateFlash("idle");
   }
 
@@ -1154,6 +1174,15 @@ export default function EvidenceBuilder() {
                   Validate
                 </Button>
                 <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleGrade}
+                  loading={grading}
+                  disabled={grading}
+                >
+                  {grading ? "Grading..." : "Grade Bundle"}
+                </Button>
+                <Button
                   variant="primary"
                   size="sm"
                   disabled={!isValid || !state.strategyId || ingesting}
@@ -1170,6 +1199,12 @@ export default function EvidenceBuilder() {
                   Reset Builder
                 </Button>
               </div>
+
+              {/* Grade result (M97) */}
+              {gradeError && (
+                <p className="font-mono text-xs text-red-400">{gradeError}</p>
+              )}
+              {gradeResult && <BundleGradePanel grade={gradeResult} />}
 
               {/* Ingest error */}
               {ingestError && (

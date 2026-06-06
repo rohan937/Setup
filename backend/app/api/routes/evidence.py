@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key_if_enabled
@@ -47,6 +48,16 @@ from app.services.evidence_coverage import (
     get_evidence_coverage_matrix,
 )
 from app.services.evidence_ingestion import EvidenceBundleResult, ingest_evidence_bundle
+from app.schemas.evidence_bundle_grader import (
+    BundleGradeResponse,
+    BundleIncludedItem,
+    BundleMissingItem,
+    BundleGradeReportResponse,
+)
+from app.services.evidence_bundle_grader import (
+    grade_evidence_bundle,
+    generate_bundle_quality_report,
+)
 
 router = APIRouter(tags=["evidence"])
 
@@ -400,6 +411,80 @@ def ingest_bundle(
 
     db.commit()
     return bundle_response
+
+
+# ---------------------------------------------------------------------------
+# M97: Evidence Bundle Quality Grader endpoints (read-only, no strategy_id, no DB writes)
+# ---------------------------------------------------------------------------
+
+
+def _build_grade_response(data) -> BundleGradeResponse:
+    return BundleGradeResponse(
+        quality_score=data.quality_score,
+        letter_grade=data.letter_grade,
+        verdict=data.verdict,
+        stage_sufficiency=data.stage_sufficiency,
+        sufficient_for=data.sufficient_for,
+        not_sufficient_for=data.not_sufficient_for,
+        included=[
+            BundleIncludedItem(
+                key=i.key,
+                label=i.label,
+                status=i.status,
+                quality=i.quality,
+                details=i.details,
+            )
+            for i in data.included
+        ],
+        missing=[
+            BundleMissingItem(
+                key=m.key,
+                label=m.label,
+                severity=m.severity,
+                why_it_matters=m.why_it_matters,
+            )
+            for m in data.missing
+        ],
+        warnings=data.warnings,
+        recommended_fixes=data.recommended_fixes,
+        generated_at=data.generated_at,
+        disclaimer=data.disclaimer,
+    )
+
+
+@router.post(
+    "/evidence-bundles/grade",
+    response_model=BundleGradeResponse,
+    tags=["evidence"],
+)
+def grade_bundle(bundle: EvidenceBundleRequest) -> BundleGradeResponse:
+    """Grade an evidence bundle before ingestion. Read-only structural analysis — no DB writes."""
+    data = grade_evidence_bundle(bundle.model_dump())
+    return _build_grade_response(data)
+
+
+@router.post(
+    "/evidence-bundles/grade/report",
+    tags=["evidence"],
+)
+def grade_bundle_report(
+    bundle: EvidenceBundleRequest,
+    format: str = Query(default="json"),
+):
+    """Generate a quality report for an evidence bundle. Read-only — no DB writes."""
+    if format not in ("json", "markdown"):
+        raise HTTPException(
+            status_code=400,
+            detail="format must be one of: 'json', 'markdown'.",
+        )
+    content = generate_bundle_quality_report(bundle.model_dump(), format=format)
+    if format == "markdown":
+        return PlainTextResponse(content=content, media_type="text/markdown")
+    return BundleGradeReportResponse(
+        format="json",
+        content=content,
+        generated_at=datetime.now(timezone.utc),
+    )
 
 
 @router.get("/evidence/coverage", response_model=EvidenceCoverageMatrixResponse)

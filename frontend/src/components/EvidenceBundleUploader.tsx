@@ -1,13 +1,15 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ingestEvidenceBundle } from "@/lib/api";
+import { gradeEvidenceBundle, ingestEvidenceBundle } from "@/lib/api";
 import type {
+  BundleGradeResponse,
   EvidenceBundleObjectRef,
   EvidenceBundleObjects,
   EvidenceBundleRequest,
   EvidenceBundleResponse,
 } from "@/types";
 import Button from "./Button";
+import BundleGradePanel from "./BundleGradePanel";
 
 interface Props {
   strategyId?: string;
@@ -160,6 +162,9 @@ export default function EvidenceBundleUploader({
   const [selectedStrategy, setSelectedStrategy] = useState<string>("");
   const [dragging, setDragging] = useState(false);
   const [result, setResult] = useState<EvidenceBundleResponse | null>(null);
+  const [gradeResult, setGradeResult] = useState<BundleGradeResponse | null>(null);
+  const [grading, setGrading] = useState(false);
+  const [gradeError, setGradeError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const effectiveStrategyId = strategyId ?? selectedStrategy;
@@ -183,6 +188,8 @@ export default function EvidenceBundleUploader({
   function resetValidation() {
     setParsed(null);
     setResult(null);
+    setGradeResult(null);
+    setGradeError(null);
     if (state !== "idle") {
       setState("idle");
       setMessage("");
@@ -230,11 +237,15 @@ export default function EvidenceBundleUploader({
     setMessage("");
     setParsed(null);
     setResult(null);
+    setGradeResult(null);
+    setGradeError(null);
   }
 
   function validate() {
     setState("parsing");
     setResult(null);
+    setGradeResult(null);
+    setGradeError(null);
     let value: unknown;
     try {
       // SECURITY: JSON is DATA only — parse, never eval.
@@ -274,6 +285,20 @@ export default function EvidenceBundleUploader({
       } else {
         setMessage(detail);
       }
+    }
+  }
+
+  async function handleGrade() {
+    if (!parsed) return;
+    setGrading(true);
+    setGradeError(null);
+    try {
+      const result = await gradeEvidenceBundle(parsed);
+      setGradeResult(result);
+    } catch (err) {
+      setGradeError(err instanceof Error ? err.message : "Grading failed.");
+    } finally {
+      setGrading(false);
     }
   }
 
@@ -376,6 +401,14 @@ export default function EvidenceBundleUploader({
           Validate
         </Button>
         <Button
+          variant="secondary"
+          onClick={handleGrade}
+          disabled={!parsed || grading}
+          loading={grading}
+        >
+          {grading ? "Grading..." : "Grade Bundle"}
+        </Button>
+        <Button
           variant="primary"
           onClick={ingest}
           disabled={!canIngest}
@@ -399,6 +432,14 @@ export default function EvidenceBundleUploader({
           ].join(" ")}
         >
           {message}
+        </div>
+      )}
+
+      {/* Grade result */}
+      {gradeError && <p className="font-mono text-xs text-red-400 mt-2">{gradeError}</p>}
+      {gradeResult && (
+        <div className="mt-3">
+          <BundleGradePanel grade={gradeResult} />
         </div>
       )}
 

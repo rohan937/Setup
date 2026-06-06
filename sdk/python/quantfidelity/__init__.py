@@ -60,6 +60,7 @@ __all__ = [
     "init",
     "strategy",
     "test_auth",
+    "grade_bundle",
 ]
 
 try:
@@ -142,3 +143,8 @@ def test_auth() -> dict:
     Raises QuantFidelityAuthError on 401/403.
     """
     return _get_default_client().test_auth()
+
+
+def grade_bundle(bundle):
+    """Grade an evidence bundle using the default client."""
+    return _get_default_client().grade_bundle(bundle)

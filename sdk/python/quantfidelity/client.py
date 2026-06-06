@@ -559,6 +559,26 @@ class QuantFidelityClient:
         from quantfidelity.handle import StrategyHandle
         return StrategyHandle(self, slug_or_id)
 
+    def grade_bundle(self, bundle):
+        """Grade an evidence bundle before ingestion (M97).
+
+        POST /api/evidence-bundles/grade
+
+        Read-only — does not ingest or mutate any data. Returns the quality
+        grade dict with letter_grade, verdict, stage_sufficiency, included,
+        missing, warnings, and recommended_fixes.
+
+        Parameters
+        ----------
+        bundle:
+            An EvidenceBundle instance or a plain dict.
+        """
+        try:
+            payload = bundle.to_dict()
+        except AttributeError:
+            payload = dict(bundle)
+        return self._post("/api/evidence-bundles/grade", payload)
+
     def __repr__(self) -> str:
         auth = "api_key=***" if self._api_key else "api_key=None"
         return f"QuantFidelityClient(base_url={self._base_url!r}, {auth})"

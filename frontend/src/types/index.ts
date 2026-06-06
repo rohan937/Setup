@@ -1485,6 +1485,37 @@ export interface EvidenceBundleResponse {
   generated_at: string;
 }
 
+// M97: Evidence Bundle Quality Grader
+export interface BundleIncludedItem {
+  key: string;
+  label: string;
+  status: "present" | "partial" | "absent";
+  quality: "good" | "fair" | "weak" | "missing";
+  details: string;
+}
+
+export interface BundleMissingItem {
+  key: string;
+  label: string;
+  severity: "low" | "medium" | "high";
+  why_it_matters: string;
+}
+
+export interface BundleGradeResponse {
+  quality_score: number;
+  letter_grade: string;
+  verdict: "excellent" | "good" | "usable" | "weak" | "invalid";
+  stage_sufficiency: Record<string, string>;
+  sufficient_for: string[];
+  not_sufficient_for: string[];
+  included: BundleIncludedItem[];
+  missing: BundleMissingItem[];
+  warnings: string[];
+  recommended_fixes: string[];
+  generated_at: string;
+  disclaimer: string;
+}
+
 // ---------------------------------------------------------------------------
 // M24: API Key types
 // ---------------------------------------------------------------------------

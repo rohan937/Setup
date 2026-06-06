@@ -1,6 +1,7 @@
 import type {
   Alert,
   AlertFilters,
+  BundleGradeResponse,
   EvidenceBundleRequest,
   EvidenceBundleResponse,
   EvidenceCoverageMatrixResponse,
@@ -867,6 +868,16 @@ export async function ingestEvidenceBundle(
     `/api/strategies/${strategyId}/evidence-bundles`,
     { method: "POST", body: JSON.stringify(payload) },
   );
+}
+
+// M97: Evidence Bundle Quality Grader
+export async function gradeEvidenceBundle(
+  bundle: EvidenceBundleRequest,
+): Promise<BundleGradeResponse> {
+  return request<BundleGradeResponse>("/api/evidence-bundles/grade", {
+    method: "POST",
+    body: JSON.stringify(bundle),
+  });
 }
 
 export async function getEvidenceBundleExample(
