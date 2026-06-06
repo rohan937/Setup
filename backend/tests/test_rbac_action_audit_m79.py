@@ -181,7 +181,18 @@ class TestProductionPseudoOwnerFix:
 
 class TestLastOwnerDemotionGuard:
     def test_cannot_demote_last_owner(self, action_client, action_db):
-        token = _register(action_client, "owner@test.com", "Owner").json()["access_token"]
+        from app.models.auth_user import AuthUser
+
+        _register(action_client, "owner@test.com", "Owner")
+        # M84 gates member mutations behind email verification; verify the owner
+        # so the endpoint exercises the RBAC last-owner guard, not the M84 gate.
+        user = action_db.query(AuthUser).filter(AuthUser.email == "owner@test.com").first()
+        user.email_verified = True
+        action_db.commit()
+        token = action_client.post(
+            "/api/auth/login",
+            json={"email": "owner@test.com", "password": "password123"},
+        ).json()["access_token"]
         from app.models.workspace_member import WorkspaceMember
         member = action_db.query(WorkspaceMember).filter_by(email="owner@test.com").first()
         assert member.role == "owner"
@@ -198,7 +209,17 @@ class TestLastOwnerDemotionGuard:
         from app.models.workspace_member import WorkspaceMember
         from app.services.auth_users import register_user
 
-        token = _register(action_client, "owner1@test.com", "Owner1").json()["access_token"]
+        from app.models.auth_user import AuthUser
+
+        _register(action_client, "owner1@test.com", "Owner1")
+        # M84: verify the owner so the RBAC demotion path is exercised.
+        owner1 = action_db.query(AuthUser).filter(AuthUser.email == "owner1@test.com").first()
+        owner1.email_verified = True
+        action_db.commit()
+        token = action_client.post(
+            "/api/auth/login",
+            json={"email": "owner1@test.com", "password": "password123"},
+        ).json()["access_token"]
         # Create a second owner directly.
         user2 = register_user(action_db, "owner2@test.com", "Owner2", "password123")
         action_db.commit()
@@ -228,7 +249,17 @@ class TestLastOwnerDemotionGuard:
         assert resp.json()["role"] == "admin"
 
     def test_cannot_remove_last_owner(self, action_client, action_db):
-        token = _register(action_client, "owner@test.com", "Owner").json()["access_token"]
+        from app.models.auth_user import AuthUser
+
+        _register(action_client, "owner@test.com", "Owner")
+        # M84: verify the owner so the RBAC last-owner guard is exercised.
+        user = action_db.query(AuthUser).filter(AuthUser.email == "owner@test.com").first()
+        user.email_verified = True
+        action_db.commit()
+        token = action_client.post(
+            "/api/auth/login",
+            json={"email": "owner@test.com", "password": "password123"},
+        ).json()["access_token"]
         from app.models.workspace_member import WorkspaceMember
         member = action_db.query(WorkspaceMember).filter_by(email="owner@test.com").first()
 
@@ -265,8 +296,18 @@ class TestAlertMutationRBAC:
         # 403 because viewer is blocked before we even look up the alert.
         assert resp.status_code == 403, resp.text
 
-    def test_owner_can_call_generate_alerts(self, action_client):
-        token = _register(action_client, "owner@test.com", "Owner").json()["access_token"]
+    def test_owner_can_call_generate_alerts(self, action_client, action_db):
+        from app.models.auth_user import AuthUser
+
+        _register(action_client, "owner@test.com", "Owner")
+        # M84/M85: verify the owner so the RBAC write gate is exercised.
+        user = action_db.query(AuthUser).filter(AuthUser.email == "owner@test.com").first()
+        user.email_verified = True
+        action_db.commit()
+        token = action_client.post(
+            "/api/auth/login",
+            json={"email": "owner@test.com", "password": "password123"},
+        ).json()["access_token"]
         resp = action_client.post(
             "/api/alerts/generate",
             headers={"Authorization": f"Bearer {token}"},
@@ -406,8 +447,19 @@ class TestApiKeyRBAC:
         )
         assert resp.status_code == 403, resp.text
 
-    def test_owner_can_create_api_key(self, action_client):
-        token = _register(action_client, "owner@test.com", "Owner").json()["access_token"]
+    def test_owner_can_create_api_key(self, action_client, action_db):
+        from app.models.auth_user import AuthUser
+
+        _register(action_client, "owner@test.com", "Owner")
+        # M84 gates API key creation behind email verification; verify the owner
+        # so the endpoint exercises the can_manage_api_keys RBAC gate.
+        user = action_db.query(AuthUser).filter(AuthUser.email == "owner@test.com").first()
+        user.email_verified = True
+        action_db.commit()
+        token = action_client.post(
+            "/api/auth/login",
+            json={"email": "owner@test.com", "password": "password123"},
+        ).json()["access_token"]
         resp = action_client.post(
             "/api/api-keys",
             json={"name": "my-key", "project_id": None},
@@ -448,8 +500,19 @@ class TestDemoSeedRBAC:
         )
         assert resp.status_code == 403, resp.text
 
-    def test_owner_can_seed_demo(self, action_client):
-        token = _register(action_client, "owner@test.com", "Owner").json()["access_token"]
+    def test_owner_can_seed_demo(self, action_client, action_db):
+        from app.models.auth_user import AuthUser
+
+        _register(action_client, "owner@test.com", "Owner")
+        # M84 gates demo seed behind email verification; verify the owner so the
+        # endpoint exercises the can_seed_demo RBAC gate.
+        user = action_db.query(AuthUser).filter(AuthUser.email == "owner@test.com").first()
+        user.email_verified = True
+        action_db.commit()
+        token = action_client.post(
+            "/api/auth/login",
+            json={"email": "owner@test.com", "password": "password123"},
+        ).json()["access_token"]
         resp = action_client.post(
             "/api/admin/seed-demo",
             json={"mode": "extend"},
