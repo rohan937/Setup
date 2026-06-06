@@ -4422,6 +4422,156 @@ def get_strategy_readiness_actions(
     )
 
 
+# M98: Strategy Sandbox / What-If endpoints (read-only, no DB writes)
+from app.schemas.strategy_sandbox import (  # noqa: E402
+    SandboxResponse, SandboxScores, SandboxDeltaOut, SandboxScenarioRequest,
+    SandboxPresetOut, SandboxStateResponse,
+)
+from app.services.strategy_sandbox import (  # noqa: E402
+    build_current_sandbox_state, simulate_strategy_sandbox,
+    generate_sandbox_report, get_scenario_presets, SandboxData,
+)
+
+
+def _sandbox_scores(s) -> SandboxScores:
+    return SandboxScores(reliability_score=s.reliability_score, backtest_reality_score=s.backtest_reality_score, readiness_score=s.readiness_score, promotion_verdict=s.promotion_verdict)
+
+
+def _build_sandbox_response(data: SandboxData) -> SandboxResponse:
+    return SandboxResponse(
+        strategy_id=data.strategy_id, strategy_name=data.strategy_name,
+        scenario_name=data.scenario_name, target_stage=data.target_stage,
+        current=_sandbox_scores(data.current), projected=_sandbox_scores(data.projected),
+        deltas=[SandboxDeltaOut(key=d.key, label=d.label, current_value=d.current_value, projected_value=d.projected_value, impact=d.impact, explanation=d.explanation) for d in data.deltas],
+        new_blockers=data.new_blockers, resolved_blockers=data.resolved_blockers,
+        warnings=data.warnings, suggested_actions=data.suggested_actions,
+        generated_at=data.generated_at, disclaimer=data.disclaimer,
+    )
+
+
+@router.get(
+    "/strategies/{strategy_id}/sandbox",
+    response_model=SandboxStateResponse,
+    tags=["strategies"],
+)
+def get_strategy_sandbox(
+    strategy_id: uuid.UUID,
+    target_stage: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> SandboxStateResponse:
+    """Return the current sandbox state and available scenario presets.
+
+    Read-only — no DB writes, simulation only.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data = build_current_sandbox_state(strategy_id, db, target_stage=target_stage)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    presets = get_scenario_presets()
+    return SandboxStateResponse(
+        strategy_id=data.strategy_id,
+        strategy_name=data.strategy_name,
+        current=_sandbox_scores(data.current),
+        target_stage=data.target_stage,
+        presets=[SandboxPresetOut(**p) for p in presets],
+        generated_at=data.generated_at,
+        disclaimer=data.disclaimer,
+    )
+
+
+@router.post(
+    "/strategies/{strategy_id}/sandbox/simulate",
+    response_model=SandboxResponse,
+    tags=["strategies"],
+)
+def simulate_strategy_sandbox_endpoint(
+    strategy_id: uuid.UUID,
+    body: SandboxScenarioRequest,
+    db: Session = Depends(get_db),
+) -> SandboxResponse:
+    """What-if simulation. Read-only — no runs/reports/alerts/scores created."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    scenario = {
+        "scenario_name": body.scenario_name,
+        "assumption_overrides": body.assumption_overrides,
+        "metric_overrides": body.metric_overrides,
+        "evidence_overrides": body.evidence_overrides,
+        "target_stage": body.target_stage,
+    }
+
+    try:
+        data = simulate_strategy_sandbox(strategy_id, db, scenario)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_sandbox_response(data)
+
+
+@router.get(
+    "/strategies/{strategy_id}/sandbox/report",
+    tags=["strategies"],
+)
+def get_strategy_sandbox_report(
+    strategy_id: uuid.UUID,
+    format: str = Query(default="json"),
+    preset: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Generate a what-if sandbox report (current state or a named preset).
+
+    Read-only — no DB writes, simulation only.
+    """
+    from datetime import datetime, timezone  # noqa: E402
+
+    if format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    scenario: dict = {
+        "scenario_name": None,
+        "assumption_overrides": {},
+        "metric_overrides": {},
+        "evidence_overrides": {},
+        "target_stage": None,
+    }
+    if preset is not None:
+        match = next((p for p in get_scenario_presets() if p["key"] == preset), None)
+        if match is None:
+            raise HTTPException(status_code=400, detail=f"Unknown preset: {preset}")
+        scenario = {
+            "scenario_name": match.get("name"),
+            "assumption_overrides": match.get("assumption_overrides", {}),
+            "metric_overrides": match.get("metric_overrides", {}),
+            "evidence_overrides": match.get("evidence_overrides", {}),
+            "target_stage": match.get("target_stage"),
+        }
+
+    try:
+        content = generate_sandbox_report(strategy_id, db, scenario, format=format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if format == "markdown":
+        return PlainTextResponse(content=content, media_type="text/markdown")
+
+    return {
+        "format": "json",
+        "content": content,
+        "generated_at": datetime.now(timezone.utc),
+    }
+
+
 @router.get(
     "/strategies/{strategy_id}/shadow-monitor",
     response_model=StrategyShadowMonitorResponse,

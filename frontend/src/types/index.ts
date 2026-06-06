@@ -1516,6 +1516,67 @@ export interface BundleGradeResponse {
   disclaimer: string;
 }
 
+// M98: Strategy Sandbox / What-If
+export interface SandboxScores {
+  reliability_score: number | null;
+  backtest_reality_score: number | null;
+  readiness_score: number | null;
+  promotion_verdict: string;
+}
+
+export interface SandboxDelta {
+  key: string;
+  label: string;
+  current_value: unknown;
+  projected_value: unknown;
+  impact: number;
+  explanation: string;
+}
+
+export interface SandboxPreset {
+  key: string;
+  name: string;
+  description: string;
+  assumption_overrides: Record<string, unknown>;
+  metric_overrides: Record<string, unknown>;
+  evidence_overrides: Record<string, unknown>;
+  target_stage: string | null;
+}
+
+export interface SandboxStateResponse {
+  strategy_id: string;
+  strategy_name: string;
+  current: SandboxScores;
+  target_stage: string;
+  presets: SandboxPreset[];
+  generated_at: string;
+  disclaimer: string;
+}
+
+export interface SandboxResponse {
+  strategy_id: string;
+  strategy_name: string;
+  scenario_name: string;
+  target_stage: string;
+  current: SandboxScores;
+  projected: SandboxScores;
+  deltas: SandboxDelta[];
+  new_blockers: string[];
+  resolved_blockers: string[];
+  warnings: string[];
+  suggested_actions: string[];
+  generated_at: string;
+  disclaimer: string;
+}
+
+export interface SandboxScenarioRequest {
+  scenario_name?: string | null;
+  assumption_overrides?: Record<string, unknown>;
+  metric_overrides?: Record<string, unknown>;
+  evidence_overrides?: Record<string, unknown>;
+  target_stage?: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // M24: API Key types
 // ---------------------------------------------------------------------------

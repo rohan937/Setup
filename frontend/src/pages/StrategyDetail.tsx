@@ -63,6 +63,9 @@ import type {
   EvidenceFreshnessItem,
   ActionQueueResponse,
   ReadinessSimulatorResponse,
+  SandboxStateResponse,
+  SandboxResponse,
+  SandboxScores,
   RecommendedAction,
   ActionItem as BackendActionItem,
   StrategyLifecycleResponse,
@@ -137,6 +140,8 @@ import {
   getStrategyActionQueue,
   getReadinessSimulator,
   simulateReadiness,
+  getStrategySandbox,
+  simulateStrategySandbox,
   getStrategyLifecycle,
   generateAlerts,
   getStrategyReadiness,
@@ -9959,6 +9964,294 @@ function ReadinessSimulatorPanel({
   );
 }
 
+// M98: Strategy Sandbox / What-If panel
+function StrategySandboxPanel({
+  state, result, loading, error,
+  targetStage, onTargetChange, onPreset, onRun, onReset,
+  costBps, setCostBps, slippageBps, setSlippageBps, fillModel, setFillModel,
+  turnover, setTurnover, tradeCount, setTradeCount, maxDrawdown, setMaxDrawdown,
+  volatility, setVolatility, sharpe, setSharpe,
+  signalStale, setSignalStale, verifFailed, setVerifFailed,
+  paperDrift, setPaperDrift, reportMissing, setReportMissing,
+  highAlerts, setHighAlerts,
+}: {
+  state: SandboxStateResponse | null;
+  result: SandboxResponse | null;
+  loading: boolean;
+  error: string | null;
+  targetStage: string;
+  onTargetChange: (s: string) => void;
+  onPreset: (key: string) => void;
+  onRun: () => void;
+  onReset: () => void;
+  costBps: string; setCostBps: (v: string) => void;
+  slippageBps: string; setSlippageBps: (v: string) => void;
+  fillModel: string; setFillModel: (v: string) => void;
+  turnover: string; setTurnover: (v: string) => void;
+  tradeCount: string; setTradeCount: (v: string) => void;
+  maxDrawdown: string; setMaxDrawdown: (v: string) => void;
+  volatility: string; setVolatility: (v: string) => void;
+  sharpe: string; setSharpe: (v: string) => void;
+  signalStale: boolean; setSignalStale: (v: boolean) => void;
+  verifFailed: boolean; setVerifFailed: (v: boolean) => void;
+  paperDrift: boolean; setPaperDrift: (v: boolean) => void;
+  reportMissing: boolean; setReportMissing: (v: boolean) => void;
+  highAlerts: string; setHighAlerts: (v: string) => void;
+}) {
+  const verdictColor = (v: string) =>
+    v === "ready" ? "text-teal-400" : v === "review" ? "text-amber-400" : v === "blocked" ? "text-red-400" : "text-text-muted";
+  const fmtScore = (n: number | null) => (n !== null && n !== undefined ? n.toFixed(0) : "—");
+  const inputClass = "w-full rounded-control border border-border bg-bg-700 px-2 py-1 text-xs text-text-primary focus:outline-none";
+
+  const scoreCard = (
+    label: string,
+    key: keyof Pick<SandboxScores, "reliability_score" | "backtest_reality_score" | "readiness_score">,
+    cur: SandboxScores,
+    proj: SandboxScores,
+  ) => {
+    const current = cur[key];
+    const projected = proj[key];
+    const hasBoth = current !== null && projected !== null;
+    const delta = hasBoth ? (projected as number) - (current as number) : 0;
+    const color = delta > 0 ? "text-teal-400" : delta < 0 ? "text-red-400" : "text-text-muted";
+    return (
+      <div className="rounded border border-border bg-bg-700 px-3 py-2">
+        <p className="caption mb-0.5">{label}</p>
+        <p className="font-mono text-xs text-text-primary">
+          <span className="text-text-muted">{fmtScore(current)}</span>
+          <span className="mx-1 text-text-muted">→</span>
+          <span className="font-bold">{fmtScore(projected)}</span>
+          {hasBoth && delta !== 0 && (
+            <span className={"ml-2 " + color}>{delta > 0 ? "+" : ""}{delta.toFixed(0)}</span>
+          )}
+        </p>
+      </div>
+    );
+  };
+
+  const fmtVal = (v: unknown): string => {
+    if (v === null || v === undefined) return "—";
+    if (typeof v === "boolean") return v ? "yes" : "no";
+    if (typeof v === "number") return String(v);
+    return String(v);
+  };
+
+  return (
+    <div className="rounded-card border border-border bg-bg-card p-4 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wide">Strategy Sandbox</h3>
+        <span className="font-mono text-2xs text-text-muted">what-if simulation only — no changes saved</span>
+      </div>
+
+      {state === null ? (
+        <p className="text-xs text-text-muted">Loading sandbox baseline…</p>
+      ) : (
+        <>
+          {/* Current scores row */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded border border-border bg-bg-700 px-3 py-2">
+              <p className="caption mb-0.5">Reliability</p>
+              <p className="font-mono text-sm font-bold text-text-primary">{fmtScore(state.current.reliability_score)}</p>
+            </div>
+            <div className="rounded border border-border bg-bg-700 px-3 py-2">
+              <p className="caption mb-0.5">Backtest Reality</p>
+              <p className="font-mono text-sm font-bold text-text-primary">{fmtScore(state.current.backtest_reality_score)}</p>
+            </div>
+            <div className="rounded border border-border bg-bg-700 px-3 py-2">
+              <p className="caption mb-0.5">Readiness</p>
+              <p className="font-mono text-sm font-bold text-text-primary">{fmtScore(state.current.readiness_score)}</p>
+            </div>
+            <div className="rounded border border-border bg-bg-700 px-3 py-2">
+              <p className="caption mb-0.5">Promotion</p>
+              <p className={"font-mono text-sm font-bold " + verdictColor(state.current.promotion_verdict)}>{state.current.promotion_verdict}</p>
+            </div>
+          </div>
+
+          {/* Preset + target stage */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-2xs text-text-muted">Preset:</span>
+              <select defaultValue="" onChange={(e) => { if (e.target.value) onPreset(e.target.value); }}
+                className="rounded-control border border-border bg-bg-700 px-2 py-1 text-xs text-text-primary focus:outline-none">
+                <option value="">Choose scenario…</option>
+                {state.presets.map((p) => (
+                  <option key={p.key} value={p.key}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-2xs text-text-muted">Target:</span>
+              <select value={targetStage} onChange={(e) => onTargetChange(e.target.value)}
+                className="rounded-control border border-border bg-bg-700 px-2 py-1 text-xs text-text-primary focus:outline-none">
+                <option value="paper_candidate">Paper Candidate</option>
+                <option value="shadow">Shadow</option>
+                <option value="production_candidate">Production Candidate</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Editable scenario fields */}
+          <div className="space-y-3">
+            <p className="caption">Assumptions</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">transaction_cost_bps</span>
+                <input type="number" value={costBps} onChange={(e) => setCostBps(e.target.value)} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">slippage_bps</span>
+                <input type="number" value={slippageBps} onChange={(e) => setSlippageBps(e.target.value)} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">fill_model</span>
+                <input type="text" value={fillModel} onChange={(e) => setFillModel(e.target.value)} className={inputClass} />
+              </label>
+            </div>
+
+            <p className="caption">Metrics</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">turnover</span>
+                <input type="number" value={turnover} onChange={(e) => setTurnover(e.target.value)} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">trade_count</span>
+                <input type="number" value={tradeCount} onChange={(e) => setTradeCount(e.target.value)} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">max_drawdown</span>
+                <input type="number" value={maxDrawdown} onChange={(e) => setMaxDrawdown(e.target.value)} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">volatility</span>
+                <input type="number" value={volatility} onChange={(e) => setVolatility(e.target.value)} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">sharpe</span>
+                <input type="number" value={sharpe} onChange={(e) => setSharpe(e.target.value)} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="font-mono text-2xs text-text-muted">high_alerts_open</span>
+                <input type="number" value={highAlerts} onChange={(e) => setHighAlerts(e.target.value)} className={inputClass} />
+              </label>
+            </div>
+
+            <p className="caption">Evidence flags</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={signalStale} onChange={(e) => setSignalStale(e.target.checked)} className="accent-teal-500" />
+                <span className="font-mono text-2xs text-text-primary">signal stale</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={verifFailed} onChange={(e) => setVerifFailed(e.target.checked)} className="accent-teal-500" />
+                <span className="font-mono text-2xs text-text-primary">evidence verification failed</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={paperDrift} onChange={(e) => setPaperDrift(e.target.checked)} className="accent-teal-500" />
+                <span className="font-mono text-2xs text-text-primary">paper drift high</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={reportMissing} onChange={(e) => setReportMissing(e.target.checked)} className="accent-teal-500" />
+                <span className="font-mono text-2xs text-text-primary">report missing</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex items-center gap-2">
+            <button onClick={onRun} disabled={loading}
+              className="rounded-control border border-accent-500/40 bg-accent-500/10 px-3 py-1.5 text-xs text-accent-400 hover:bg-accent-500/20 disabled:opacity-50">
+              {loading ? "Simulating…" : "Simulate"}
+            </button>
+            <button onClick={onReset} disabled={loading}
+              className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50">
+              Reset
+            </button>
+          </div>
+
+          {error && <p className="font-mono text-2xs text-red-400">{error}</p>}
+
+          {/* Result */}
+          {result && (
+            <div className="space-y-3 border-t border-border pt-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {scoreCard("Reliability", "reliability_score", result.current, result.projected)}
+                {scoreCard("Backtest Reality", "backtest_reality_score", result.current, result.projected)}
+                {scoreCard("Readiness", "readiness_score", result.current, result.projected)}
+                <div className="rounded border border-border bg-bg-700 px-3 py-2">
+                  <p className="caption mb-0.5">Promotion</p>
+                  <p className="font-mono text-xs text-text-primary">
+                    <span className={verdictColor(result.current.promotion_verdict)}>{result.current.promotion_verdict}</span>
+                    <span className="mx-1 text-text-muted">→</span>
+                    <span className={"font-bold " + verdictColor(result.projected.promotion_verdict)}>{result.projected.promotion_verdict}</span>
+                  </p>
+                </div>
+              </div>
+
+              {result.deltas.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="caption">Changes</p>
+                  {result.deltas.map((d) => (
+                    <div key={d.key} className="rounded border border-border bg-bg-700 px-3 py-1.5">
+                      <p className="font-mono text-2xs text-text-primary">
+                        {d.label}: <span className="text-text-muted">{fmtVal(d.current_value)}</span>
+                        <span className="mx-1 text-text-muted">→</span>
+                        <span>{fmtVal(d.projected_value)}</span>
+                        <span className={"ml-2 " + (d.impact > 0 ? "text-teal-400" : d.impact < 0 ? "text-red-400" : "text-text-muted")}>
+                          {d.impact > 0 ? "+" : ""}{d.impact}
+                        </span>
+                      </p>
+                      {d.explanation && <p className="font-mono text-2xs text-text-muted">{d.explanation}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {result.new_blockers.length > 0 && (
+                <div className="rounded border border-red-700/30 bg-red-900/10 px-3 py-2">
+                  <p className="font-mono text-2xs font-semibold text-red-400 mb-1">New Blockers ({result.new_blockers.length})</p>
+                  {result.new_blockers.map((b, i) => (
+                    <p key={i} className="font-mono text-2xs text-red-300">• {b}</p>
+                  ))}
+                </div>
+              )}
+
+              {result.resolved_blockers.length > 0 && (
+                <div className="rounded border border-teal-700/30 bg-teal-900/10 px-3 py-2">
+                  <p className="font-mono text-2xs font-semibold text-teal-400 mb-1">Resolved Blockers ({result.resolved_blockers.length})</p>
+                  {result.resolved_blockers.map((b, i) => (
+                    <p key={i} className="font-mono text-2xs text-teal-300">• {b}</p>
+                  ))}
+                </div>
+              )}
+
+              {result.warnings.length > 0 && (
+                <div className="rounded border border-amber-700/30 bg-amber-900/10 px-3 py-2">
+                  <p className="font-mono text-2xs font-semibold text-amber-400 mb-1">Warnings ({result.warnings.length})</p>
+                  {result.warnings.map((w, i) => (
+                    <p key={i} className="font-mono text-2xs text-amber-300">• {w}</p>
+                  ))}
+                </div>
+              )}
+
+              {result.suggested_actions.length > 0 && (
+                <div className="space-y-1">
+                  <p className="caption">Suggested Actions</p>
+                  {result.suggested_actions.map((s, i) => (
+                    <p key={i} className="font-mono text-2xs text-text-secondary">• {s}</p>
+                  ))}
+                </div>
+              )}
+
+              <p className="font-mono text-2xs text-text-muted italic">{result.disclaimer}</p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function BackendActionQueue({
   data,
   onAction,
@@ -10127,6 +10420,26 @@ export default function StrategyDetail() {
   const [simCompleted, setSimCompleted] = useState<Set<string>>(new Set());
   const [simLoading, setSimLoading] = useState(false);
   const [simError, setSimError] = useState<string | null>(null);
+  // M98: strategy sandbox
+  const [sandboxState, setSandboxState] = useState<SandboxStateResponse | null>(null);
+  const [sandboxResult, setSandboxResult] = useState<SandboxResponse | null>(null);
+  const [sandboxLoading, setSandboxLoading] = useState(false);
+  const [sandboxError, setSandboxError] = useState<string | null>(null);
+  const [sandboxTargetStage, setSandboxTargetStage] = useState("paper_candidate");
+  // editable scenario fields
+  const [sbCostBps, setSbCostBps] = useState("");
+  const [sbSlippageBps, setSbSlippageBps] = useState("");
+  const [sbFillModel, setSbFillModel] = useState("");
+  const [sbTurnover, setSbTurnover] = useState("");
+  const [sbTradeCount, setSbTradeCount] = useState("");
+  const [sbMaxDrawdown, setSbMaxDrawdown] = useState("");
+  const [sbVolatility, setSbVolatility] = useState("");
+  const [sbSharpe, setSbSharpe] = useState("");
+  const [sbSignalStale, setSbSignalStale] = useState(false);
+  const [sbVerifFailed, setSbVerifFailed] = useState(false);
+  const [sbPaperDrift, setSbPaperDrift] = useState(false);
+  const [sbReportMissing, setSbReportMissing] = useState(false);
+  const [sbHighAlerts, setSbHighAlerts] = useState("");
 
   // M76: lifecycle visual
   const [lifecycle, setLifecycle] = useState<StrategyLifecycleResponse | null>(null);
@@ -10442,6 +10755,8 @@ export default function StrategyDetail() {
     getStrategyLifecycle(id).then(setLifecycle).catch(() => setLifecycle(null));
     // M96: load readiness simulator baseline (best-effort, default target stage)
     getReadinessSimulator(id, "paper_candidate").then(setSimData).catch(() => setSimData(null));
+    // M98: load sandbox state baseline (best-effort)
+    getStrategySandbox(id, "paper_candidate").then(setSandboxState).catch(() => setSandboxState(null));
     // M29: load run history and timeline drilldown in parallel
     getStrategyRunHistory(id, { limit: 50 }).then(setRunHistory).catch(() => setRunHistory(null));
     getStrategyTimelineDrilldown(id, { limit: 30 }).then(setTimelineDrilldown).catch(() => setTimelineDrilldown(null));
@@ -10536,6 +10851,63 @@ export default function StrategyDetail() {
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  }
+
+  // M98: strategy sandbox handlers
+  function applySandboxPreset(presetKey: string) {
+    const preset = sandboxState?.presets.find((p) => p.key === presetKey);
+    if (!preset) return;
+    const a = preset.assumption_overrides; const m = preset.metric_overrides; const e = preset.evidence_overrides;
+    setSbCostBps(a.transaction_cost_bps != null ? String(a.transaction_cost_bps) : "");
+    setSbSlippageBps(a.slippage_bps != null ? String(a.slippage_bps) : "");
+    setSbFillModel(a.fill_model != null ? String(a.fill_model) : "");
+    setSbTurnover(m.turnover != null ? String(m.turnover) : "");
+    setSbTradeCount(m.trade_count != null ? String(m.trade_count) : "");
+    setSbMaxDrawdown(m.max_drawdown != null ? String(m.max_drawdown) : "");
+    setSbVolatility(m.volatility != null ? String(m.volatility) : "");
+    setSbSharpe(m.sharpe != null ? String(m.sharpe) : "");
+    setSbSignalStale(e.signal_stale === true);
+    setSbVerifFailed(e.evidence_verification_failed === true);
+    setSbPaperDrift(e.paper_drift_high === true);
+    setSbReportMissing(e.report_missing === true);
+    setSbHighAlerts(e.high_alerts_open != null ? String(e.high_alerts_open) : "");
+    if (preset.target_stage) setSandboxTargetStage(preset.target_stage);
+  }
+  async function handleRunSandbox() {
+    if (!strategy) return;
+    setSandboxLoading(true); setSandboxError(null);
+    const num = (v: string) => (v.trim() !== "" && !isNaN(Number(v)) ? Number(v) : undefined);
+    const assumption_overrides: Record<string, unknown> = {};
+    if (num(sbCostBps) !== undefined) assumption_overrides.transaction_cost_bps = num(sbCostBps);
+    if (num(sbSlippageBps) !== undefined) assumption_overrides.slippage_bps = num(sbSlippageBps);
+    if (sbFillModel.trim()) assumption_overrides.fill_model = sbFillModel.trim();
+    const metric_overrides: Record<string, unknown> = {};
+    if (num(sbTurnover) !== undefined) metric_overrides.turnover = num(sbTurnover);
+    if (num(sbTradeCount) !== undefined) metric_overrides.trade_count = num(sbTradeCount);
+    if (num(sbMaxDrawdown) !== undefined) metric_overrides.max_drawdown = num(sbMaxDrawdown);
+    if (num(sbVolatility) !== undefined) metric_overrides.volatility = num(sbVolatility);
+    if (num(sbSharpe) !== undefined) metric_overrides.sharpe = num(sbSharpe);
+    const evidence_overrides: Record<string, unknown> = {
+      signal_stale: sbSignalStale, evidence_verification_failed: sbVerifFailed,
+      paper_drift_high: sbPaperDrift, report_missing: sbReportMissing,
+    };
+    if (num(sbHighAlerts) !== undefined) evidence_overrides.high_alerts_open = num(sbHighAlerts);
+    try {
+      const result = await simulateStrategySandbox(strategy.id, {
+        scenario_name: "Custom scenario", assumption_overrides, metric_overrides,
+        evidence_overrides, target_stage: sandboxTargetStage,
+      });
+      setSandboxResult(result);
+    } catch (e: unknown) {
+      setSandboxError(e instanceof Error ? e.message : "Simulation failed.");
+    } finally { setSandboxLoading(false); }
+  }
+  function handleResetSandbox() {
+    setSandboxResult(null); setSandboxError(null);
+    setSbCostBps(""); setSbSlippageBps(""); setSbFillModel(""); setSbTurnover("");
+    setSbTradeCount(""); setSbMaxDrawdown(""); setSbVolatility(""); setSbSharpe("");
+    setSbSignalStale(false); setSbVerifFailed(false); setSbPaperDrift(false);
+    setSbReportMissing(false); setSbHighAlerts("");
   }
 
   function handleLifecycleBlocker(b: LifecycleBlocker) {
@@ -10889,6 +11261,26 @@ export default function StrategyDetail() {
             onSimulate={handleSimulate}
             onReset={handleResetSimulation}
             onNavigate={(tab) => setActiveTab(tab as StrategyTab)}
+          />
+
+          {/* M98: Strategy Sandbox */}
+          <StrategySandboxPanel
+            state={sandboxState} result={sandboxResult} loading={sandboxLoading} error={sandboxError}
+            targetStage={sandboxTargetStage} onTargetChange={setSandboxTargetStage}
+            onPreset={applySandboxPreset} onRun={handleRunSandbox} onReset={handleResetSandbox}
+            costBps={sbCostBps} setCostBps={setSbCostBps}
+            slippageBps={sbSlippageBps} setSlippageBps={setSbSlippageBps}
+            fillModel={sbFillModel} setFillModel={setSbFillModel}
+            turnover={sbTurnover} setTurnover={setSbTurnover}
+            tradeCount={sbTradeCount} setTradeCount={setSbTradeCount}
+            maxDrawdown={sbMaxDrawdown} setMaxDrawdown={setSbMaxDrawdown}
+            volatility={sbVolatility} setVolatility={setSbVolatility}
+            sharpe={sbSharpe} setSharpe={setSbSharpe}
+            signalStale={sbSignalStale} setSignalStale={setSbSignalStale}
+            verifFailed={sbVerifFailed} setVerifFailed={setSbVerifFailed}
+            paperDrift={sbPaperDrift} setPaperDrift={setSbPaperDrift}
+            reportMissing={sbReportMissing} setReportMissing={setSbReportMissing}
+            highAlerts={sbHighAlerts} setHighAlerts={setSbHighAlerts}
           />
 
           {/* M85: Open reliability alerts for this strategy */}

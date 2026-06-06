@@ -135,6 +135,9 @@ import type {
   LineageDiffResponse,
   LineageDiffReportResponse,
   ReadinessSimulatorResponse,
+  SandboxStateResponse,
+  SandboxResponse,
+  SandboxScenarioRequest,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -1394,6 +1397,25 @@ export async function simulateReadiness(
   return request<ReadinessSimulatorResponse>(`/api/strategies/${strategyId}/readiness-simulator/simulate`, {
     method: "POST",
     body: JSON.stringify({ target_stage: targetStage, completed_actions: completedActions }),
+  });
+}
+
+// M98: Strategy Sandbox
+export async function getStrategySandbox(
+  strategyId: string,
+  targetStage?: string,
+): Promise<SandboxStateResponse> {
+  const qs = targetStage ? `?target_stage=${targetStage}` : "";
+  return request<SandboxStateResponse>(`/api/strategies/${strategyId}/sandbox${qs}`);
+}
+
+export async function simulateStrategySandbox(
+  strategyId: string,
+  scenario: SandboxScenarioRequest,
+): Promise<SandboxResponse> {
+  return request<SandboxResponse>(`/api/strategies/${strategyId}/sandbox/simulate`, {
+    method: "POST",
+    body: JSON.stringify(scenario),
   });
 }
 
