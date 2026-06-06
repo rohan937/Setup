@@ -20,6 +20,7 @@ import AdminSystemHealth from "@/pages/AdminSystemHealth";
 import DeploymentReadiness from "@/pages/DeploymentReadiness";
 import NotFound from "@/pages/NotFound";
 import CommandCenter from "@/pages/CommandCenter";
+import ExecutiveDemo from "@/pages/ExecutiveDemo";
 import Experiments from "@/pages/Experiments";
 import ReviewCases from "@/pages/ReviewCases";
 import StrategyReviews from "@/pages/StrategyReviews";
@@ -50,6 +51,7 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="command-center" element={<CommandCenter />} />
+        <Route path="executive-demo" element={<ExecutiveDemo />} />
         <Route path="portfolio" element={<Portfolio />} />
         <Route path="portfolio/reliability" element={<PortfolioReliability />} />
         <Route path="strategies" element={<Strategies />} />

@@ -50,6 +50,7 @@ export const navGroups: NavGroup[] = [
     defaultExpanded: true,
     items: [
       { label: "Command Center", path: "/command-center" },
+      { label: "Executive Demo", path: "/executive-demo" },
       { label: "Dashboard", path: "/dashboard" },
       { label: "Audit Trail", path: "/audit-trail" },
     ],
