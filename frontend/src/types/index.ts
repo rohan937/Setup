@@ -4900,3 +4900,76 @@ export interface PortfolioExportResponse {
   content: string;
 }
 
+// ---------------------------------------------------------------------------
+// M106: Research Command Center (read-only workspace triage aggregation)
+// ---------------------------------------------------------------------------
+
+export interface CommandCenterWorkspaceSummary {
+  strategy_count: number;
+  healthy_count: number;
+  review_count: number;
+  blocked_count: number;
+  open_alert_count: number;
+  high_critical_alert_count: number;
+  pending_action_count: number;
+  pending_review_count: number;
+  production_ready_count: number;
+}
+
+export interface CommandCenterTopAction {
+  strategy_id: string;
+  strategy_name: string | null;
+  title: string | null;
+  severity: string | null;
+  category: string | null;
+  recommended_action: string | null;
+  target_tab: string | null;
+}
+
+export interface CommandCenterAttentionStrategy {
+  strategy_id: string;
+  name: string | null;
+  slug: string | null;
+  lifecycle_stage: string | null;
+  health_classification: string | null;
+  reliability_score: number | null;
+  primary_concern: string | null;
+  top_blocker_title: string | null;
+  open_alert_count: number;
+}
+
+export interface CommandCenterPendingReview {
+  review_id: string;
+  strategy_id: string;
+  strategy_name: string | null;
+  target_stage: string | null;
+  status: string | null;
+  reviewer_user_id: string | null;
+}
+
+export interface CommandCenterAlert {
+  id: string;
+  title: string | null;
+  severity: string | null;
+  strategy_id: string | null;
+  rule_type: string | null;
+}
+
+export interface CommandCenterLifecycleStage {
+  key: string;
+  label: string;
+  count: number;
+  blocked_count: number;
+}
+
+export interface CommandCenterResponse {
+  workspace_summary: CommandCenterWorkspaceSummary;
+  lifecycle_summary: CommandCenterLifecycleStage[];
+  top_actions: CommandCenterTopAction[];
+  strategies_needing_attention: CommandCenterAttentionStrategy[];
+  pending_reviews: CommandCenterPendingReview[];
+  top_alerts: CommandCenterAlert[];
+  generated_at: string;
+  disclaimer: string;
+}
+

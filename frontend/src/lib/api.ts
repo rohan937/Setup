@@ -96,6 +96,7 @@ import type {
   ActionQueueResponse,
   StrategyLifecycleResponse,
   LifecyclePipelineSummaryResponse,
+  CommandCenterResponse,
   RepairOptionsResponse,
   RunLinkUpdateRequest,
   RunLinkSummary,
@@ -1469,6 +1470,11 @@ export async function getLifecyclePipelineSummary(): Promise<LifecyclePipelineSu
   return request<LifecyclePipelineSummaryResponse>(
     "/api/lifecycle/pipeline-summary",
   );
+}
+
+// M106: read-only Research Command Center workspace triage aggregation
+export async function getCommandCenter(): Promise<CommandCenterResponse> {
+  return request<CommandCenterResponse>("/api/command-center");
 }
 
 // ---------------------------------------------------------------------------
