@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { fetchApiInfo } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
@@ -8,9 +8,52 @@ type BackendState =
   | { status: "online"; environment: string }
   | { status: "offline" };
 
+function deriveArea(pathname: string): string {
+  if (
+    pathname === "/" ||
+    pathname === "/dashboard" ||
+    pathname === "/command-center" ||
+    pathname === "/audit-trail"
+  ) {
+    return "Command";
+  }
+  if (
+    pathname.startsWith("/strategies") ||
+    pathname.startsWith("/backtests") ||
+    pathname.startsWith("/experiments") ||
+    pathname.startsWith("/datasets") ||
+    pathname.startsWith("/evidence")
+  ) {
+    return "Research";
+  }
+  if (pathname.startsWith("/portfolio")) {
+    return "Portfolio";
+  }
+  if (
+    pathname === "/alerts" ||
+    pathname === "/review-cases" ||
+    pathname === "/governance" ||
+    pathname === "/promotion-gates" ||
+    pathname === "/regression-tests" ||
+    pathname === "/policies" ||
+    pathname === "/sla-monitor"
+  ) {
+    return "Governance";
+  }
+  if (pathname.startsWith("/developer") || pathname.startsWith("/settings")) {
+    return "Developer";
+  }
+  if (pathname.startsWith("/workspace") || pathname.startsWith("/admin")) {
+    return "Admin";
+  }
+  return "QuantFidelity";
+}
+
 export default function Topbar() {
   const [state, setState] = useState<BackendState>({ status: "loading" });
   const { user, isAuthenticated, logout } = useAuth();
+  const { pathname } = useLocation();
+  const area = deriveArea(pathname);
 
   useEffect(() => {
     let active = true;
@@ -25,7 +68,15 @@ export default function Topbar() {
   }, []);
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-end border-b border-border bg-bg-800 px-5 gap-4">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-bg-800 px-5 gap-4">
+      <div className="flex items-center gap-2">
+        <span className="caption text-text-muted">QuantFidelity</span>
+        <span className="text-text-muted">/</span>
+        <span className="text-2xs font-medium uppercase tracking-eyebrow text-text-secondary">
+          {area}
+        </span>
+      </div>
+      <div className="flex items-center gap-4">
       <span className="font-mono text-2xs text-text-muted uppercase tracking-widest">
         ENV:&nbsp;
         <span className="text-text-secondary">
@@ -53,6 +104,7 @@ export default function Topbar() {
           Sign In
         </Link>
       )}
+      </div>
     </header>
   );
 }

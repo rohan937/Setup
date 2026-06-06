@@ -388,25 +388,31 @@ export default function Home() {
               to="/strategies"
               className="rounded-control border border-accent-500/40 bg-accent-500/15 px-3 py-1.5 text-xs text-accent-200 hover:bg-accent-500/25"
             >
-              Create Strategy
+              View Strategies
             </Link>
             <Link
-              to="/developer/evidence-bundles"
+              to="/developer/evidence-builder"
               className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
             >
-              Upload Evidence Bundle
+              Upload Evidence
             </Link>
             <Link
-              to="/command-center"
+              to="/alerts"
               className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
             >
-              Open Command Center
+              Review Alerts
+            </Link>
+            <Link
+              to="/promotion-gates"
+              className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+            >
+              Open Promotion Review
             </Link>
             <button
               onClick={() => startWalkthrough(true)}
               className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
             >
-              Start Guided Demo
+              Run Demo
             </button>
             {canDemoReset && (
               <Link
