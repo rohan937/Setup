@@ -8,11 +8,14 @@ Design rules:
 """
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.rbac import require_verified_email, require_workspace_write_access
 from app.db.session import get_db
 from app.schemas.portfolio_overview import (
     PortfolioOverviewResponse,
@@ -20,7 +23,16 @@ from app.schemas.portfolio_overview import (
     PortfolioTrendFlags,
     PortfolioRecentActivityItem,
 )
+from app.schemas.portfolio_reliability import (
+    PortfolioExportResponse,
+    PortfolioReliabilityResponse,
+)
 from app.services.portfolio_overview import get_portfolio_overview
+from app.services.portfolio_reliability import (
+    build_portfolio_reliability,
+    refresh_portfolio_reliability,
+    render_portfolio_reliability_markdown,
+)
 
 router = APIRouter(tags=["portfolio"])
 
@@ -90,3 +102,118 @@ def get_portfolio_overview_endpoint(
         suggested_next_steps=result.suggested_next_steps,
         deterministic_summary=result.deterministic_summary,
     )
+
+
+# ---------------------------------------------------------------------------
+# M86: Portfolio Reliability
+#
+# Literal sub-paths (/reliability/export, /reliability/weekly-review-pack,
+# /reliability/refresh) are registered BEFORE the plain /reliability route so
+# they are matched first.  GET reads carry no RBAC dep (viewers may read,
+# matching GET /api/portfolio/overview); the two POST mutation endpoints require
+# write access + a verified email.
+# ---------------------------------------------------------------------------
+
+
+def _date_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+@router.get(
+    "/portfolio/reliability/export",
+    response_model=PortfolioExportResponse,
+)
+def export_portfolio_reliability_endpoint(
+    format: str = Query(default="json", pattern="^(json|markdown)$"),
+    project_id: uuid.UUID | None = Query(default=None),
+    organization_id: str | None = Query(default=None),
+    include_archived: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> PortfolioExportResponse:
+    """Export the portfolio reliability payload as JSON or Markdown. [read]"""
+    payload = build_portfolio_reliability(
+        db,
+        organization_id=organization_id,
+        project_id=project_id,
+        include_archived=include_archived,
+    )
+    stamp = _date_stamp()
+    if format == "markdown":
+        content = render_portfolio_reliability_markdown(payload)
+        filename = f"portfolio-reliability-{stamp}.md"
+    else:
+        content = json.dumps(payload, default=str, indent=2)
+        filename = f"portfolio-reliability-{stamp}.json"
+    return PortfolioExportResponse(filename=filename, format=format, content=content)
+
+
+@router.post(
+    "/portfolio/reliability/weekly-review-pack",
+    response_model=PortfolioExportResponse,
+)
+def weekly_review_pack_endpoint(
+    format: str = Query(default="markdown", pattern="^(json|markdown)$"),
+    project_id: uuid.UUID | None = Query(default=None),
+    organization_id: str | None = Query(default=None),
+    include_archived: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
+    _verified=Depends(require_verified_email),
+) -> PortfolioExportResponse:
+    """Produce a weekly review pack (same content as export; the markdown
+    renderer already includes a 'Strategies ready for next stage' section).
+    [require_workspace_write_access + require_verified_email]"""
+    payload = build_portfolio_reliability(
+        db,
+        organization_id=organization_id,
+        project_id=project_id,
+        include_archived=include_archived,
+    )
+    stamp = _date_stamp()
+    if format == "json":
+        content = json.dumps(payload, default=str, indent=2)
+        filename = f"weekly-review-{stamp}.json"
+    else:
+        content = render_portfolio_reliability_markdown(payload)
+        filename = f"weekly-review-{stamp}.md"
+    return PortfolioExportResponse(filename=filename, format=format, content=content)
+
+
+@router.post("/portfolio/reliability/refresh")
+def refresh_portfolio_reliability_endpoint(
+    project_id: uuid.UUID | None = Query(default=None),
+    organization_id: str | None = Query(default=None),
+    include_archived: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _member=Depends(require_workspace_write_access),
+    _verified=Depends(require_verified_email),
+) -> dict:
+    """Recompute + persist a reliability score for every in-scope strategy,
+    reusing the per-strategy compute+store path. Commits.
+    [require_workspace_write_access + require_verified_email]"""
+    return refresh_portfolio_reliability(
+        db,
+        organization_id=organization_id,
+        project_id=project_id,
+        include_archived=include_archived,
+    )
+
+
+@router.get(
+    "/portfolio/reliability",
+    response_model=PortfolioReliabilityResponse,
+)
+def get_portfolio_reliability_endpoint(
+    project_id: uuid.UUID | None = Query(default=None),
+    organization_id: str | None = Query(default=None),
+    include_archived: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> PortfolioReliabilityResponse:
+    """Aggregated portfolio reliability snapshot across strategies. [read]"""
+    payload = build_portfolio_reliability(
+        db,
+        organization_id=organization_id,
+        project_id=project_id,
+        include_archived=include_archived,
+    )
+    return PortfolioReliabilityResponse(**payload)

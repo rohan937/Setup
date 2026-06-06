@@ -5,6 +5,7 @@ export const navItems: NavItem[] = [
   { label: "Home",               path: "/",                section: "Overview" },
   { label: "Dashboard",          path: "/dashboard",       section: "Overview" },
   { label: "Portfolio",          path: "/portfolio",       section: "Overview" },
+  { label: "Portfolio Reliability", path: "/portfolio/reliability", section: "Overview" },
   { label: "Command Center",     path: "/command-center",  section: "Overview" },
   // Research
   { label: "Strategies",         path: "/strategies",         section: "Research" },

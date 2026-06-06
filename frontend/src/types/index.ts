@@ -4282,3 +4282,106 @@ export interface StrategyLifecycleResponse {
   deterministic_summary: string;
   disclaimer: string;
 }
+
+// ---------------------------------------------------------------------------
+// M86: Portfolio Reliability
+// ---------------------------------------------------------------------------
+
+export interface PortfolioReliabilityTopBlocker {
+  title: string;
+  severity: string;
+  category: string;
+  recommended_action: string;
+  target_tab: string;
+}
+
+export interface PortfolioReliabilityRow {
+  strategy_id: string;
+  name: string;
+  project_name: string;
+  asset_class: string;
+  status: string;
+  reliability_score: number | null;
+  reliability_status: string;
+  health_classification: "healthy" | "review" | "blocked";
+  health_status: string;
+  promotion_stage: string;
+  open_alert_count: number;
+  high_critical_alert_count: number;
+  top_blocker: PortfolioReliabilityTopBlocker | null;
+  stale_evidence_count: number;
+  missing_report: boolean;
+  recent_score_change: {
+    delta: number;
+    latest: number;
+    previous: number;
+    direction: string;
+  } | null;
+  latest_run_at: string | null;
+  days_since_latest_run: number | null;
+  owner_name: string | null;
+  regression_failed_count: number;
+}
+
+export interface PortfolioReliabilitySummary {
+  total_strategies: number;
+  healthy_count: number;
+  review_count: number;
+  blocked_count: number;
+  average_reliability: number | null;
+  strategies_with_stale_evidence: number;
+  strategies_missing_reports: number;
+  open_high_critical_alerts: number;
+  ready_for_paper_candidate: number;
+  ready_for_production_candidate: number;
+}
+
+export interface PortfolioWorstBlocker {
+  strategy_id: string;
+  strategy_name: string;
+  blocker_title: string;
+  severity: string;
+  recommended_action: string;
+  category: string;
+  target_tab: string;
+}
+
+export interface PortfolioStaleEvidence {
+  strategy_id: string;
+  strategy_name: string;
+  stale_count: number;
+  missing_count: number;
+  aging_count: number;
+}
+
+export interface PortfolioMissingReport {
+  strategy_id: string;
+  strategy_name: string;
+  latest_run_at: string | null;
+}
+
+export interface PortfolioRecentScoreChange {
+  strategy_id: string;
+  strategy_name: string;
+  delta: number;
+  latest: number;
+  previous: number;
+  direction: string;
+}
+
+export interface PortfolioReliabilityResponse {
+  generated_at: string;
+  summary: PortfolioReliabilitySummary;
+  strategies: PortfolioReliabilityRow[];
+  worst_blockers: PortfolioWorstBlocker[];
+  stale_evidence: PortfolioStaleEvidence[];
+  missing_reports: PortfolioMissingReport[];
+  recent_score_changes: PortfolioRecentScoreChange[];
+  disclaimer: string;
+}
+
+export interface PortfolioExportResponse {
+  filename: string;
+  format: string;
+  content: string;
+}

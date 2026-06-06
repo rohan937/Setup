@@ -8,6 +8,7 @@ import MultiRunComparison from "@/pages/MultiRunComparison";
 import StrategyDetail from "@/pages/StrategyDetail";
 import EvidenceCoverage from "@/pages/EvidenceCoverage";
 import Portfolio from "@/pages/Portfolio";
+import PortfolioReliability from "@/pages/PortfolioReliability";
 import Timeline from "@/pages/Timeline";
 import DataHealth from "@/pages/DataHealth";
 import Backtests from "@/pages/Backtests";
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="command-center" element={<CommandCenter />} />
         <Route path="portfolio" element={<Portfolio />} />
+        <Route path="portfolio/reliability" element={<PortfolioReliability />} />
         <Route path="strategies" element={<Strategies />} />
         <Route path="strategies/compare" element={<StrategyComparison />} />
         <Route path="strategies/run-compare" element={<MultiRunComparison />} />

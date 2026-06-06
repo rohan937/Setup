@@ -72,6 +72,8 @@ import type {
   StrategyEvidenceTrendsResponse,
   StrategyExportResponse,
   PortfolioOverview,
+  PortfolioReliabilityResponse,
+  PortfolioExportResponse,
   MultiRunComparisonRequest,
   MultiRunComparisonResponse,
   StrategyVersionLineageResponse,
@@ -1047,6 +1049,77 @@ export async function getPortfolioOverview(params?: {
   const q = qs.toString();
   return request<PortfolioOverview>(
     `/api/portfolio/overview${q ? `?${q}` : ""}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M86: Portfolio Reliability
+// ---------------------------------------------------------------------------
+
+/**
+ * Trigger a client-side download of a text file (export / weekly-review-pack
+ * content). Uses a Blob + object URL so no backend file URL is required.
+ */
+export function downloadTextFile(
+  filename: string,
+  content: string,
+  mime = "text/plain",
+): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Portfolio-level reliability snapshot across strategies. */
+export async function getPortfolioReliability(params?: {
+  project_id?: string;
+  organization_id?: string;
+  include_archived?: boolean;
+}): Promise<PortfolioReliabilityResponse> {
+  const qs = new URLSearchParams();
+  if (params?.project_id) qs.set("project_id", params.project_id);
+  if (params?.organization_id) qs.set("organization_id", params.organization_id);
+  if (params?.include_archived != null)
+    qs.set("include_archived", String(params.include_archived));
+  const q = qs.toString();
+  return request<PortfolioReliabilityResponse>(
+    `/api/portfolio/reliability${q ? `?${q}` : ""}`,
+  );
+}
+
+/** Export the portfolio reliability snapshot as JSON or Markdown. */
+export async function exportPortfolioReliability(
+  format: "json" | "markdown",
+): Promise<PortfolioExportResponse> {
+  return request<PortfolioExportResponse>(
+    `/api/portfolio/reliability/export?format=${format}`,
+  );
+}
+
+/** Generate a downloadable weekly research review pack. */
+export async function generateWeeklyReviewPack(
+  format: "markdown" | "json" = "markdown",
+): Promise<PortfolioExportResponse> {
+  return request<PortfolioExportResponse>(
+    `/api/portfolio/reliability/weekly-review-pack?format=${format}`,
+    { method: "POST" },
+  );
+}
+
+/** Recompute reliability scores across the portfolio. */
+export async function refreshPortfolioScores(): Promise<{
+  strategies_refreshed: number;
+  generated_at: string;
+}> {
+  return request<{ strategies_refreshed: number; generated_at: string }>(
+    "/api/portfolio/reliability/refresh",
+    { method: "POST" },
   );
 }
 
