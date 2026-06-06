@@ -38,10 +38,12 @@ class QuantFidelityAPIError(QuantFidelityError):
         status_code: int,
         response_text: str,
         response_json: dict | None = None,
+        endpoint: str | None = None,
     ) -> None:
         self.status_code = status_code
         self.response_text = response_text
         self.response_json = response_json
+        self.endpoint = endpoint
         # Extract a readable message from the response if possible
         detail = ""
         if response_json and isinstance(response_json.get("detail"), str):
@@ -52,7 +54,21 @@ class QuantFidelityAPIError(QuantFidelityError):
             )
         else:
             detail = response_text[:200]
+        if endpoint:
+            detail = f"{detail} (endpoint: {endpoint})"
         super().__init__(f"API error {status_code}: {detail}")
+
+
+class QuantFidelityAuthError(QuantFidelityAPIError):
+    """Raised when the API returns 401 (Unauthorized) or 403 (Forbidden).
+
+    The API key may be missing, expired, or have insufficient permissions.
+    The error message never includes the API key value.
+    """
+
+
+class QuantFidelityNotFoundError(QuantFidelityAPIError):
+    """Raised when the API returns 404 (Not Found)."""
 
 
 class QuantFidelityValidationError(QuantFidelityError):

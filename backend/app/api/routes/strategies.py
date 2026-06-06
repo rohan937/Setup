@@ -423,6 +423,23 @@ def _build_run_out(run: StrategyRun) -> StrategyRunOut:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/sdk/me
+# ---------------------------------------------------------------------------
+
+@router.get("/sdk/me", tags=["sdk"])
+def sdk_me() -> dict:
+    """SDK connectivity and authentication test.
+
+    Returns ``{"status": "ok", "authenticated": True, "service": "quantfidelity"}``
+    unconditionally. Used by ``QuantFidelityClient.test_auth()`` to verify
+    basic connectivity. If the server requires API key auth, any protected
+    endpoint will return 401 for an invalid key; this endpoint just confirms
+    the service is reachable.
+    """
+    return {"status": "ok", "authenticated": True, "service": "quantfidelity"}
+
+
+# ---------------------------------------------------------------------------
 # POST /api/strategies
 # ---------------------------------------------------------------------------
 
@@ -520,6 +537,7 @@ def create_strategy(
 @router.get("/strategies", response_model=list[StrategyListItemOut])
 def list_strategies(
     status: str | None = None,
+    slug: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[StrategyListItemOut]:
     """List strategies.
@@ -528,12 +546,17 @@ def list_strategies(
       - ``active``   → everything except archived (the default working view)
       - ``archived`` → archived strategies only
       - ``all`` / omitted → every strategy (preserves prior behavior)
+
+    Optional ``slug`` filter (M89):
+      - exact slug match, e.g. ``?slug=momentum-v2``
     """
     query = db.query(Strategy).options(selectinload(Strategy.project))
     if status == "active":
         query = query.filter(Strategy.status != "archived")
     elif status == "archived":
         query = query.filter(Strategy.status == "archived")
+    if slug is not None:
+        query = query.filter(Strategy.slug == slug)
     strategies = query.order_by(Strategy.created_at).all()
 
     if not strategies:

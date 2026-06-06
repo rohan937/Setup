@@ -607,6 +607,37 @@ class EvidenceBundle:
             notes=notes,
         )
 
+    def with_paper_run(
+        self,
+        run_name: str,
+        *,
+        params: dict[str, Any] | None = None,
+        assumptions: dict[str, Any] | None = None,
+        metrics: dict[str, Any] | None = None,
+        strategy_version_label: str | None = None,
+        dataset_snapshot_label: str | None = None,
+        universe_snapshot_label: str | None = None,
+        signal_snapshot_label: str | None = None,
+        notes: str | None = None,
+    ) -> "EvidenceBundle":
+        """Clean alias for with_strategy_run(run_type='paper').
+
+        Use this to log a paper (simulated live-like) trading run for
+        shadow monitoring comparison against a backtest baseline.
+        """
+        return self.with_strategy_run(
+            run_name,
+            run_type="paper",
+            params_json=params,
+            assumptions_json=assumptions,
+            metrics_json=metrics,
+            strategy_version_label=strategy_version_label,
+            dataset_snapshot_label=dataset_snapshot_label,
+            universe_snapshot_label=universe_snapshot_label,
+            signal_snapshot_label=signal_snapshot_label,
+            notes=notes,
+        )
+
     def validate(self) -> list[str]:
         """Return a list of human-readable validation issues. Empty list = valid.
 

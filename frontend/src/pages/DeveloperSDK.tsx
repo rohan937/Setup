@@ -35,6 +35,16 @@ const ENV_VARS = [
     description: "API key for authenticated endpoints. Create one in Settings.",
   },
   {
+    name: "QF_API_KEY",
+    default: "(none)",
+    description: "Short alias for QUANTFIDELITY_API_KEY. Both are supported.",
+  },
+  {
+    name: "QF_BASE_URL",
+    default: "(none)",
+    description: "Short alias for QUANTFIDELITY_BASE_URL. Both are supported.",
+  },
+  {
     name: "QUANTFIDELITY_STRATEGY_ID",
     default: "(none)",
     description: "Default strategy UUID used by the CLI when --strategy-id is omitted.",
@@ -81,27 +91,87 @@ pip install -e .`}</CodeBlock>
       {/* Quick Start */}
       <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
         <SectionHeader>Quick start</SectionHeader>
-        <CodeBlock lang="python">{`from quantfidelity import QuantFidelityClient, EvidenceBundle
+        {/* Show BOTH styles */}
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <div className="flex-1">
+            <p className="mb-2 text-xs font-medium text-text-secondary">Module API (recommended)</p>
+            <CodeBlock lang="python">{`import quantfidelity as qf
 
-client = QuantFidelityClient(base_url="http://localhost:8000")
+# reads QF_API_KEY and QF_BASE_URL from env
+qf.init()
+
+# get a strategy handle by slug
+strategy = qf.strategy("spy-trend")
+
+# log a backtest run
+strategy.log_run(
+    "Backtest v1",
+    run_type="backtest",
+    metrics={
+        "sharpe": 1.4,
+        "annual_return": 0.15,
+        "max_drawdown": -0.12,
+        "volatility": 0.14,
+        "turnover": 0.35,
+    },
+)
+
+# check shadow drift vs paper run
+result = strategy.shadow_monitor()
+print(result["verdict"])`}</CodeBlock>
+          </div>
+          <div className="flex-1">
+            <p className="mb-2 text-xs font-medium text-text-secondary">Direct client (advanced)</p>
+            <CodeBlock lang="python">{`from quantfidelity import QuantFidelityClient, EvidenceBundle
+
+client = QuantFidelityClient()  # reads env vars
 
 bundle = (
     EvidenceBundle()
-    .with_strategy_run(
-        "backtest-q1",
-        run_type="backtest",
-        metrics_json={"sharpe": 1.4},
-    )
+    .with_backtest_run("Backtest v1", metrics={"sharpe": 1.4})
+    .with_paper_run("Paper v1", metrics={"sharpe": 0.65})
+    .with_actions(compute_reliability_score=True)
+)
+result = client.ingest_bundle("<strategy-uuid>", bundle)
+print(result["summary"])`}</CodeBlock>
+          </div>
+        </div>
+        <p className="mt-3 text-sm text-text-muted">
+          Both{" "}
+          <span className="font-mono text-text-secondary text-xs">QUANTFIDELITY_BASE_URL</span>{" "}
+          and{" "}
+          <span className="font-mono text-text-secondary text-xs">QF_BASE_URL</span>{" "}
+          are supported, as are{" "}
+          <span className="font-mono text-text-secondary text-xs">QUANTFIDELITY_API_KEY</span>{" "}
+          and{" "}
+          <span className="font-mono text-text-secondary text-xs">QF_API_KEY</span>.
+        </p>
+      </div>
+
+      {/* Paper run & shadow monitor */}
+      <div className="rounded-card border border-border bg-bg-700 px-4 py-4">
+        <SectionHeader>Paper run &amp; shadow monitor (M88)</SectionHeader>
+        <p className="mb-3 text-sm text-text-muted">
+          Shadow monitoring compares a paper/live-like run against the backtest baseline to detect research-to-reality drift.
+        </p>
+        <CodeBlock lang="python">{`# Upload a paper run to detect drift vs backtest
+strategy.log_paper_run(
+    "Paper Run v1",
+    metrics={
+        "sharpe": 0.65,
+        "annual_return": 0.068,
+        "volatility": 0.22,
+        "max_drawdown": -0.23,
+        "turnover": 0.95,
+        "trade_count": 890,
+    },
 )
 
-result = client.ingest_evidence_bundle("<strategy-uuid>", bundle)
-print(result.summary)`}</CodeBlock>
-        <p className="mt-3 text-sm text-text-muted">
-          The client reads{" "}
-          <span className="font-mono text-text-secondary text-xs">QUANTFIDELITY_BASE_URL</span> and{" "}
-          <span className="font-mono text-text-secondary text-xs">QUANTFIDELITY_API_KEY</span>{" "}
-          from the environment when not passed explicitly.
-        </p>
+# Compare paper vs backtest baseline
+monitor = strategy.shadow_monitor()
+print(f"Verdict:  {monitor['verdict']}")
+print(f"Drift:    {monitor.get('drift_score')}/100")
+print(f"Concern:  {monitor.get('primary_concern')}")`}</CodeBlock>
       </div>
 
       {/* Environment variables */}

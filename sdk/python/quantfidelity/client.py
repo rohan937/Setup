@@ -58,12 +58,21 @@ class QuantFidelityClient:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:8000",
+        base_url: str | None = None,
         *,
         api_key: str | None = None,
         timeout: int | float = 30,
         buffer_path: str | None = None,
     ) -> None:
+        import os as _os
+        if api_key is None:
+            api_key = _os.environ.get("QUANTFIDELITY_API_KEY") or _os.environ.get("QF_API_KEY")
+        if base_url is None:
+            base_url = (
+                _os.environ.get("QUANTFIDELITY_BASE_URL")
+                or _os.environ.get("QF_BASE_URL")
+                or "http://localhost:8000"
+            )
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
@@ -103,10 +112,23 @@ class QuantFidelityClient:
     def _handle_response(self, resp: Any) -> dict[str, Any]:
         """Raise :class:`QuantFidelityAPIError` on non-2xx; otherwise return JSON."""
         if not resp.ok:
+            from quantfidelity.exceptions import QuantFidelityAuthError, QuantFidelityNotFoundError
             try:
                 response_json = resp.json()
             except Exception:
                 response_json = None
+            if resp.status_code in (401, 403):
+                raise QuantFidelityAuthError(
+                    status_code=resp.status_code,
+                    response_text=resp.text,
+                    response_json=response_json,
+                )
+            if resp.status_code == 404:
+                raise QuantFidelityNotFoundError(
+                    status_code=resp.status_code,
+                    response_text=resp.text,
+                    response_json=response_json,
+                )
             raise QuantFidelityAPIError(
                 status_code=resp.status_code,
                 response_text=resp.text,
@@ -462,6 +484,80 @@ class QuantFidelityClient:
             from quantfidelity.bundle import EvidenceBundle  # noqa: PLC0415
 
             return EvidenceBundle.from_dict(bundle).validate()  # type: ignore[arg-type]
+
+    def test_auth(self) -> dict[str, Any]:
+        """Test authentication by pinging a protected endpoint.
+
+        Calls GET /api/sdk/me (added in M89).
+        Raises QuantFidelityAuthError on 401/403.
+        Returns {"status": "ok", "authenticated": True} on success.
+        """
+        return self._get("/api/sdk/me")
+
+    def list_strategies(
+        self,
+        *,
+        status: str | None = None,
+        slug: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List strategies, optionally filtered by status and/or slug.
+
+        GET /api/strategies?status=...&slug=...
+        Returns list of strategy dicts.
+        """
+        qs_parts = []
+        if status:
+            qs_parts.append(f"status={status}")
+        if slug:
+            qs_parts.append(f"slug={slug}")
+        qs = "?" + "&".join(qs_parts) if qs_parts else ""
+        result = self._get(f"/api/strategies{qs}")
+        # The endpoint returns a list directly
+        if isinstance(result, list):
+            return result
+        return result.get("strategies", result.get("items", [result]))
+
+    def get_strategy(self, strategy_id: str) -> dict[str, Any]:
+        """Get strategy detail by ID.
+
+        GET /api/strategies/{strategy_id}
+        Raises QuantFidelityNotFoundError on 404.
+        """
+        return self._get(f"/api/strategies/{strategy_id}")
+
+    def generate_report(self, strategy_id: str) -> dict[str, Any]:
+        """Generate a strategy reliability report.
+
+        POST /api/reports/strategy/{strategy_id}
+        Returns report detail dict.
+        """
+        return self._post(f"/api/reports/strategy/{strategy_id}", {})
+
+    def refresh_score(self, strategy_id: str) -> dict[str, Any]:
+        """Recompute and store a reliability score for the strategy.
+
+        POST /api/strategies/{strategy_id}/reliability-score
+        Returns reliability score dict.
+        """
+        return self._post(f"/api/strategies/{strategy_id}/reliability-score", {})
+
+    def shadow_monitor(self, strategy_id: str) -> dict[str, Any]:
+        """Return the M88 shadow drift monitor for the strategy.
+
+        POST /api/strategies/{strategy_id}/shadow-monitor/refresh
+        Returns shadow monitor response dict.
+        """
+        return self._post(f"/api/strategies/{strategy_id}/shadow-monitor/refresh", {})
+
+    def strategy(self, slug_or_id: str) -> "StrategyHandle":
+        """Return a notebook-friendly StrategyHandle for the given slug or UUID.
+
+        Usage:
+            s = client.strategy("spy-trend")
+            s.log_run("Backtest v1", run_type="backtest", metrics={"sharpe": 1.4})
+        """
+        from quantfidelity.handle import StrategyHandle
+        return StrategyHandle(self, slug_or_id)
 
     def __repr__(self) -> str:
         auth = "api_key=***" if self._api_key else "api_key=None"
