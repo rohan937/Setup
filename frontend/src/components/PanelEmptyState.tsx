@@ -41,17 +41,17 @@ export default function PanelEmptyState({
   const blocked = needsWrite && !canWriteResearch(auth);
 
   return (
-    <div className="rounded-control border border-border bg-bg-800/60 px-4 py-4">
-      <p className="text-sm font-medium text-text-primary">{title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-text-secondary">{description}</p>
-      {note && <p className="mt-1.5 text-2xs text-text-muted">{note}</p>}
+    <div className="rounded-card border border-border bg-bg-800/40 px-5 py-5">
+      <p className="text-sm font-semibold tracking-tight text-text-primary">{title}</p>
+      <p className="mt-1.5 text-xs leading-relaxed text-text-secondary">{description}</p>
+      {note && <p className="mt-2 text-2xs text-text-muted">{note}</p>}
 
       {actions.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {actions.map((a) => {
             const cls = a.primary
-              ? "rounded-control border border-accent-500/40 bg-accent-500/15 px-3 py-1.5 text-xs text-accent-200 hover:bg-accent-500/25 disabled:cursor-not-allowed disabled:opacity-40"
-              : "rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40";
+              ? "rounded-control bg-brand px-3 py-1.5 text-xs font-medium text-text-inverse transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
+              : "rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-bg-600 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40";
             if (a.to && !blocked) {
               return (
                 <Link key={a.label} to={a.to} className={cls}>

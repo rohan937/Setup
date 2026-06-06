@@ -9,17 +9,15 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, subtitle, tag, children }: PageHeaderProps) {
   return (
-    <div className="mb-7 flex items-start justify-between gap-4">
+    <div className="mb-8 flex items-start justify-between gap-4">
       <div>
-        {tag && <p className="caption mb-1.5">{tag}</p>}
-        <h1 className="text-xl font-semibold tracking-tight text-text-primary">
-          {title}
-        </h1>
+        {tag && <p className="caption mb-2">{tag}</p>}
+        <h1 className="page-title">{title}</h1>
         {subtitle ? (
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-text-secondary">{subtitle}</p>
+          <p className="mt-2 max-w-2xl text-base leading-relaxed text-text-secondary">{subtitle}</p>
         ) : null}
       </div>
-      {children ? <div className="shrink-0 pt-0.5">{children}</div> : null}
+      {children ? <div className="shrink-0 pt-1">{children}</div> : null}
     </div>
   );
 }

@@ -17,6 +17,37 @@
     @apply bg-bg-900 text-text-primary font-sans antialiased;
   }
 
+  /* Tasteful focus ring + smooth color transitions on interactive elements. */
+  a,
+  button,
+  [role="button"] {
+    @apply transition-colors duration-150;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand/50 ring-offset-2 ring-offset-bg-900;
+  }
+
+  /* Page title — large, tight, prominent (M101). */
+  .page-title {
+    @apply text-display font-semibold tracking-tight text-text-primary;
+  }
+
+  /* Section title (M101). */
+  .section-title {
+    @apply text-xl font-semibold tracking-tight text-text-primary;
+  }
+
+  /* Card title (M101). */
+  .card-title {
+    @apply text-base font-semibold tracking-tight text-text-primary;
+  }
+
+  /* Hero metric value (M101). */
+  .metric-value {
+    @apply font-mono text-metric font-bold tabular-nums tracking-tight;
+  }
+
   /* Eyebrow / section label — small, medium-weight, calm caps.
      Sans-serif and restrained tracking: institutional, not terminal. */
   .caption {
@@ -32,5 +63,12 @@
      Monospace stays here since these label raw IDs/metrics. */
   .data-label {
     @apply font-mono text-2xs uppercase tracking-eyebrow text-text-muted;
+  }
+}
+
+@layer components {
+  /* Interactive card helper — premium hover elevation (M101). */
+  .card-interactive {
+    @apply transition-all duration-150 hover:shadow-card-hover hover:border-border-strong;
   }
 }

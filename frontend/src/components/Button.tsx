@@ -11,23 +11,23 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  // Muted institutional blue — solid, restrained, no neon.
+  // Solid institutional blue — lifts lighter on hover.
   primary:
-    "bg-brand text-text-primary border border-brand hover:bg-brand-600 hover:border-brand-600",
-  // Quiet elevated surface.
+    "bg-brand text-white border border-brand shadow-panel hover:bg-brand-600 hover:border-brand-600",
+  // Quiet elevated surface — brightens text + border on hover.
   secondary:
-    "bg-bg-600 text-text-secondary border border-border hover:bg-bg-600/70 hover:text-text-primary hover:border-border-strong",
+    "bg-bg-600 text-text-secondary border border-border hover:bg-bg-600 hover:text-text-primary hover:border-border-strong",
   // Transparent until hover.
   ghost:
-    "bg-transparent text-text-muted border border-transparent hover:bg-bg-600/60 hover:text-text-secondary",
-  // Desaturated danger.
+    "bg-transparent text-text-muted border border-transparent hover:bg-bg-600/60 hover:text-text-primary",
+  // Danger outline — fills with a tint on hover.
   danger:
     "bg-transparent text-fidelity-low border border-fidelity-low/50 hover:bg-fidelity-low/10 hover:border-fidelity-low",
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: "h-7 px-2.5 text-2xs gap-1.5",
-  md: "h-9 px-3.5 text-xs gap-2",
+  sm: "h-8 px-3 text-xs gap-1.5",
+  md: "h-10 px-4 text-sm gap-2",
 };
 
 export default function Button({
@@ -47,7 +47,7 @@ export default function Button({
       disabled={isDisabled}
       className={[
         "inline-flex items-center justify-center rounded-control font-medium tracking-tight",
-        "transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/60",
+        "transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-0",
         "disabled:cursor-not-allowed disabled:opacity-50",
         VARIANTS[variant],
         SIZES[size],
