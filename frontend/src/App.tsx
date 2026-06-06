@@ -30,6 +30,7 @@ import SLAMonitor from "@/pages/SLAMonitor";
 import AuditTrail from "@/pages/AuditTrail";
 import DeveloperSDK from "@/pages/DeveloperSDK";
 import EvidenceBundles from "@/pages/EvidenceBundles";
+import EvidenceBuilder from "@/pages/EvidenceBuilder";
 import WorkspaceSettings from "@/pages/WorkspaceSettings";
 import Members from "@/pages/Members";
 import DemoControls from "@/pages/DemoControls";
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="audit-trail" element={<AuditTrail />} />
         <Route path="developer/sdk" element={<DeveloperSDK />} />
         <Route path="developer/evidence-bundles" element={<EvidenceBundles />} />
+        <Route path="developer/evidence-builder" element={<EvidenceBuilder />} />
         <Route path="settings" element={<Settings />} />
         <Route path="workspace/settings" element={<WorkspaceSettings />} />
         <Route path="workspace/members" element={<Members />} />

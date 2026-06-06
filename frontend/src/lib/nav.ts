@@ -26,6 +26,7 @@ export const navItems: NavItem[] = [
   { label: "API Keys",           path: "/settings",                    section: "Developer" },
   { label: "SDK / CI",           path: "/developer/sdk",               section: "Developer" },
   { label: "Evidence Bundles",   path: "/developer/evidence-bundles",  section: "Developer" },
+  { label: "Bundle Builder",     path: "/developer/evidence-builder",  section: "Developer" },
   // Admin
   { label: "Workspace Settings", path: "/workspace/settings",         section: "Admin" },
   { label: "Members",            path: "/workspace/members",          section: "Admin" },

@@ -145,7 +145,7 @@ export default function EvidenceBundles() {
       {/* ------------------------------------------------------------------ */}
       {/* Dual-path callout                                                   */}
       {/* ------------------------------------------------------------------ */}
-      <div className="mb-8 grid gap-3 sm:grid-cols-2">
+      <div className="mb-8 grid gap-3 sm:grid-cols-3">
         {/* Path A: web */}
         <div className="rounded-card border border-border bg-bg-800 p-4">
           <p className="mb-1 text-xs font-semibold tracking-tight text-text-primary">
@@ -170,6 +170,22 @@ export default function EvidenceBundles() {
             </span>{" "}
             header for safe retries.
           </p>
+        </div>
+        {/* Path C: No-code Builder */}
+        <div className="rounded-card border border-border bg-bg-800 p-4">
+          <p className="mb-1 text-xs font-semibold tracking-tight text-text-primary">
+            No-code Builder
+          </p>
+          <p className="text-xs leading-relaxed text-text-secondary mb-3">
+            Build a complete evidence bundle step-by-step without writing JSON. Select strategy,
+            enter metrics, upload CSVs, preview, and ingest in one flow.
+          </p>
+          <Link
+            to="/developer/evidence-builder"
+            className="inline-flex items-center gap-1.5 rounded-control border border-accent-500/40 bg-accent-500/10 px-3 py-1.5 text-xs font-semibold text-accent-500 hover:bg-accent-500/20 transition-colors"
+          >
+            Open Builder →
+          </Link>
         </div>
       </div>
 
@@ -340,6 +356,9 @@ export default function EvidenceBundles() {
           <Button variant="secondary" size="sm">
             SDK &amp; CI Integration
           </Button>
+        </Link>
+        <Link to="/developer/evidence-builder">
+          <Button variant="secondary" size="sm">Bundle Builder</Button>
         </Link>
         <Link to="/strategies">
           <Button variant="ghost" size="sm">

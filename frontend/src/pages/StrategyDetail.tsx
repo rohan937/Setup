@@ -10647,6 +10647,23 @@ export default function StrategyDetail() {
         below, or use the SDK / REST API for automated ingestion.
       </p>
 
+      {/* M90: Link to no-code bundle builder */}
+      <div className="rounded-card border border-border bg-bg-800 px-4 py-3 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold text-text-primary mb-0.5">No-code Bundle Builder</p>
+          <p className="text-xs text-text-muted">
+            Build an evidence bundle step-by-step without hand-writing JSON.
+            Strategy is pre-selected.
+          </p>
+        </div>
+        <Link
+          to={`/developer/evidence-builder?strategyId=${id}`}
+          className="shrink-0 rounded-control border border-accent-500/40 bg-accent-500/10 px-3 py-1.5 text-xs font-semibold text-accent-500 hover:bg-accent-500/20 transition-colors whitespace-nowrap"
+        >
+          Open Builder →
+        </Link>
+      </div>
+
       {/* M22: Evidence Bundle Ingestion (web upload + raw payload) */}
       <IngestionPanel
         strategyId={id!}
