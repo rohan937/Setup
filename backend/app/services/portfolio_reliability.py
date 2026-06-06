@@ -328,6 +328,24 @@ def _aggregate_strategy(strategy, db: Session) -> dict:
     except Exception:
         pass
 
+    # ---- evidence verification (M92) ----
+    evidence_verification_score = None
+    evidence_verification_verdict = None
+    evidence_chain_status = None
+    verification_primary_concern = None
+    try:
+        from app.services.evidence_verification import verify_strategy_evidence as _ev
+        ev_data = _ev(sid, db)
+        evidence_verification_score = ev_data.verification_score
+        evidence_verification_verdict = ev_data.verdict
+        evidence_chain_status = ev_data.chain_status
+        if ev_data.time_consistency_warnings:
+            verification_primary_concern = ev_data.time_consistency_warnings[0][:80]
+        elif ev_data.link_consistency_warnings:
+            verification_primary_concern = ev_data.link_consistency_warnings[0][:80]
+    except Exception:
+        pass
+
     # ---- regression: latest run failed_count ----
     regression_failed_count = 0
     try:
@@ -428,6 +446,10 @@ def _aggregate_strategy(strategy, db: Session) -> dict:
         "shadow_primary_concern": shadow_primary_concern,
         "has_paper_run": has_paper_run,
         "has_shadow_run": has_shadow_run,
+        "evidence_verification_score": evidence_verification_score,
+        "evidence_verification_verdict": evidence_verification_verdict,
+        "evidence_chain_status": evidence_chain_status,
+        "verification_primary_concern": verification_primary_concern,
     }
 
 

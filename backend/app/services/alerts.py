@@ -1022,6 +1022,32 @@ def _collect_lifecycle_candidates(
         except Exception:
             pass
 
+        # evidence_verification_failed (M92)
+        try:
+            from app.services.evidence_verification import verify_strategy_evidence as _verify_ev
+            ev = _verify_ev(strategy.id, db)
+            if ev.verdict in ("failed", "warning") and (
+                ev.time_consistency_warnings or ev.verification_score < 60
+            ):
+                sev = "critical" if (ev.verdict == "failed" and ev.verification_score < 40) else "high"
+                candidates.append(AlertCandidate(
+                    rule_type=str(AlertRuleType.evidence_verification_failed),
+                    severity=sev,
+                    title=f"Evidence verification {ev.verdict}: {strategy.name}",
+                    description=(
+                        f"Evidence verification for '{strategy.name}' returned "
+                        f"{ev.verdict} (score: {ev.verification_score:.0f}/100, "
+                        f"chain: {ev.chain_status})."
+                        + (" " + ev.time_consistency_warnings[0][:100] if ev.time_consistency_warnings else "")
+                    ),
+                    source_type="strategy",
+                    source_id=sid_str,
+                    strategy_id=sid_hex,
+                    metadata={"verdict": ev.verdict, "verification_score": ev.verification_score, "chain_status": ev.chain_status},
+                ))
+        except Exception:
+            pass
+
     return candidates
 
 

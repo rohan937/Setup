@@ -4476,6 +4476,152 @@ def get_run_drift(
 
 
 # ---------------------------------------------------------------------------
+# M92: Evidence Verification endpoints
+# ---------------------------------------------------------------------------
+
+from app.schemas.evidence_verification import (  # noqa: E402
+    EvidenceVerificationResponse,
+    EvidenceVerificationCheckOut,
+    EvidenceVerificationReportResponse,
+)
+from app.services.evidence_verification import (  # noqa: E402
+    verify_strategy_evidence,
+    generate_evidence_verification_report,
+    EvidenceVerificationData,
+)
+
+
+def _build_ev_response(data: EvidenceVerificationData) -> EvidenceVerificationResponse:
+    """Build EvidenceVerificationResponse from EvidenceVerificationData dataclass."""
+    checks = [
+        EvidenceVerificationCheckOut(
+            key=c.key,
+            title=c.title,
+            status=c.status,
+            severity=c.severity,
+            evidence_type=c.evidence_type,
+            evidence_id=c.evidence_id,
+            explanation=c.explanation,
+            recommended_fix=c.recommended_fix,
+        )
+        for c in data.checks
+    ]
+
+    return EvidenceVerificationResponse(
+        strategy_id=data.strategy_id,
+        strategy_name=data.strategy_name,
+        verification_score=data.verification_score,
+        verdict=data.verdict,
+        chain_status=data.chain_status,
+        root_hash=data.root_hash,
+        generated_at=data.generated_at,
+        checks=checks,
+        tamper_warnings=data.tamper_warnings,
+        time_consistency_warnings=data.time_consistency_warnings,
+        link_consistency_warnings=data.link_consistency_warnings,
+        suggested_actions=data.suggested_actions,
+        disclaimer=data.disclaimer,
+    )
+
+
+@router.get(
+    "/strategies/{strategy_id}/evidence-verification",
+    response_model=EvidenceVerificationResponse,
+    tags=["strategies"],
+)
+def get_evidence_verification(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> EvidenceVerificationResponse:
+    """Return evidence verification status for a strategy.
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data: EvidenceVerificationData = verify_strategy_evidence(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_ev_response(data)
+
+
+@router.post(
+    "/strategies/{strategy_id}/evidence-verification/refresh",
+    response_model=EvidenceVerificationResponse,
+    tags=["strategies"],
+)
+def refresh_evidence_verification(
+    strategy_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> EvidenceVerificationResponse:
+    """Refresh evidence verification for a strategy (same logic as GET).
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data: EvidenceVerificationData = verify_strategy_evidence(strategy_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_ev_response(data)
+
+
+@router.get(
+    "/strategies/{strategy_id}/evidence-verification/report",
+    tags=["strategies"],
+)
+def get_evidence_verification_report(
+    strategy_id: uuid.UUID,
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+):
+    """Return a full evidence verification report for a strategy.
+
+    Supports ``format=json`` (default) or ``format=markdown``.
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    if format not in ("json", "markdown"):
+        raise HTTPException(
+            status_code=400,
+            detail="format must be 'json' or 'markdown'",
+        )
+
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        content = generate_evidence_verification_report(strategy_id, db, format=format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if format == "markdown":
+        return PlainTextResponse(content=content, media_type="text/markdown")
+
+    from datetime import datetime, timezone  # noqa: E402
+
+    return EvidenceVerificationReportResponse(
+        strategy_id=strategy_id,
+        strategy_name=strategy.name,
+        format="json",
+        content=content,
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
 # M51 — Promotion Gates
 # ---------------------------------------------------------------------------
 

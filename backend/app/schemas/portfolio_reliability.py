@@ -72,6 +72,10 @@ class PortfolioReliabilityStrategyRow(BaseModel):
     shadow_primary_concern: str | None = None
     has_paper_run: bool = False
     has_shadow_run: bool = False
+    evidence_verification_score: float | None = None
+    evidence_verification_verdict: str | None = None
+    evidence_chain_status: str | None = None
+    verification_primary_concern: str | None = None
 
 
 class PortfolioReliabilitySummary(BaseModel):

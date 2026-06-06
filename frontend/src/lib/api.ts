@@ -103,6 +103,8 @@ import type {
   StrategyShadowMonitorResponse,
   ShadowMonitorResponse,
   ShadowMonitorReportResponse,
+  EvidenceVerificationResponse,
+  EvidenceVerificationReportResponse,
   StrategyPromotionGateResponse,
   StrategyEvidenceGraphResponse,
   StrategyRegressionTest,
@@ -1387,6 +1389,27 @@ export async function getStrategyShadowMonitorReport(
 }
 
 // ---------------------------------------------------------------------------
+// M92: Evidence Verification
+// ---------------------------------------------------------------------------
+
+export async function getStrategyEvidenceVerification(strategyId: string): Promise<EvidenceVerificationResponse> {
+  return request<EvidenceVerificationResponse>(`/api/strategies/${strategyId}/evidence-verification`);
+}
+
+export async function refreshStrategyEvidenceVerification(strategyId: string): Promise<EvidenceVerificationResponse> {
+  return request<EvidenceVerificationResponse>(`/api/strategies/${strategyId}/evidence-verification/refresh`, { method: "POST" });
+}
+
+export async function getStrategyEvidenceVerificationReport(strategyId: string, format: "json" | "markdown" = "json"): Promise<EvidenceVerificationReportResponse | string> {
+  if (format === "markdown") {
+    const resp = await fetch(`/api/strategies/${strategyId}/evidence-verification/report?format=markdown`, { headers: { Accept: "text/markdown" }, credentials: "include" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.text();
+  }
+  return request<EvidenceVerificationReportResponse>(`/api/strategies/${strategyId}/evidence-verification/report?format=json`);
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates
 // ---------------------------------------------------------------------------
 
@@ -2178,3 +2201,4 @@ export async function changePassword(
     }),
   });
 }
+

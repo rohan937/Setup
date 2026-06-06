@@ -2963,6 +2963,45 @@ export interface ShadowMonitorReportResponse {
 }
 
 // ---------------------------------------------------------------------------
+// M92: Evidence Verification
+// ---------------------------------------------------------------------------
+
+export interface EvidenceVerificationCheck {
+  key: string;
+  title: string;
+  status: "pass" | "warning" | "fail" | "missing";
+  severity: "low" | "medium" | "high" | "critical";
+  evidence_type: string;
+  evidence_id: string | null;
+  explanation: string;
+  recommended_fix: string | null;
+}
+
+export interface EvidenceVerificationResponse {
+  strategy_id: string;
+  strategy_name: string;
+  verification_score: number;
+  verdict: "verified" | "review" | "warning" | "failed" | "insufficient_data";
+  chain_status: "intact" | "warning" | "broken" | "insufficient_data";
+  root_hash: string | null;
+  generated_at: string;
+  checks: EvidenceVerificationCheck[];
+  tamper_warnings: string[];
+  time_consistency_warnings: string[];
+  link_consistency_warnings: string[];
+  suggested_actions: string[];
+  disclaimer: string;
+}
+
+export interface EvidenceVerificationReportResponse {
+  strategy_id: string;
+  strategy_name: string;
+  format: string;
+  content: string;
+  generated_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates
 // ---------------------------------------------------------------------------
 
@@ -4385,6 +4424,11 @@ export interface PortfolioReliabilityRow {
   shadow_primary_concern?: string | null;
   has_paper_run?: boolean;
   has_shadow_run?: boolean;
+  // M92 — evidence verification fields.
+  evidence_verification_score?: number | null;
+  evidence_verification_verdict?: string | null;
+  evidence_chain_status?: string | null;
+  verification_primary_concern?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -4532,3 +4576,4 @@ export interface PortfolioExportResponse {
   format: string;
   content: string;
 }
+

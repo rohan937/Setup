@@ -99,6 +99,8 @@ import type {
   StrategyReliabilityCommandCenterResponse,
   CommandCenterSubsystemStatus,
   StrategyReliabilitySnapshot,
+  EvidenceVerificationResponse,
+  EvidenceVerificationCheck,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -129,6 +131,7 @@ import {
   getStrategyShadowMonitor,
   refreshStrategyShadowMonitor,
   getStrategyShadowMonitorReport,
+  refreshStrategyEvidenceVerification,
   getStrategyPromotionGates,
   getStrategyEvidenceGraph,
   createDefaultRegressionTests,
@@ -5363,6 +5366,191 @@ function ShadowMonitorV2Panel({
 }
 
 // ---------------------------------------------------------------------------
+// M92: Evidence Verification Panel
+// ---------------------------------------------------------------------------
+
+function EvidenceVerificationPanel({
+  verification,
+  onRefresh,
+  refreshing,
+  reportLoading: _reportLoading,
+  error,
+}: {
+  verification: EvidenceVerificationResponse | null;
+  onRefresh: () => void;
+  refreshing: boolean;
+  reportLoading: boolean;
+  error: string | null;
+}) {
+  const [checksExpanded, setChecksExpanded] = useState(false);
+  const [warningsExpanded, setWarningsExpanded] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(false);
+
+  const verdictColor = (v: string) => {
+    switch (v) {
+      case "verified": return "text-teal-400";
+      case "review": return "text-amber-400";
+      case "warning": return "text-orange-400";
+      case "failed": return "text-red-400";
+      default: return "text-text-muted";
+    }
+  };
+
+  const statusColor = (s: string) => {
+    switch (s) {
+      case "pass": return "text-teal-400";
+      case "warning": return "text-amber-400";
+      case "fail": return "text-red-400";
+      default: return "text-text-muted";
+    }
+  };
+
+  function handleCopyHash() {
+    if (verification?.root_hash) {
+      navigator.clipboard.writeText(verification.root_hash).then(() => {
+        setCopiedHash(true);
+        setTimeout(() => setCopiedHash(false), 1500);
+      });
+    }
+  }
+
+  return (
+    <div className="rounded-card border border-border bg-bg-card p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="caption">Evidence Verification</p>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="px-3 py-1 rounded border border-border bg-bg-700 font-mono text-xs text-text-muted hover:text-text-primary disabled:opacity-50"
+        >
+          {refreshing ? "Running…" : "Refresh"}
+        </button>
+      </div>
+
+      {error && (
+        <p className="rounded border border-fidelity-low/30 bg-fidelity-low/5 px-3 py-2 font-mono text-2xs text-fidelity-low">
+          {error}
+        </p>
+      )}
+
+      {!verification ? (
+        <PanelEmptyState
+          title="Evidence verification not yet run"
+          description="Click Refresh to check evidence consistency: time ordering, link completeness, symbol overlap, and content hash integrity."
+          actions={[{ label: "Run Verification", onClick: onRefresh, primary: true }]}
+        />
+      ) : (
+        <div className="space-y-3">
+          {/* Verdict + Score */}
+          <div className="flex flex-wrap items-center gap-4">
+            <span className={"font-mono text-sm font-bold " + verdictColor(verification.verdict)}>
+              {verification.verdict.replace(/_/g, " ").toUpperCase()}
+            </span>
+            <span className="font-mono text-xs text-text-muted">
+              Score: <span className="text-text-primary">{verification.verification_score.toFixed(0)}/100</span>
+            </span>
+            <span className="font-mono text-xs text-text-muted">
+              Chain: <span className="text-text-primary">{verification.chain_status}</span>
+            </span>
+          </div>
+
+          {/* Root hash */}
+          {verification.root_hash && (
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-2xs text-text-muted">root_hash:</span>
+              <span className="font-mono text-2xs text-text-primary">
+                {verification.root_hash.slice(0, 12)}…
+              </span>
+              <button
+                onClick={handleCopyHash}
+                className="font-mono text-2xs text-text-muted hover:text-text-primary"
+              >
+                {copiedHash ? "copied" : "copy"}
+              </button>
+            </div>
+          )}
+
+          {/* Time consistency warnings */}
+          {verification.time_consistency_warnings.length > 0 && (
+            <div className="rounded border border-amber-700/30 bg-amber-900/10 p-3 space-y-1">
+              <button
+                onClick={() => setWarningsExpanded((x) => !x)}
+                className="font-mono text-xs text-amber-400 flex items-center gap-1"
+              >
+                <span>{warningsExpanded ? "▾" : "▸"}</span>
+                Time Consistency Warnings ({verification.time_consistency_warnings.length})
+              </button>
+              {warningsExpanded && (
+                <ul className="space-y-1 pt-1">
+                  {verification.time_consistency_warnings.map((w, i) => (
+                    <li key={i} className="font-mono text-2xs text-amber-300">• {w}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Checks table */}
+          {verification.checks.length > 0 && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setChecksExpanded((x) => !x)}
+                className="font-mono text-xs text-text-muted hover:text-text-primary flex items-center gap-1"
+              >
+                <span>{checksExpanded ? "▾" : "▸"}</span>
+                Checks ({verification.checks.length})
+              </button>
+              {checksExpanded && (
+                <div className="overflow-x-auto rounded border border-border">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-border bg-bg-700">
+                        <th className="px-2 py-1 font-mono text-2xs text-text-muted">Key</th>
+                        <th className="px-2 py-1 font-mono text-2xs text-text-muted">Title</th>
+                        <th className="px-2 py-1 font-mono text-2xs text-text-muted">Status</th>
+                        <th className="px-2 py-1 font-mono text-2xs text-text-muted">Severity</th>
+                        <th className="px-2 py-1 font-mono text-2xs text-text-muted">Explanation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {verification.checks.map((c: EvidenceVerificationCheck) => (
+                        <tr key={c.key} className="border-b border-border last:border-0">
+                          <td className="px-2 py-1 font-mono text-2xs text-text-muted">{c.key}</td>
+                          <td className="px-2 py-1 font-mono text-2xs text-text-primary">{c.title}</td>
+                          <td className={"px-2 py-1 font-mono text-2xs " + statusColor(c.status)}>{c.status}</td>
+                          <td className="px-2 py-1 font-mono text-2xs text-text-muted">{c.severity}</td>
+                          <td className="px-2 py-1 font-mono text-2xs text-text-muted max-w-xs truncate" title={c.explanation}>{c.explanation}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Suggested actions */}
+          {verification.suggested_actions.length > 0 && (
+            <div className="space-y-1">
+              <p className="font-mono text-2xs text-text-muted">Suggested Actions</p>
+              <ul className="space-y-0.5">
+                {verification.suggested_actions.map((a, i) => (
+                  <li key={i} className="font-mono text-2xs text-text-primary">• {a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Disclaimer */}
+          <p className="font-mono text-2xs text-text-muted opacity-60">{verification.disclaimer}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates Panel
 // ---------------------------------------------------------------------------
 
@@ -9526,6 +9714,12 @@ export default function StrategyDetail() {
   const [shadowRefreshError, setShadowRefreshError] = useState<string | null>(null);
   const [shadowReportLoading, setShadowReportLoading] = useState(false);
 
+  // M92: evidence verification
+  const [evidenceVerification, setEvidenceVerification] = useState<EvidenceVerificationResponse | null>(null);
+  const [evidenceVerifRefreshing, setEvidenceVerifRefreshing] = useState(false);
+  const [evidenceVerifError, setEvidenceVerifError] = useState<string | null>(null);
+  const [evidenceVerifReportLoading] = useState(false);
+
   // M51: promotion gates
   const [promotionGates, setPromotionGates] = useState<StrategyPromotionGateResponse | null>(null);
   // promotionTarget tracks the currently-selected target stage for the promotion gates panel
@@ -9590,6 +9784,18 @@ export default function StrategyDetail() {
     } finally {
       setShadowReportLoading(false);
     }
+  }
+
+  async function handleRefreshEvidenceVerification() {
+    if (!strategy) return;
+    setEvidenceVerifRefreshing(true);
+    setEvidenceVerifError(null);
+    try {
+      const result = await refreshStrategyEvidenceVerification(strategy.id);
+      setEvidenceVerification(result);
+    } catch (e: unknown) {
+      setEvidenceVerifError(e instanceof Error ? e.message : "Refresh failed.");
+    } finally { setEvidenceVerifRefreshing(false); }
   }
 
   async function handleCompareConfig() {
@@ -10246,6 +10452,19 @@ export default function StrategyDetail() {
           )}
         </div>
       )}
+
+      {/* M92: Compact evidence verification badge */}
+      {evidenceVerification && evidenceVerification.verdict !== "insufficient_data" && (
+        <div className="rounded border border-border bg-bg-700 px-3 py-2 flex items-center gap-3">
+          <p className="font-mono text-2xs text-text-muted">Evidence:</p>
+          <span className={"font-mono text-xs font-semibold " +
+            (evidenceVerification.verdict === "failed" ? "text-red-400" :
+             evidenceVerification.verdict === "warning" ? "text-orange-400" :
+             evidenceVerification.verdict === "review" ? "text-amber-400" : "text-teal-400")}>
+            {evidenceVerification.verdict.replace(/_/g, " ")} ({evidenceVerification.verification_score.toFixed(0)})
+          </span>
+        </div>
+      )}
         </>
       )}
 
@@ -10313,6 +10532,15 @@ export default function StrategyDetail() {
           }}
         />
       )}
+
+      {/* M92: Evidence Verification */}
+      <EvidenceVerificationPanel
+        verification={evidenceVerification}
+        onRefresh={handleRefreshEvidenceVerification}
+        refreshing={evidenceVerifRefreshing}
+        reportLoading={evidenceVerifReportLoading}
+        error={evidenceVerifError}
+      />
 
       {/* M38: Signal Quality Drilldown */}
       {signalDrilldown && signalDrilldownId && (
