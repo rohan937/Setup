@@ -27,6 +27,7 @@ import app.models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.auth_user import AuthUser
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.strategy import Strategy
@@ -91,6 +92,13 @@ def _make_user(client, db, role):
     r = client.post("/api/auth/register",
                     json={"email": email, "display_name": role, "password": "password123"})
     assert r.status_code == 200, r.text
+    # Mark the email as verified so RBAC tests exercise role gating rather than
+    # tripping the email-verification gate the ingest endpoint now enforces.
+    user = db.query(AuthUser).filter(AuthUser.email == email).first()
+    if user:
+        user.email_verified = True
+        user.email_verified_at = datetime.now(timezone.utc)
+        db.commit()
     m = db.query(WorkspaceMember).filter(WorkspaceMember.email == email).first()
     if m:
         m.role = role
