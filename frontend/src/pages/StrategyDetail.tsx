@@ -62,6 +62,8 @@ import type {
   StrategyEvidenceFreshnessResponse,
   EvidenceFreshnessItem,
   ActionQueueResponse,
+  ReadinessSimulatorResponse,
+  RecommendedAction,
   ActionItem as BackendActionItem,
   StrategyLifecycleResponse,
   LifecycleBlocker,
@@ -133,6 +135,8 @@ import {
   getStrategyDrift,
   getStrategyEvidenceFreshness,
   getStrategyActionQueue,
+  getReadinessSimulator,
+  simulateReadiness,
   getStrategyLifecycle,
   generateAlerts,
   getStrategyReadiness,
@@ -9825,6 +9829,136 @@ const VALID_TABS: StrategyTab[] = [
   "overview", "evidence", "runs", "governance", "lineage", "exports", "developer",
 ];
 
+function ReadinessSimulatorPanel({
+  data, targetStage, completed, loading, error,
+  onTargetChange, onToggle, onSimulate, onReset, onNavigate,
+}: {
+  data: ReadinessSimulatorResponse | null;
+  targetStage: string;
+  completed: Set<string>;
+  loading: boolean;
+  error: string | null;
+  onTargetChange: (s: string) => void;
+  onToggle: (key: string) => void;
+  onSimulate: () => void;
+  onReset: () => void;
+  onNavigate: (tab: string) => void;
+}) {
+  const verdictColor = (v: string) =>
+    v === "ready" ? "text-teal-400" : v === "review" ? "text-amber-400" : v === "blocked" ? "text-red-400" : "text-text-muted";
+
+  if (data && data.current_verdict === "insufficient_data") {
+    return (
+      <div className="rounded-card border border-border bg-bg-card p-4 space-y-2">
+        <h3 className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wide">Readiness Simulator</h3>
+        <p className="text-xs text-text-muted">Log a backtest run or ingest an evidence bundle to simulate readiness.</p>
+        <p className="font-mono text-2xs text-text-muted italic">{data.disclaimer}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-card border border-border bg-bg-card p-4 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wide">Readiness Simulator</h3>
+        <span className="font-mono text-2xs text-text-muted">simulation only — no changes saved</span>
+      </div>
+
+      {/* Target stage selector */}
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-2xs text-text-muted">Target:</span>
+        <select value={targetStage} onChange={(e) => onTargetChange(e.target.value)}
+          className="rounded-control border border-border bg-bg-700 px-2 py-1 text-xs text-text-primary focus:outline-none">
+          <option value="paper_candidate">Paper Candidate</option>
+          <option value="shadow">Shadow</option>
+          <option value="production_candidate">Production Candidate</option>
+        </select>
+      </div>
+
+      {error && <p className="font-mono text-2xs text-red-400">{error}</p>}
+
+      {data && (
+        <>
+          {/* Score strip */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div>
+              <p className="caption">Current</p>
+              <p className="font-mono text-sm font-bold text-text-primary">
+                {data.current_readiness_score !== null ? data.current_readiness_score.toFixed(0) : "—"}/100
+                <span className={"ml-2 text-xs " + verdictColor(data.current_verdict)}>{data.current_verdict}</span>
+              </p>
+            </div>
+            <span className="font-mono text-text-muted">→</span>
+            <div>
+              <p className="caption">Projected</p>
+              <p className="font-mono text-sm font-bold text-text-primary">
+                {data.projected_readiness_score !== null ? data.projected_readiness_score.toFixed(0) : "—"}/100
+                <span className={"ml-2 text-xs " + verdictColor(data.projected_verdict)}>{data.projected_verdict}</span>
+              </p>
+            </div>
+            {data.estimated_delta !== 0 && (
+              <span className={"font-mono text-xs " + (data.estimated_delta > 0 ? "text-teal-400" : "text-red-400")}>
+                {data.estimated_delta > 0 ? "+" : ""}{data.estimated_delta.toFixed(0)}
+              </span>
+            )}
+          </div>
+
+          {/* Recommended actions with checkboxes */}
+          {data.recommended_actions.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="caption">Recommended Actions</p>
+              {data.recommended_actions.map((a: RecommendedAction) => (
+                <label key={a.key} className="flex items-start gap-2 cursor-pointer group">
+                  <input type="checkbox" checked={completed.has(a.key)} onChange={() => onToggle(a.key)}
+                    className="mt-0.5 accent-teal-500" />
+                  <span className="flex-1">
+                    <span className="font-mono text-2xs text-text-primary">{a.title}</span>
+                    <span className="ml-1.5 font-mono text-2xs text-teal-400">+{a.impact_points}</span>
+                    <span className="ml-1.5 font-mono text-2xs text-text-muted">({a.effort})</span>
+                    <button onClick={(e) => { e.preventDefault(); onNavigate(a.cta_target); }}
+                      className="ml-2 font-mono text-2xs text-accent-400 underline opacity-0 group-hover:opacity-100">
+                      {a.cta_label}
+                    </button>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* Remaining blockers */}
+          {data.remaining_blockers.length > 0 && (
+            <div className="rounded border border-amber-700/30 bg-amber-900/10 px-3 py-2">
+              <p className="font-mono text-2xs font-semibold text-amber-400 mb-1">Remaining Blockers ({data.remaining_blockers.length})</p>
+              {data.remaining_blockers.map((b, i) => (
+                <p key={i} className="font-mono text-2xs text-amber-300">• {b}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Warnings */}
+          {data.warnings.length > 0 && data.warnings.map((w, i) => (
+            <p key={i} className="font-mono text-2xs text-text-muted">{w}</p>
+          ))}
+
+          {/* Buttons */}
+          <div className="flex items-center gap-2">
+            <button onClick={onSimulate} disabled={loading}
+              className="rounded-control border border-accent-500/40 bg-accent-500/10 px-3 py-1.5 text-xs text-accent-400 hover:bg-accent-500/20 disabled:opacity-50">
+              {loading ? "Simulating..." : "Simulate completion"}
+            </button>
+            <button onClick={onReset} disabled={loading}
+              className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50">
+              Reset
+            </button>
+          </div>
+
+          <p className="font-mono text-2xs text-text-muted italic">{data.disclaimer}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function BackendActionQueue({
   data,
   onAction,
@@ -9986,6 +10120,13 @@ export default function StrategyDetail() {
   // M74: backend-driven action queue (null = not loaded / failed → fallback to local)
   const [actionQueue, setActionQueue] = useState<ActionQueueResponse | null>(null);
   const [actionQueueFailed, setActionQueueFailed] = useState(false);
+
+  // M96: readiness simulator
+  const [simData, setSimData] = useState<ReadinessSimulatorResponse | null>(null);
+  const [simTargetStage, setSimTargetStage] = useState("paper_candidate");
+  const [simCompleted, setSimCompleted] = useState<Set<string>>(new Set());
+  const [simLoading, setSimLoading] = useState(false);
+  const [simError, setSimError] = useState<string | null>(null);
 
   // M76: lifecycle visual
   const [lifecycle, setLifecycle] = useState<StrategyLifecycleResponse | null>(null);
@@ -10299,6 +10440,8 @@ export default function StrategyDetail() {
       });
     // M76: load lifecycle in parallel (best-effort)
     getStrategyLifecycle(id).then(setLifecycle).catch(() => setLifecycle(null));
+    // M96: load readiness simulator baseline (best-effort, default target stage)
+    getReadinessSimulator(id, "paper_candidate").then(setSimData).catch(() => setSimData(null));
     // M29: load run history and timeline drilldown in parallel
     getStrategyRunHistory(id, { limit: 50 }).then(setRunHistory).catch(() => setRunHistory(null));
     getStrategyTimelineDrilldown(id, { limit: 30 }).then(setTimelineDrilldown).catch(() => setTimelineDrilldown(null));
@@ -10357,6 +10500,44 @@ export default function StrategyDetail() {
   }
 
   // M76: lifecycle blocker → reuse the same action handling as the Action Queue.
+  // M96: readiness simulator handlers
+  async function handleSimulate() {
+    if (!strategy) return;
+    setSimLoading(true);
+    setSimError(null);
+    try {
+      const result = await simulateReadiness(strategy.id, simTargetStage, Array.from(simCompleted));
+      setSimData(result);
+    } catch (e: unknown) {
+      setSimError(e instanceof Error ? e.message : "Simulation failed.");
+    } finally { setSimLoading(false); }
+  }
+  function handleResetSimulation() {
+    setSimCompleted(new Set());
+    if (strategy) {
+      setSimLoading(true);
+      getReadinessSimulator(strategy.id, simTargetStage)
+        .then(setSimData).catch(() => {}).finally(() => setSimLoading(false));
+    }
+  }
+  async function handleSimTargetChange(stage: string) {
+    setSimTargetStage(stage);
+    setSimCompleted(new Set());
+    if (strategy) {
+      setSimLoading(true);
+      try { const r = await getReadinessSimulator(strategy.id, stage); setSimData(r); }
+      catch (e: unknown) { setSimError(e instanceof Error ? e.message : "Load failed."); }
+      finally { setSimLoading(false); }
+    }
+  }
+  function toggleSimAction(key: string) {
+    setSimCompleted((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
   function handleLifecycleBlocker(b: LifecycleBlocker) {
     handleActionItem({
       id: `lifecycle:${b.action_type}:${b.related_run_id ?? ""}`,
@@ -10695,6 +10876,20 @@ export default function StrategyDetail() {
               />
             </>
           )}
+
+          {/* M96: Readiness Simulator */}
+          <ReadinessSimulatorPanel
+            data={simData}
+            targetStage={simTargetStage}
+            completed={simCompleted}
+            loading={simLoading}
+            error={simError}
+            onTargetChange={handleSimTargetChange}
+            onToggle={toggleSimAction}
+            onSimulate={handleSimulate}
+            onReset={handleResetSimulation}
+            onNavigate={(tab) => setActiveTab(tab as StrategyTab)}
+          />
 
           {/* M85: Open reliability alerts for this strategy */}
           <StrategyAlertsCard strategyId={strategy.id} />

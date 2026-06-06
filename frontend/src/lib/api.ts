@@ -133,6 +133,7 @@ import type {
   ComparableVersionsResponse,
   LineageDiffResponse,
   LineageDiffReportResponse,
+  ReadinessSimulatorResponse,
 } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -1363,6 +1364,26 @@ export async function getStrategyActionQueue(
   return request<ActionQueueResponse>(
     `/api/strategies/${strategyId}/action-queue${query}`,
   );
+}
+
+// M96: Readiness Simulator
+export async function getReadinessSimulator(
+  strategyId: string,
+  targetStage?: string,
+): Promise<ReadinessSimulatorResponse> {
+  const qs = targetStage ? `?target_stage=${targetStage}` : "";
+  return request<ReadinessSimulatorResponse>(`/api/strategies/${strategyId}/readiness-simulator${qs}`);
+}
+
+export async function simulateReadiness(
+  strategyId: string,
+  targetStage: string | null,
+  completedActions: string[],
+): Promise<ReadinessSimulatorResponse> {
+  return request<ReadinessSimulatorResponse>(`/api/strategies/${strategyId}/readiness-simulator/simulate`, {
+    method: "POST",
+    body: JSON.stringify({ target_stage: targetStage, completed_actions: completedActions }),
+  });
 }
 
 // M76: strategy lifecycle inference

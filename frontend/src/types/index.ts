@@ -3101,6 +3101,38 @@ export interface LineageDiffReportResponse {
   generated_at: string;
 }
 
+// M96: Readiness Simulator
+export interface RecommendedAction {
+  key: string;
+  title: string;
+  category: string;
+  impact_points: number;
+  effort: "low" | "medium" | "high";
+  status: "not_started" | "done";
+  why_it_matters: string;
+  cta_label: string;
+  cta_target: string;
+}
+
+export interface ReadinessSimulatorResponse {
+  strategy_id: string;
+  strategy_name: string;
+  current_stage: string;
+  target_stage: string;
+  current_readiness_score: number | null;
+  projected_readiness_score: number | null;
+  current_verdict: string;
+  projected_verdict: string;
+  estimated_delta: number;
+  current_blockers: string[];
+  remaining_blockers: string[];
+  recommended_actions: RecommendedAction[];
+  simulated_completed_actions: string[];
+  warnings: string[];
+  generated_at: string;
+  disclaimer: string;
+}
+
 export interface ComparableVersionItem {
   version_id: string;
   version_label: string;

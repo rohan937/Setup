@@ -4296,6 +4296,132 @@ def get_strategy_action_queue(
     return ActionQueueResponse(**payload)
 
 
+# M96: Readiness Simulator endpoints
+from app.schemas.readiness_simulator import (  # noqa: E402
+    ReadinessSimulatorResponse, RecommendedActionOut,
+    ReadinessSimulateRequest, RecommendedActionsResponse,
+)
+from app.services.readiness_simulator import (  # noqa: E402
+    get_current_readiness, simulate_readiness, recommend_readiness_actions,
+    ReadinessSimulationData,
+)
+
+
+def _build_readiness_sim_response(data: ReadinessSimulationData) -> ReadinessSimulatorResponse:
+    return ReadinessSimulatorResponse(
+        strategy_id=data.strategy_id, strategy_name=data.strategy_name,
+        current_stage=data.current_stage, target_stage=data.target_stage,
+        current_readiness_score=data.current_readiness_score,
+        projected_readiness_score=data.projected_readiness_score,
+        current_verdict=data.current_verdict, projected_verdict=data.projected_verdict,
+        estimated_delta=data.estimated_delta,
+        current_blockers=data.current_blockers, remaining_blockers=data.remaining_blockers,
+        recommended_actions=[RecommendedActionOut(
+            key=a.key, title=a.title, category=a.category, impact_points=a.impact_points,
+            effort=a.effort, status=a.status, why_it_matters=a.why_it_matters,
+            cta_label=a.cta_label, cta_target=a.cta_target,
+        ) for a in data.recommended_actions],
+        simulated_completed_actions=data.simulated_completed_actions,
+        warnings=data.warnings, generated_at=data.generated_at, disclaimer=data.disclaimer,
+    )
+
+
+@router.get(
+    "/strategies/{strategy_id}/readiness-simulator",
+    response_model=ReadinessSimulatorResponse,
+    tags=["strategies"],
+)
+def get_strategy_readiness_simulator(
+    strategy_id: uuid.UUID,
+    target_stage: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> ReadinessSimulatorResponse:
+    """Return the current readiness projection for a strategy.
+
+    Read-only — no DB writes, simulation only.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data = get_current_readiness(strategy_id, db, target_stage=target_stage)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_readiness_sim_response(data)
+
+
+@router.post(
+    "/strategies/{strategy_id}/readiness-simulator/simulate",
+    response_model=ReadinessSimulatorResponse,
+    tags=["strategies"],
+)
+def simulate_strategy_readiness(
+    strategy_id: uuid.UUID,
+    body: ReadinessSimulateRequest,
+    db: Session = Depends(get_db),
+) -> ReadinessSimulatorResponse:
+    """Project readiness for a strategy given hypothetically completed actions.
+
+    Read-only — no DB writes, simulation only.
+    """
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        data = simulate_readiness(
+            strategy_id, db,
+            target_stage=body.target_stage,
+            completed_actions=body.completed_actions,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _build_readiness_sim_response(data)
+
+
+@router.get(
+    "/strategies/{strategy_id}/readiness-simulator/actions",
+    response_model=RecommendedActionsResponse,
+    tags=["strategies"],
+)
+def get_strategy_readiness_actions(
+    strategy_id: uuid.UUID,
+    target_stage: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> RecommendedActionsResponse:
+    """Return ranked recommended readiness actions for a strategy.
+
+    Read-only — no DB writes, simulation only.
+    """
+    from datetime import datetime, timezone  # noqa: E402
+
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        actions = recommend_readiness_actions(strategy_id, db, target_stage=target_stage)
+        resolved_target_stage = get_current_readiness(
+            strategy_id, db, target_stage=target_stage
+        ).target_stage
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return RecommendedActionsResponse(
+        strategy_id=strategy_id,
+        target_stage=resolved_target_stage,
+        recommended_actions=[RecommendedActionOut(
+            key=a.key, title=a.title, category=a.category, impact_points=a.impact_points,
+            effort=a.effort, status=a.status, why_it_matters=a.why_it_matters,
+            cta_label=a.cta_label, cta_target=a.cta_target,
+        ) for a in actions],
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
 @router.get(
     "/strategies/{strategy_id}/shadow-monitor",
     response_model=StrategyShadowMonitorResponse,
