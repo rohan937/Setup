@@ -17,7 +17,7 @@ export function SkeletonText({ lines = 3, className = "" }: { lines?: number; cl
 
 export function SkeletonCard({ className = "" }: { className?: string }) {
   return (
-    <div className={`rounded-card border border-border bg-bg-700 p-6 ${className}`} aria-hidden="true">
+    <div className={`rounded-card border border-border bg-gradient-to-br from-bg-700 to-bg-800 p-6 ${className}`} aria-hidden="true">
       <div className="skeleton mb-3 h-3 w-1/3" />
       <div className="skeleton mb-4 h-9 w-1/2" />
       <div className="skeleton h-3 w-full" />

@@ -18,7 +18,6 @@ import {
   getStrategyEvidenceVerification,
 } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import PageHeader from "@/components/PageHeader";
 import Card from "@/components/Card";
 import EmptyState from "@/components/EmptyState";
 import LifecycleStageBadge from "@/components/LifecycleStageBadge";
@@ -58,6 +57,44 @@ function healthAccent(classification: string | null | undefined): string {
   const key = (classification ?? "").toLowerCase();
   return HEALTH_ACCENT[key] ?? "border-l-border-strong";
 }
+
+// Health classification → gradient-border variant + matching hover glow (M108).
+// Healthy = success, review/watch = warning, blocked/critical = danger,
+// everything else (unscored) = research tint.
+const HEALTH_GRADIENT: Record<string, string> = {
+  healthy: "gradient-border gradient-border-success hover:shadow-glow-success-lg",
+  review: "gradient-border gradient-border-warning hover:shadow-glow-warning-lg",
+  watch: "gradient-border gradient-border-warning hover:shadow-glow-warning-lg",
+  blocked: "gradient-border gradient-border-danger hover:shadow-glow-danger-lg",
+  critical: "gradient-border gradient-border-danger hover:shadow-glow-danger-lg",
+};
+
+function healthGradient(classification: string | null | undefined): string {
+  const key = (classification ?? "").toLowerCase();
+  return (
+    HEALTH_GRADIENT[key] ??
+    "gradient-border gradient-border-research hover:shadow-glow-research-lg"
+  );
+}
+
+// Big-metric tone → gradient-border variant + matching large hover glow (M108).
+const METRIC_GRADIENT: Record<NonNullable<BigMetric["tone"]>, string> = {
+  "": "gradient-border gradient-border-primary hover:shadow-glow-primary-lg",
+  high: "gradient-border gradient-border-success hover:shadow-glow-success-lg",
+  medium: "gradient-border gradient-border-warning hover:shadow-glow-warning-lg",
+  low: "gradient-border gradient-border-danger hover:shadow-glow-danger-lg",
+  accent: "gradient-border gradient-border-primary hover:shadow-glow-primary-lg",
+};
+
+// Lifecycle stage key → soft background tint behind the count (per-stage energy).
+const STAGE_TINT: Record<string, string> = {
+  research: "bg-bg-600/40",
+  backtest: "bg-accent-500/10",
+  backtest_review: "bg-accent-500/10",
+  paper_candidate: "bg-research/10",
+  shadow: "bg-research/10",
+  production_candidate: "bg-fidelity-high/10",
+};
 
 // Static product copy per lifecycle stage key.
 const STAGE_MEANING: Record<string, string> = {
@@ -162,7 +199,11 @@ function BigMetricCard({ spec, loading }: { spec: BigMetric; loading: boolean })
       )}
     </>
   );
-  const base = "card-interactive rounded-card border border-border bg-bg-700 p-7 shadow-card";
+  // Loading skeletons stay calm (plain border); resolved cards get a tone-keyed
+  // gradient edge + matching large glow on hover (M108 cinematic treatment).
+  const base = loading
+    ? "rounded-card border border-border bg-bg-700 p-8 shadow-card"
+    : `card-interactive rounded-card p-8 shadow-card ${METRIC_GRADIENT[spec.tone]}`;
   if (spec.to && !loading) {
     return (
       <Link to={spec.to} className={`card-hover-lift block ${base}`}>
@@ -177,9 +218,31 @@ function BigMetricCard({ spec, loading }: { spec: BigMetric; loading: boolean })
 // Small section heading helper
 // ---------------------------------------------------------------------------
 
-function SectionHeading({ eyebrow, title, blurb }: { eyebrow: string; title: string; blurb?: string }) {
+function SectionHeading({
+  eyebrow,
+  title,
+  blurb,
+  accent = "primary",
+}: {
+  eyebrow: string;
+  title: string;
+  blurb?: string;
+  /** Tint of the thin gradient accent bar above the eyebrow (M108). */
+  accent?: "primary" | "success" | "warning" | "research";
+}) {
+  const ACCENT_BAR: Record<NonNullable<typeof accent>, string> = {
+    primary: "bg-grad-primary",
+    success: "bg-grad-success",
+    warning: "bg-grad-warning",
+    research: "bg-grad-research",
+  };
   return (
     <div className="max-w-3xl">
+      {/* Thin gradient accent bar — cinematic section separation (M108). */}
+      <div
+        aria-hidden="true"
+        className={`mb-3 h-1 w-12 rounded-full ${ACCENT_BAR[accent]}`}
+      />
       <p className="caption mb-2">{eyebrow}</p>
       <h2 className="section-title text-xl">{title}</h2>
       {blurb && <p className="mt-2 text-sm leading-relaxed text-text-secondary">{blurb}</p>}
@@ -369,20 +432,25 @@ export default function ExecutiveDemo() {
   }, [topActions, attention]);
 
   return (
-    <div className="relative mx-auto max-w-6xl space-y-16 pb-10">
-      {/* Ambient hero glow — subtle, institutional (M102) */}
+    <div className="relative mx-auto max-w-6xl space-y-24 pb-10">
+      {/* Ambient hero glow — cinematic but classy (M108): larger, low-opacity
+          blue/purple/cyan/teal orbs drifting slowly behind the hero. */}
       <div
-        className="pointer-events-none absolute left-0 right-0 top-0 -z-10 h-80 overflow-hidden"
+        className="pointer-events-none absolute left-0 right-0 top-0 -z-10 h-[28rem] overflow-hidden"
         aria-hidden="true"
       >
-        <div className="animate-gradient-drift absolute -top-24 left-1/4 h-80 w-80 rounded-full bg-brand/10 blur-3xl" />
+        <div className="animate-hero-drift absolute -top-32 left-1/4 h-96 w-96 rounded-full bg-brand/12 blur-3xl" />
         <div
-          className="animate-gradient-drift absolute -top-16 left-1/2 h-72 w-72 rounded-full bg-research/10 blur-3xl"
-          style={{ animationDelay: "-6s" }}
+          className="animate-hero-drift absolute -top-24 left-1/2 h-[26rem] w-[26rem] rounded-full bg-research/12 blur-3xl"
+          style={{ animationDelay: "-8s" }}
         />
         <div
-          className="animate-gradient-drift absolute -top-20 right-1/4 h-64 w-64 rounded-full bg-teal-500/8 blur-3xl"
-          style={{ animationDelay: "-3s" }}
+          className="animate-hero-drift absolute -top-28 right-1/4 h-80 w-80 rounded-full bg-accent-500/10 blur-3xl"
+          style={{ animationDelay: "-4s" }}
+        />
+        <div
+          className="animate-hero-drift absolute -top-16 right-1/3 h-72 w-72 rounded-full bg-teal-500/8 blur-3xl"
+          style={{ animationDelay: "-12s" }}
         />
       </div>
 
@@ -390,23 +458,42 @@ export default function ExecutiveDemo() {
       {/* 1. HERO */}
       {/* ---------------------------------------------------------------- */}
       <section className="animate-fade-in pt-2">
-        <PageHeader
-          tag="Executive Overview"
-          title="QuantFidelity — Research Governance Overview"
-          subtitle="QuantFidelity gives quant research teams a reliability layer for strategy evidence, backtests, promotion readiness, and research-to-production drift."
-        >
-          <div className="flex flex-col items-end gap-2 text-xs text-text-muted">
-            <span className="flex items-center gap-1.5">
-              <span className="caption">Workspace</span>
-              <span className="text-text-secondary">{workspaceName}</span>
-            </span>
-            {workspaceState && !loading && (
-              <span className={`metric-value text-sm font-semibold ${stateTone}`}>
-                {workspaceState}
-              </span>
-            )}
+        {/* Hero gradient panel — strongest treatment on the page. bg-grad-hero
+            wash + slow drift behind the header content. Visual only. */}
+        <div className="relative overflow-hidden rounded-card">
+          <div
+            aria-hidden="true"
+            className="animate-hero-drift pointer-events-none absolute inset-0 -z-10 bg-grad-hero"
+          />
+          <div className="relative px-6 pb-6 pt-7 sm:px-8">
+            <div className="mb-8 flex items-start justify-between gap-4">
+              <div>
+                <p className="caption mb-2">Executive Overview</p>
+                <h1 className="page-title">
+                  <span className="text-gradient-primary">QuantFidelity</span>
+                  {" — Research Governance Overview"}
+                </h1>
+                <p className="mt-2 max-w-2xl text-base leading-relaxed text-text-secondary">
+                  QuantFidelity gives quant research teams a reliability layer for strategy
+                  evidence, backtests, promotion readiness, and research-to-production drift.
+                </p>
+              </div>
+              <div className="shrink-0 pt-1">
+                <div className="flex flex-col items-end gap-2 text-xs text-text-muted">
+                  <span className="flex items-center gap-1.5">
+                    <span className="caption">Workspace</span>
+                    <span className="text-text-secondary">{workspaceName}</span>
+                  </span>
+                  {workspaceState && !loading && (
+                    <span className={`metric-value text-sm font-semibold ${stateTone}`}>
+                      {workspaceState}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </PageHeader>
+        </div>
 
         {/* Inline hero stats */}
         <div className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -416,7 +503,11 @@ export default function ExecutiveDemo() {
           ).map((s, i) => (
             <div
               key={s.label + i}
-              className="rounded-card border border-border bg-bg-700/60 px-5 py-4 shadow-card"
+              className={`rounded-card px-5 py-4 shadow-card ${
+                loading
+                  ? "border border-border bg-bg-700/60"
+                  : "gradient-border-hover card-hover-lift"
+              }`}
             >
               {loading ? (
                 <Skeleton className="h-7 w-12" />
@@ -466,13 +557,13 @@ export default function ExecutiveDemo() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
               to="/strategies"
-              className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+              className="cta-glow rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
             >
               Create Strategy
             </Link>
             <Link
               to="/developer/evidence-builder"
-              className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+              className="cta-glow rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
             >
               Upload Evidence Bundle
             </Link>
@@ -528,12 +619,27 @@ export default function ExecutiveDemo() {
                 <p className="text-sm text-text-secondary">No lifecycle data available yet.</p>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                {lifecycle.map((stage) => (
+              <div className="relative grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                {lifecycle.map((stage, idx) => (
                   <div
                     key={stage.key}
-                    className="card-hover-lift flex flex-col rounded-card border border-border bg-bg-700 p-5 shadow-card"
+                    className="card-hover-lift relative flex flex-col overflow-hidden rounded-card border border-border bg-bg-700 p-5 shadow-card"
                   >
+                    {/* Per-stage energy: animated connector-flow sheen along the
+                        top edge ties the stages together into a pipeline (M108). */}
+                    {idx < lifecycle.length - 1 && (
+                      <div
+                        aria-hidden="true"
+                        className="connector-flow absolute inset-x-0 top-0 h-0.5"
+                      />
+                    )}
+                    {/* Soft per-stage tint behind the count. */}
+                    <div
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full blur-2xl ${
+                        stage.count > 0 ? STAGE_TINT[stage.key] ?? "bg-bg-600/40" : "bg-transparent"
+                      }`}
+                    />
                     <p
                       className={`metric-value text-metric-sm ${
                         stage.count > 0
@@ -598,9 +704,9 @@ export default function ExecutiveDemo() {
                   <Link
                     key={s.strategy_id}
                     to={`/strategies/${s.strategy_id}`}
-                    className={`card-hover-lift card-interactive flex flex-col gap-3 rounded-card border border-l-4 border-border bg-bg-700 p-6 shadow-card ${healthAccent(
+                    className={`card-hover-lift flex flex-col gap-3 rounded-card border-l-4 p-6 shadow-card ${healthAccent(
                       s.health_classification,
-                    )}`}
+                    )} ${healthGradient(s.health_classification)}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <p className="card-title truncate text-base">{s.name ?? "Untitled strategy"}</p>
@@ -647,8 +753,9 @@ export default function ExecutiveDemo() {
             <SectionHeading
               eyebrow="Evidence & trust"
               title="Verifying the chain behind a strategy"
+              accent="success"
             />
-            <Card>
+            <Card gradient="success">
               <p className="text-sm leading-relaxed text-text-secondary">
                 QuantFidelity does not just store research artifacts — it verifies the evidence chain
                 behind a strategy.
@@ -716,8 +823,9 @@ export default function ExecutiveDemo() {
             <SectionHeading
               eyebrow="Backtest reality & drift"
               title="Does the evidence support the claim?"
+              accent="warning"
             />
-            <Card>
+            <Card gradient="warning">
               <p className="text-sm leading-relaxed text-text-secondary">
                 Backtests are not enough. QuantFidelity checks whether assumptions, costs, fills,
                 evidence, and paper/shadow behavior support the research claim.
@@ -764,21 +872,22 @@ export default function ExecutiveDemo() {
               eyebrow="Governance"
               title="Promotion readiness for PMs & heads of research"
               blurb="Reviews and promotion gates turn evidence into a defensible go / no-go decision for moving a strategy toward production."
+              accent="research"
             />
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="rounded-card border border-border bg-bg-700 p-6 shadow-card">
+              <div className="card-hover-lift gradient-border gradient-border-danger rounded-card p-6 shadow-card hover:shadow-glow-danger-lg">
                 <p className="metric-value text-metric-sm text-fidelity-low">
                   {summary?.blocked_count ?? 0}
                 </p>
                 <p className="caption mt-2">Blocked / critical</p>
               </div>
-              <div className="rounded-card border border-border bg-bg-700 p-6 shadow-card">
+              <div className="card-hover-lift gradient-border gradient-border-primary rounded-card p-6 shadow-card hover:shadow-glow-primary-lg">
                 <p className="metric-value text-metric-sm text-accent-300">
                   {summary?.pending_review_count ?? pendingReviews.length}
                 </p>
                 <p className="caption mt-2">Pending reviews</p>
               </div>
-              <div className="rounded-card border border-border bg-bg-700 p-6 shadow-card">
+              <div className="card-hover-lift gradient-border gradient-border-success rounded-card p-6 shadow-card hover:shadow-glow-success-lg">
                 <p className="metric-value text-metric-sm text-fidelity-high">
                   {summary?.production_ready_count ?? 0}
                 </p>
@@ -786,7 +895,7 @@ export default function ExecutiveDemo() {
               </div>
             </div>
             {topBlockers.length > 0 && (
-              <div className="rounded-card border border-border bg-bg-700 p-6 shadow-card">
+              <div className="gradient-border gradient-border-research rounded-card p-6 shadow-card">
                 <p className="caption mb-3">Top blockers in the book</p>
                 <ul className="space-y-2">
                   {topBlockers.map((b, i) => (
@@ -804,13 +913,13 @@ export default function ExecutiveDemo() {
             <div className="flex flex-wrap gap-3">
               <Link
                 to="/governance/strategy-reviews"
-                className="rounded-control border border-accent-500/40 bg-accent-500/15 px-4 py-2 text-sm text-accent-200 hover:bg-accent-500/25"
+                className="cta-glow rounded-control border border-accent-500/40 bg-accent-500/15 px-4 py-2 text-sm text-accent-200 hover:bg-accent-500/25"
               >
                 Open Reviews
               </Link>
               <Link
                 to="/promotion-gates"
-                className="rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                className="cta-glow rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
               >
                 Open Promotion
               </Link>
@@ -824,6 +933,7 @@ export default function ExecutiveDemo() {
             <SectionHeading
               eyebrow="Narrative"
               title="Evidence translated into a readable verdict"
+              accent="research"
             />
             {narrative ? (
               <Card>
@@ -899,9 +1009,9 @@ export default function ExecutiveDemo() {
           {DEMO_STORY.map((step, i) => (
             <div
               key={step.title}
-              className="card-hover-lift flex flex-col rounded-card border border-border bg-bg-700 p-6 shadow-card"
+              className="card-hover-lift gradient-border-hover flex flex-col rounded-card p-6 shadow-card hover:shadow-glow-primary"
             >
-              <span className="metric-value text-metric-sm text-accent-300">{i + 1}</span>
+              <span className="metric-value text-gradient-primary text-metric-sm">{i + 1}</span>
               <p className="mt-2 text-sm font-medium text-text-primary">{step.title}</p>
               <p className="mt-2 text-xs leading-relaxed text-text-secondary">{step.body}</p>
             </div>
@@ -917,45 +1027,45 @@ export default function ExecutiveDemo() {
         <div className="flex flex-wrap gap-3">
           <Link
             to="/"
-            className="rounded-control border border-accent-500/40 bg-accent-500/15 px-4 py-2 text-sm text-accent-200 hover:bg-accent-500/25"
+            className="cta-glow rounded-control border border-accent-500/40 bg-accent-500/15 px-4 py-2 text-sm text-accent-200 hover:bg-accent-500/25 hover:shadow-glow-primary-lg"
           >
             Open Research Command Center
           </Link>
           <Link
             to="/strategies"
-            className="rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+            className="cta-glow rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
           >
             View Strategies
           </Link>
           <Link
             to="/portfolio/reliability"
-            className="rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+            className="cta-glow rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
           >
             Open Portfolio Reliability
           </Link>
           <Link
             to="/governance/strategy-reviews"
-            className="rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+            className="cta-glow rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
           >
             Open Strategy Reviews
           </Link>
           <Link
             to="/developer/evidence-builder"
-            className="rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+            className="cta-glow rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
           >
             Upload Evidence Bundle
           </Link>
           <button
             type="button"
             onClick={() => startWalkthrough(true)}
-            className="rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+            className="cta-glow rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
           >
             Start Guided Demo
           </button>
           {canDemo && (
             <Link
               to="/admin/demo-controls"
-              className="rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+              className="cta-glow rounded-control border border-border px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary hover:shadow-glow-primary"
             >
               Run Demo Controls
             </Link>

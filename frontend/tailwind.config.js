@@ -92,6 +92,16 @@ export default {
       maxWidth: {
         content: "1440px",
       },
+      // M108 controlled vibrancy — institutional gradients for high-impact demo surfaces.
+      backgroundImage: {
+        "grad-primary":  "linear-gradient(135deg, #4F8CFF, #8B5CF6)",   // blue→purple
+        "grad-cyan":     "linear-gradient(135deg, #38BDF8, #4F8CFF)",   // cyan→blue
+        "grad-success":  "linear-gradient(135deg, #00D492, #38BDF8)",   // green→cyan
+        "grad-warning":  "linear-gradient(135deg, #FFB547, #FF8A5B)",   // amber→orange
+        "grad-danger":   "linear-gradient(135deg, #FF6B6B, #F472B6)",   // red→pink (critical only)
+        "grad-research": "linear-gradient(135deg, #8B5CF6, #4F8CFF)",   // purple→blue
+        "grad-hero":     "linear-gradient(120deg, rgba(79,140,255,0.14), rgba(139,92,246,0.12) 45%, rgba(0,212,146,0.08))",
+      },
       boxShadow: {
         // M101 subtle premium elevation + primary glow.
         panel:        "0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2)",
@@ -105,6 +115,12 @@ export default {
         "glow-primary":  "0 0 0 1px rgba(79,140,255,0.25), 0 0 20px -4px rgba(79,140,255,0.22)",
         "glow-research": "0 0 0 1px rgba(139,92,246,0.25), 0 0 20px -4px rgba(139,92,246,0.22)",
         "lift":          "0 4px 16px -4px rgba(0,0,0,0.55)",
+        // M108 stronger glows — higher opacity + spread for demo / score / hero cards.
+        "glow-success-lg":  "0 0 0 1px rgba(0,212,146,0.45), 0 0 28px -2px rgba(0,212,146,0.40)",
+        "glow-warning-lg":  "0 0 0 1px rgba(255,181,71,0.45), 0 0 28px -2px rgba(255,181,71,0.38)",
+        "glow-danger-lg":   "0 0 0 1px rgba(255,107,107,0.45), 0 0 28px -2px rgba(255,107,107,0.38)",
+        "glow-primary-lg":  "0 0 0 1px rgba(79,140,255,0.45), 0 0 28px -2px rgba(79,140,255,0.40)",
+        "glow-research-lg": "0 0 0 1px rgba(139,92,246,0.45), 0 0 28px -2px rgba(139,92,246,0.40)",
       },
       // M102 motion tokens — calm, institutional. Static by default.
       keyframes: {
@@ -113,6 +129,9 @@ export default {
         "soft-pulse": { "0%,100%": { opacity: "1" }, "50%": { opacity: "0.55" } },
         "gradient-drift": { "0%": { transform: "translate3d(0,0,0) scale(1)" }, "50%": { transform: "translate3d(3%,-3%,0) scale(1.08)" }, "100%": { transform: "translate3d(0,0,0) scale(1)" } },
         "shimmer": { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
+        // M108 vibrancy keyframes.
+        "connector-flow": { "0%": { backgroundPosition: "0% 0" }, "100%": { backgroundPosition: "200% 0" } },
+        "shimmer-tinted": { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
       },
       animation: {
         "fade-in": "fade-in 0.3s ease-out both",
@@ -120,6 +139,9 @@ export default {
         "soft-pulse": "soft-pulse 2.4s ease-in-out infinite",
         "gradient-drift": "gradient-drift 16s ease-in-out infinite",
         "shimmer": "shimmer 1.6s ease-in-out infinite",
+        // M108 vibrancy animations.
+        "connector-flow": "connector-flow 3s linear infinite",
+        "hero-drift": "gradient-drift 22s ease-in-out infinite",  // slower, calmer hero variant
       },
     },
   },

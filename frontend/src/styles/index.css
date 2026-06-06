@@ -84,10 +84,65 @@
 
   /* Shimmer skeleton block. */
   .skeleton { @apply relative overflow-hidden rounded-control bg-bg-600/60; }
-  .skeleton::after { content: ""; @apply absolute inset-0 animate-shimmer; background-image: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); background-size: 200% 100%; }
+  /* M108 premium shimmer — faint cool blue/purple tint, loading-only. */
+  .skeleton::after { content: ""; @apply absolute inset-0 animate-shimmer; background-image: linear-gradient(90deg, transparent, rgba(79,140,255,0.10), rgba(139,92,246,0.08), transparent); background-size: 200% 100%; }
 
   /* Status dot soft pulse. */
   .status-dot-pulse { @apply animate-soft-pulse; }
+
+  /* ── M108 controlled vibrancy — high-impact demo surfaces ───────────────── */
+
+  /* Gradient border (premium card edge, no wrapper div). Apply .gradient-border
+     + a color variant together. padding-box fill #111827 must match bg-700. */
+  .gradient-border {
+    position: relative;
+    border: 1px solid transparent;
+    background:
+      linear-gradient(#111827, #111827) padding-box,
+      var(--gb-grad, linear-gradient(135deg, #4F8CFF, #8B5CF6)) border-box;
+  }
+  .gradient-border-primary  { --gb-grad: linear-gradient(135deg, rgba(79,140,255,0.7), rgba(139,92,246,0.6)); }
+  .gradient-border-success  { --gb-grad: linear-gradient(135deg, rgba(0,212,146,0.7), rgba(56,189,248,0.6)); }
+  .gradient-border-warning  { --gb-grad: linear-gradient(135deg, rgba(255,181,71,0.7), rgba(255,138,91,0.6)); }
+  .gradient-border-danger   { --gb-grad: linear-gradient(135deg, rgba(255,107,107,0.7), rgba(244,114,182,0.6)); }
+  .gradient-border-research { --gb-grad: linear-gradient(135deg, rgba(139,92,246,0.7), rgba(79,140,255,0.6)); }
+
+  /* Hover-only gradient border — plain border by default, gradient revealed on hover. */
+  .gradient-border-hover {
+    position: relative;
+    border: 1px solid transparent;
+    background:
+      linear-gradient(#111827, #111827) padding-box,
+      linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08)) border-box;
+    @apply transition-all duration-200;
+  }
+  .gradient-border-hover:hover {
+    background:
+      linear-gradient(#111827, #111827) padding-box,
+      var(--gb-grad, linear-gradient(135deg, rgba(79,140,255,0.7), rgba(139,92,246,0.6))) border-box;
+  }
+
+  /* Stronger LARGE state glows — for score cards / hero cards. */
+  .state-glow-success-lg  { @apply shadow-glow-success-lg; }
+  .state-glow-warning-lg  { @apply shadow-glow-warning-lg; }
+  .state-glow-danger-lg   { @apply shadow-glow-danger-lg; }
+  .state-glow-primary-lg  { @apply shadow-glow-primary-lg; }
+  .state-glow-research-lg { @apply shadow-glow-research-lg; }
+
+  /* Connector flow — animated lifecycle active connector. */
+  .connector-flow {
+    background-image: linear-gradient(90deg, transparent, rgba(79,140,255,0.0), rgba(79,140,255,0.7), rgba(139,92,246,0.7), rgba(79,140,255,0.0), transparent);
+    background-size: 200% 100%;
+    @apply animate-connector-flow;
+  }
+
+  /* Premium gradient text — hero metric numbers. */
+  .text-gradient-primary { @apply bg-grad-primary bg-clip-text text-transparent; }
+  .text-gradient-success { @apply bg-grad-success bg-clip-text text-transparent; }
+
+  /* CTA glow on hover. */
+  .cta-glow { @apply transition-all duration-200; }
+  .cta-glow:hover { @apply shadow-glow-primary-lg; }
 }
 
 /* M102 reduced-motion guard — animations/transitions become instant, no layout change. */

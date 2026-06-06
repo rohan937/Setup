@@ -47,6 +47,21 @@ function sevChip(severity: string | null | undefined): string {
   return SEV_CHIP[key] ?? SEV_CHIP.info;
 }
 
+// Subtle severity-colored left edge for action rows (M108). Calm by default;
+// red/amber edge only for the rows that actually carry urgency.
+const SEV_EDGE: Record<string, string> = {
+  critical: "border-l-2 border-l-fidelity-low",
+  high: "border-l-2 border-l-fidelity-low",
+  medium: "border-l-2 border-l-fidelity-medium",
+  low: "border-l-2 border-l-border-strong",
+  info: "border-l-2 border-l-transparent",
+};
+
+function sevEdge(severity: string | null | undefined): string {
+  const key = (severity ?? "").toLowerCase();
+  return SEV_EDGE[key] ?? "border-l-2 border-l-transparent";
+}
+
 // Health classification → tinted badge (M102).
 const HEALTH_CHIP: Record<string, string> = {
   healthy: "border-fidelity-high/40 bg-fidelity-high/10 text-fidelity-high",
@@ -61,6 +76,22 @@ function healthChip(classification: string | null | undefined): string {
   return HEALTH_CHIP[key] ?? "border-border-strong bg-bg-800 text-text-secondary";
 }
 
+// Health classification → premium gradient edge for the attention cards (M108),
+// so blocked / review / healthy read at a glance and feel clickable. Falls back
+// to a plain bordered surface for unknown classifications.
+const HEALTH_GRADIENT: Record<string, string> = {
+  healthy: "gradient-border gradient-border-success hover:shadow-glow-success-lg",
+  review: "gradient-border gradient-border-warning hover:shadow-glow-warning-lg",
+  watch: "gradient-border gradient-border-warning hover:shadow-glow-warning-lg",
+  blocked: "gradient-border gradient-border-danger hover:shadow-glow-danger-lg",
+  critical: "gradient-border gradient-border-danger hover:shadow-glow-danger-lg",
+};
+
+function healthGradient(classification: string | null | undefined): string | null {
+  const key = (classification ?? "").toLowerCase();
+  return HEALTH_GRADIENT[key] ?? null;
+}
+
 // Stage band color for the lifecycle pipeline metric numbers (M102 tokens).
 const STAGE_METRIC_COLOR: Record<string, string> = {
   research: "text-text-secondary",
@@ -70,6 +101,21 @@ const STAGE_METRIC_COLOR: Record<string, string> = {
   shadow: "text-research-300",
   production_candidate: "text-fidelity-high",
 };
+
+// Subtle per-stage surface tint for the lifecycle snapshot cards (M108). Keeps
+// the row calm at rest while giving each stage a faint sense of "energy band".
+const STAGE_TINT: Record<string, string> = {
+  research: "border-border",
+  backtest: "border-accent-500/25",
+  backtest_review: "border-accent-500/25",
+  paper_candidate: "border-research/25",
+  shadow: "border-research/25",
+  production_candidate: "border-fidelity-high/30",
+};
+
+function stageTint(key: string): string {
+  return STAGE_TINT[key] ?? "border-border";
+}
 
 // Map a command-center action target_tab to a strategy route. Falls back to the
 // strategy detail page when no tab maps.
@@ -94,7 +140,18 @@ interface MetricSpec {
   value: number;
   tone: "" | "high" | "medium" | "low" | "accent";
   to?: string;
+  /** Premium gradient edge for PRIMARY health cards only (M108). */
+  gradient?: "success" | "warning" | "danger" | "primary";
 }
+
+// Tone → gradient-border variant for the primary health cards. Only applied
+// when the metric carries a non-zero value so calm/empty states stay plain.
+const METRIC_GRADIENT: Record<NonNullable<MetricSpec["gradient"]>, string> = {
+  success: "gradient-border gradient-border-success hover:shadow-glow-success-lg",
+  warning: "gradient-border gradient-border-warning hover:shadow-glow-warning-lg",
+  danger: "gradient-border gradient-border-danger hover:shadow-glow-danger-lg",
+  primary: "gradient-border gradient-border-primary hover:shadow-glow-primary-lg",
+};
 
 function metricColor(value: number, tone: MetricSpec["tone"]): string {
   if (value <= 0) return "text-text-primary";
@@ -137,8 +194,12 @@ function MetricCard({ spec, loading }: { spec: MetricSpec; loading: boolean }) {
     </>
   );
 
-  const base =
-    "card-interactive rounded-card border border-border bg-bg-700 p-5 shadow-card";
+  // PRIMARY health cards get a tone-matched gradient edge — but only when they
+  // actually carry a value (a "0 blocked" card stays calm, not alarming red).
+  const useGradient = !loading && spec.gradient && spec.value > 0;
+  const base = useGradient
+    ? `card-interactive rounded-card p-5 shadow-card ${METRIC_GRADIENT[spec.gradient!]}`
+    : "card-interactive rounded-card border border-border bg-bg-700 p-5 shadow-card";
 
   if (spec.to && !loading) {
     return (
@@ -147,7 +208,7 @@ function MetricCard({ spec, loading }: { spec: MetricSpec; loading: boolean }) {
       </Link>
     );
   }
-  return <div className={base}>{inner}</div>;
+  return <div className={`card-hover-lift ${base}`}>{inner}</div>;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,9 +316,14 @@ export default function Home() {
     if (!summary) return [];
     return [
       { label: "Strategies", value: summary.strategy_count, tone: "", to: "/strategies" },
-      { label: "Healthy", value: summary.healthy_count, tone: "high" },
-      { label: "Review", value: summary.review_count, tone: "medium" },
-      { label: "Blocked / Critical", value: summary.blocked_count, tone: "low" },
+      { label: "Healthy", value: summary.healthy_count, tone: "high", gradient: "success" },
+      { label: "Review", value: summary.review_count, tone: "medium", gradient: "warning" },
+      {
+        label: "Blocked / Critical",
+        value: summary.blocked_count,
+        tone: "low",
+        gradient: "danger",
+      },
       { label: "Open alerts", value: summary.open_alert_count, tone: "medium", to: "/alerts" },
       { label: "Pending actions", value: summary.pending_action_count, tone: "accent" },
       {
@@ -271,19 +337,22 @@ export default function Home() {
 
   return (
     <div className="relative space-y-10">
-      {/* Ambient hero glow — subtle, institutional, behind content (M102) */}
+      {/* Ambient hero glow — premium, institutional, behind content (M102 / M108) */}
       <div
-        className="pointer-events-none absolute left-0 right-0 top-0 -z-10 h-64 overflow-hidden"
+        className="pointer-events-none absolute left-0 right-0 top-0 -z-10 h-72 overflow-hidden"
         aria-hidden="true"
       >
-        <div className="animate-gradient-drift absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-brand/10 blur-3xl" />
+        {/* Base wash: low-opacity hero gradient drifting slowly behind everything */}
+        <div className="animate-hero-drift absolute -top-16 left-0 right-0 h-72 bg-grad-hero opacity-70 blur-2xl" />
+        {/* Color orbs — slightly stronger than M102, still subtle (blur-3xl) */}
+        <div className="animate-hero-drift absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-brand/15 blur-3xl" />
         <div
-          className="animate-gradient-drift absolute -top-16 left-1/2 h-64 w-64 rounded-full bg-research/10 blur-3xl"
-          style={{ animationDelay: "-6s" }}
+          className="animate-hero-drift absolute -top-16 left-1/2 h-64 w-64 rounded-full bg-research/15 blur-3xl"
+          style={{ animationDelay: "-8s" }}
         />
         <div
-          className="animate-gradient-drift absolute -top-20 right-1/4 h-56 w-56 rounded-full bg-teal-500/8 blur-3xl"
-          style={{ animationDelay: "-3s" }}
+          className="animate-hero-drift absolute -top-20 right-1/4 h-56 w-56 rounded-full bg-teal-500/12 blur-3xl"
+          style={{ animationDelay: "-4s" }}
         />
       </div>
 
@@ -374,7 +443,11 @@ export default function Home() {
               <Link
                 key={stage.key}
                 to="/strategies"
-                className="card-hover-lift card-interactive group flex flex-col rounded-card border border-border bg-bg-700 p-4 shadow-card"
+                className={`card-hover-lift card-interactive group flex flex-col rounded-card border bg-bg-700 p-4 shadow-card ${
+                  stage.blocked_count > 0
+                    ? "border-fidelity-medium/40 hover:shadow-glow-warning"
+                    : stageTint(stage.key)
+                }`}
               >
                 <p
                   className={`metric-value text-metric-sm ${
@@ -439,7 +512,7 @@ export default function Home() {
                 <Link
                   key={`${a.strategy_id}:${a.title ?? i}`}
                   to={actionRoute(a)}
-                  className="flex w-full items-start gap-3 px-6 py-3.5 text-left transition-colors hover:bg-bg-700/50"
+                  className={`flex w-full items-start gap-3 px-6 py-3.5 text-left transition-colors hover:bg-bg-700/50 ${sevEdge(a.severity)}`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -501,11 +574,15 @@ export default function Home() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {attention.map((s) => (
+            {attention.map((s) => {
+              const grad = healthGradient(s.health_classification);
+              return (
               <Link
                 key={s.strategy_id}
                 to={`/strategies/${s.strategy_id}`}
-                className="card-hover-lift card-interactive flex flex-col gap-3 rounded-card border border-border bg-bg-700 p-5 shadow-card"
+                className={`card-hover-lift card-interactive flex flex-col gap-3 rounded-card p-5 shadow-card ${
+                  grad ? grad : "border border-border bg-bg-700"
+                }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <p className="card-title truncate">{s.name ?? "Untitled strategy"}</p>
@@ -536,7 +613,8 @@ export default function Home() {
                 )}
                 <span className="text-2xs text-text-muted">Open strategy →</span>
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

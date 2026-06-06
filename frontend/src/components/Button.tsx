@@ -11,18 +11,18 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  // Solid institutional blue — lifts lighter on hover.
+  // Solid institutional blue — lifts lighter + premium glow on hover.
   primary:
-    "bg-brand text-white border border-brand shadow-panel hover:bg-brand-600 hover:border-brand-600",
+    "bg-brand text-white border border-brand shadow-panel hover:bg-brand-600 hover:border-brand-600 hover:shadow-glow-primary-lg",
   // Quiet elevated surface — brightens text + border on hover.
   secondary:
     "bg-bg-600 text-text-secondary border border-border hover:bg-bg-600 hover:text-text-primary hover:border-border-strong",
   // Transparent until hover.
   ghost:
     "bg-transparent text-text-muted border border-transparent hover:bg-bg-600/60 hover:text-text-primary",
-  // Danger outline — fills with a tint on hover.
+  // Danger outline — fills with a tint + subtle glow on hover.
   danger:
-    "bg-transparent text-fidelity-low border border-fidelity-low/50 hover:bg-fidelity-low/10 hover:border-fidelity-low",
+    "bg-transparent text-fidelity-low border border-fidelity-low/50 hover:bg-fidelity-low/10 hover:border-fidelity-low hover:shadow-glow-danger-lg",
 };
 
 const SIZES: Record<ButtonSize, string> = {
@@ -47,7 +47,7 @@ export default function Button({
       disabled={isDisabled}
       className={[
         "inline-flex items-center justify-center rounded-control font-medium tracking-tight",
-        "transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-0",
+        "transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-0",
         "disabled:cursor-not-allowed disabled:opacity-50",
         VARIANTS[variant],
         SIZES[size],

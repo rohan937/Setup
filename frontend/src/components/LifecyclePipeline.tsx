@@ -114,15 +114,18 @@ const GLYPH: Record<NodeStatus, string> = {
 function nodeClasses(status: NodeStatus, hardBlock: boolean): string {
   switch (status) {
     case "complete":
-      return "border-fidelity-high/40 bg-fidelity-high/10 text-fidelity-high state-glow-success";
+      // Faint static success glow on settled stages.
+      return "border-fidelity-high/40 bg-fidelity-high/10 text-fidelity-high state-glow-success hover:ring-2 hover:ring-fidelity-high/30";
     case "current":
-      return "border-brand bg-brand/15 text-accent-200 state-glow-primary ring-2 ring-brand/30 animate-soft-pulse";
+      // Focal point — stronger lg glow + soft-pulse ring.
+      return "border-brand bg-brand/15 text-accent-200 state-glow-primary-lg ring-2 ring-brand/30 animate-soft-pulse hover:ring-brand/50";
     case "next":
-      return "border-research/40 bg-research/10 text-research-300";
+      return "border-research/40 bg-research/10 text-research-300 hover:ring-2 hover:ring-research/40";
     case "blocked":
+      // Clear, non-flashing lg glow keyed to severity.
       return hardBlock
-        ? "border-fidelity-low/60 bg-fidelity-low/10 text-fidelity-low state-glow-danger"
-        : "border-fidelity-medium/60 bg-fidelity-medium/10 text-fidelity-medium state-glow-warning";
+        ? "border-fidelity-low/60 bg-fidelity-low/10 text-fidelity-low shadow-glow-danger-lg hover:ring-2 hover:ring-fidelity-low/40"
+        : "border-fidelity-medium/60 bg-fidelity-medium/10 text-fidelity-medium shadow-glow-warning-lg hover:ring-2 hover:ring-fidelity-medium/40";
     case "locked":
     default:
       return "border-border bg-bg-800 text-text-muted opacity-60";
@@ -209,14 +212,8 @@ export default function LifecyclePipeline({
                   {!isLast ? (
                     <div className="mt-4 h-px w-8 shrink-0 overflow-hidden rounded-full">
                       {connectorActive ? (
-                        // Tasteful slow shimmer on the active connector.
-                        <div
-                          className="h-full w-full animate-shimmer bg-[length:200%_100%]"
-                          style={{
-                            backgroundImage:
-                              "linear-gradient(90deg, rgb(79 140 255 / 0.5), rgb(139 92 246 / 0.5), rgb(79 140 255 / 0.5))",
-                          }}
-                        />
+                        // Tasteful slow blue/purple flow on the active connector.
+                        <div className="connector-flow h-full w-full" />
                       ) : (
                         <div
                           className={
