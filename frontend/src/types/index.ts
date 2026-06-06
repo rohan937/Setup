@@ -3040,6 +3040,20 @@ export interface BacktestRealityReportResponse {
 }
 
 // ---------------------------------------------------------------------------
+// M94: Promotion Review Packet
+// ---------------------------------------------------------------------------
+
+export interface PromotionPacketExportResponse {
+  filename: string;
+  format: string;
+  content: string;
+  strategy_id: string;
+  target_stage: string | null;
+  generated_at: string;
+  disclaimer: string;
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates
 // ---------------------------------------------------------------------------
 

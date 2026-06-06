@@ -2133,6 +2133,38 @@ export async function getReviewPacket(
   );
 }
 
+// M94: Promotion Packet
+export async function getStrategyPromotionPacket(
+  strategyId: string,
+  targetStage?: string,
+  format: "json" | "markdown" = "json",
+): Promise<import("@/types").PromotionPacketExportResponse | string> {
+  const qs = new URLSearchParams({ format });
+  if (targetStage) qs.set("target_stage", targetStage);
+  if (format === "markdown") {
+    const resp = await fetch(`${API_BASE_URL}/api/strategies/${strategyId}/promotion-packet?${qs}`, {
+      headers: { ...getAuthHeaders(), Accept: "text/markdown" },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.text();
+  }
+  return request<import("@/types").PromotionPacketExportResponse>(`/api/strategies/${strategyId}/promotion-packet?${qs}`);
+}
+
+export async function getReviewPromotionPacket(
+  reviewId: string,
+  format: "json" | "markdown" = "json",
+): Promise<import("@/types").PromotionPacketExportResponse | string> {
+  if (format === "markdown") {
+    const resp = await fetch(`${API_BASE_URL}/api/strategy-reviews/${reviewId}/promotion-packet?format=markdown`, {
+      headers: { ...getAuthHeaders(), Accept: "text/markdown" },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.text();
+  }
+  return request<import("@/types").PromotionPacketExportResponse>(`/api/strategy-reviews/${reviewId}/promotion-packet?format=json`);
+}
+
 export async function getPendingReviews(): Promise<{
   items: import("@/types").StrategyReview[];
 }> {

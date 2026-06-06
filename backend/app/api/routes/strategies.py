@@ -4627,6 +4627,40 @@ def get_backtest_reality_report(
 
 
 # ---------------------------------------------------------------------------
+# M94: Strategy Promotion Packet endpoints
+# ---------------------------------------------------------------------------
+
+from app.schemas.promotion_packet import PromotionPacketExportResponse  # noqa: E402
+from app.services.promotion_packet import export_promotion_packet  # noqa: E402
+
+
+@router.get(
+    "/strategies/{strategy_id}/promotion-packet",
+    response_model=PromotionPacketExportResponse,
+    tags=["strategies"],
+)
+async def get_promotion_packet(
+    strategy_id: str,
+    target_stage: str | None = Query(default=None),
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+):
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    if format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+    result = export_promotion_packet(strategy_id, db, target_stage=target_stage, format=format)
+    if format == "markdown":
+        return PlainTextResponse(
+            content=result["content"],
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{result["filename"]}"'},
+        )
+    return PromotionPacketExportResponse(**result)
+
+
+# ---------------------------------------------------------------------------
 # M92: Evidence Verification endpoints
 # ---------------------------------------------------------------------------
 

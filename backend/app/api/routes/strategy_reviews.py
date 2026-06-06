@@ -321,3 +321,46 @@ def get_review_packet(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return ReviewPacketResponse(**packet)
+
+
+# M94: Full Promotion Packet (enhanced, includes M92/M93/M88 data)
+@router.get(
+    "/strategy-reviews/{review_id}/promotion-packet",
+    tags=["strategy-reviews"],
+)
+def get_promotion_packet(
+    review_id: str,
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+):
+    from app.schemas.promotion_packet import PromotionPacketExportResponse
+    from app.services.promotion_packet import export_promotion_packet
+    from fastapi.responses import PlainTextResponse
+    from app.models.strategy_review import StrategyReview as _StrategyReview
+    import uuid as _uuid
+
+    if format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+
+    review = db.query(_StrategyReview).filter(_StrategyReview.id == review_id).first()
+    if review is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    sid = _uuid.UUID(str(review.strategy_id))
+    result = export_promotion_packet(
+        sid,
+        db,
+        target_stage=review.target_stage,
+        review_id=review_id,
+        format=format,
+    )
+
+    if format == "markdown":
+        return PlainTextResponse(
+            content=result.get("markdown", ""),
+            headers={
+                "Content-Disposition": f'attachment; filename="promotion-packet-{review_id}.md"'
+            },
+        )
+
+    return PromotionPacketExportResponse(**result)

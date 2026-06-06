@@ -103,6 +103,7 @@ import type {
   EvidenceVerificationCheck,
   BacktestRealityResponse,
   BacktestRealityCheck,
+  PromotionPacketExportResponse,
 } from "@/types";
 import {
   computeStrategyReliabilityScore,
@@ -135,6 +136,7 @@ import {
   getStrategyShadowMonitorReport,
   refreshStrategyEvidenceVerification,
   refreshStrategyBacktestReality,
+  getStrategyPromotionPacket,
   getStrategyPromotionGates,
   getStrategyEvidenceGraph,
   createDefaultRegressionTests,
@@ -9874,6 +9876,11 @@ export default function StrategyDetail() {
   const [backtestRealityRefreshing, setBacktestRealityRefreshing] = useState(false);
   const [backtestRealityError, setBacktestRealityError] = useState<string | null>(null);
 
+  // M94: promotion packet
+  const [packetGenerating, setPacketGenerating] = useState(false);
+  const [packetError, setPacketError] = useState<string | null>(null);
+  const [packetTargetStage, setPacketTargetStage] = useState("paper_candidate");
+
   // M51: promotion gates
   const [promotionGates, setPromotionGates] = useState<StrategyPromotionGateResponse | null>(null);
   // promotionTarget tracks the currently-selected target stage for the promotion gates panel
@@ -9962,6 +9969,31 @@ export default function StrategyDetail() {
     } catch (e: unknown) {
       setBacktestRealityError(e instanceof Error ? e.message : "Refresh failed.");
     } finally { setBacktestRealityRefreshing(false); }
+  }
+
+  async function handleDownloadPromotionPacket(format: "json" | "markdown") {
+    if (!strategy) return;
+    setPacketGenerating(true);
+    setPacketError(null);
+    try {
+      if (format === "markdown") {
+        const content = await getStrategyPromotionPacket(strategy.id, packetTargetStage, "markdown") as string;
+        const blob = new Blob([content], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `promotion-packet-${strategy.slug}.md`; a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const result = await getStrategyPromotionPacket(strategy.id, packetTargetStage, "json") as PromotionPacketExportResponse;
+        const blob = new Blob([result.content], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = result.filename; a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e: unknown) {
+      setPacketError(e instanceof Error ? e.message : "Failed to generate packet.");
+    } finally { setPacketGenerating(false); }
   }
 
   async function handleCompareConfig() {
@@ -10927,6 +10959,35 @@ export default function StrategyDetail() {
       {/* M87: Strategy Review Workflow */}
       <StrategyReviewWorkflow strategyId={id!} />
 
+      {/* M94: Promotion Packet */}
+      <div className="rounded-card border border-border bg-bg-800 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-text-primary">Promotion Review Packet</p>
+        </div>
+        <p className="text-xs text-text-muted">Generate a comprehensive governance packet for promotion review. Includes reliability, evidence, backtest reality, shadow monitoring, and reviewer sign-off section.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={packetTargetStage}
+            onChange={(e) => setPacketTargetStage(e.target.value)}
+            className="rounded-control border border-border bg-bg-700 px-2 py-1.5 text-xs text-text-primary focus:outline-none"
+          >
+            <option value="paper_candidate">→ Paper Candidate</option>
+            <option value="shadow">→ Shadow</option>
+            <option value="production_candidate">→ Production Candidate</option>
+          </select>
+          <button onClick={() => handleDownloadPromotionPacket("markdown")} disabled={packetGenerating}
+            className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700 disabled:opacity-50">
+            {packetGenerating ? "Generating..." : "Packet MD"}
+          </button>
+          <button onClick={() => handleDownloadPromotionPacket("json")} disabled={packetGenerating}
+            className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700 disabled:opacity-50">
+            {packetGenerating ? "Generating..." : "Packet JSON"}
+          </button>
+        </div>
+        {packetError && <p className="font-mono text-2xs text-red-400">{packetError}</p>}
+        <p className="font-mono text-2xs text-text-muted italic">This packet is a deterministic research governance summary. It is not trading advice.</p>
+      </div>
+
       {/* M51: Promotion Gates */}
       {promotionGates && (
         <PromotionGatesPanel
@@ -11049,6 +11110,32 @@ export default function StrategyDetail() {
 
       {/* M31: Strategy Evidence Export */}
       <ExportPanel strategyId={id!} />
+
+      {/* M94: Promotion Packet Export */}
+      <div className="rounded-card border border-border bg-bg-800 p-4 space-y-3">
+        <p className="text-xs font-semibold text-text-primary">Promotion Review Packet</p>
+        <p className="text-xs text-text-muted">Download a full promotion review packet including reliability, evidence, backtest reality, shadow monitoring, and reviewer sign-off.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={packetTargetStage}
+            onChange={(e) => setPacketTargetStage(e.target.value)}
+            className="rounded-control border border-border bg-bg-700 px-2 py-1.5 text-xs text-text-primary focus:outline-none"
+          >
+            <option value="paper_candidate">Paper Candidate</option>
+            <option value="shadow">Shadow</option>
+            <option value="production_candidate">Production Candidate</option>
+          </select>
+          <button onClick={() => handleDownloadPromotionPacket("markdown")} disabled={packetGenerating}
+            className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700 disabled:opacity-50">
+            {packetGenerating ? "Generating..." : "Export MD"}
+          </button>
+          <button onClick={() => handleDownloadPromotionPacket("json")} disabled={packetGenerating}
+            className="rounded-control border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-700 disabled:opacity-50">
+            {packetGenerating ? "Generating..." : "Export JSON"}
+          </button>
+        </div>
+        {packetError && <p className="font-mono text-2xs text-red-400">{packetError}</p>}
+      </div>
         </>
       )}
 

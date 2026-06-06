@@ -28,6 +28,7 @@ import {
   createStrategyReview,
   downloadTextFile,
   getReviewPacket,
+  getReviewPromotionPacket,
   getStrategyReview,
   getStrategyReviews,
   rejectReview,
@@ -402,6 +403,19 @@ export default function StrategyReviewWorkflow({
       const packet = await getReviewPacket(review.id, format);
       const mime = format === "json" ? "application/json" : "text/markdown";
       downloadTextFile(packet.filename, packet.content, mime);
+    });
+  }
+
+  function handlePromoPacket(format: "json" | "markdown") {
+    if (!review) return;
+    void runAction(`promo-packet-${format}`, async () => {
+      if (format === "markdown") {
+        const content = await getReviewPromotionPacket(review.id, "markdown") as string;
+        downloadTextFile(`promotion-packet-${review.id.slice(0, 8)}.md`, content, "text/markdown");
+      } else {
+        const packet = await getReviewPromotionPacket(review.id, "json") as import("@/types").PromotionPacketExportResponse;
+        downloadTextFile(packet.filename, packet.content, "application/json");
+      }
     });
   }
 
@@ -794,6 +808,20 @@ export default function StrategyReviewWorkflow({
                   className="rounded border border-border bg-bg-600 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busyAction === "packet-markdown" ? "Working…" : "Packet MD"}
+                </button>
+                <button
+                  onClick={() => handlePromoPacket("json")}
+                  disabled={busyAction != null}
+                  className="rounded border border-border bg-bg-600 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busyAction === "promo-packet-json" ? "Working…" : "Promo Packet JSON"}
+                </button>
+                <button
+                  onClick={() => handlePromoPacket("markdown")}
+                  disabled={busyAction != null}
+                  className="rounded border border-border bg-bg-600 px-2.5 py-1 font-mono text-2xs text-text-secondary hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busyAction === "promo-packet-markdown" ? "Working…" : "Promo Packet MD"}
                 </button>
               </div>
             }
