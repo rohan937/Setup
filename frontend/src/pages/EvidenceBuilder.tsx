@@ -1213,13 +1213,13 @@ export default function EvidenceBuilder() {
                   {selectedStrategy && (
                     <div className="mt-3 flex flex-col gap-1.5">
                       <Link
-                        to={`/strategies/${selectedStrategy.slug}?tab=evidence`}
+                        to={`/strategies/${selectedStrategy.id}?tab=evidence`}
                         className="font-mono text-xs text-teal-400 underline underline-offset-2 hover:text-teal-300"
                       >
                         View evidence
                       </Link>
                       <Link
-                        to={`/strategies/${selectedStrategy.slug}?tab=runs`}
+                        to={`/strategies/${selectedStrategy.id}?tab=runs`}
                         className="font-mono text-xs text-teal-400 underline underline-offset-2 hover:text-teal-300"
                       >
                         View runs
