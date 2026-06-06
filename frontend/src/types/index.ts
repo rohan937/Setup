@@ -2912,6 +2912,57 @@ export interface StrategyShadowMonitorResponse {
 }
 
 // ---------------------------------------------------------------------------
+// M88: Shadow Monitor Drift Engine
+// ---------------------------------------------------------------------------
+
+export type ShadowDriftStatus = "pass" | "watch" | "fail" | "missing";
+
+export interface ShadowDriftMetric {
+  key: string;
+  label: string;
+  baseline_value: number | null;
+  comparison_value: number | null;
+  absolute_delta: number | null;
+  percent_delta: number | null;
+  status: ShadowDriftStatus;
+  severity: string;
+  explanation: string;
+}
+
+export interface ShadowRunRef {
+  run_id: string | null;
+  run_name: string | null;
+  run_type: string | null;
+}
+
+export interface ShadowMonitorResponse {
+  strategy_id: string;
+  strategy_name: string;
+  baseline_run: ShadowRunRef | null;
+  comparison_run: ShadowRunRef | null;
+  verdict: "stable" | "watch" | "drifted" | "insufficient_data";
+  drift_score: number | null;
+  severity: string;
+  primary_concern: string | null;
+  metrics: ShadowDriftMetric[];
+  top_concerns: string[];
+  suggested_actions: string[];
+  blockers: string[];
+  missing_metric_keys: string[];
+  missing_metric_coverage: number;
+  generated_at: string;
+  disclaimer: string;
+}
+
+export interface ShadowMonitorReportResponse {
+  strategy_id: string;
+  strategy_name: string;
+  format: string;
+  content: string;
+  generated_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates
 // ---------------------------------------------------------------------------
 
@@ -4328,6 +4379,12 @@ export interface PortfolioReliabilityRow {
     status: StrategyReviewStatus;
     reviewer_user_id: string | null;
   } | null;
+  // M88 — shadow monitor drift fields.
+  shadow_verdict?: string | null;
+  shadow_drift_score?: number | null;
+  shadow_primary_concern?: string | null;
+  has_paper_run?: boolean;
+  has_shadow_run?: boolean;
 }
 
 // ---------------------------------------------------------------------------

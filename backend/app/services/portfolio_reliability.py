@@ -301,6 +301,33 @@ def _aggregate_strategy(strategy, db: Session) -> dict:
     except Exception:
         pending_review = None
 
+    # ---- shadow monitor (M88) ----
+    shadow_verdict = None
+    shadow_drift_score = None
+    shadow_primary_concern = None
+    has_paper_run = False
+    has_shadow_run = False
+    try:
+        from app.models.strategy_run import StrategyRun as _SR
+        paper_run = db.query(_SR).filter(
+            _SR.strategy_id == sid,
+            _SR.run_type == "paper",
+        ).first()
+        has_paper_run = paper_run is not None
+        live_like = db.query(_SR).filter(
+            _SR.strategy_id == sid,
+            _SR.run_type.in_(["paper", "live"]),
+        ).first()
+        has_shadow_run = live_like is not None
+        if has_shadow_run:
+            from app.services.shadow_monitor import compare_backtest_to_paper
+            sm = compare_backtest_to_paper(sid, db)
+            shadow_verdict = sm.verdict
+            shadow_drift_score = sm.drift_score
+            shadow_primary_concern = sm.primary_concern
+    except Exception:
+        pass
+
     # ---- regression: latest run failed_count ----
     regression_failed_count = 0
     try:
@@ -396,6 +423,11 @@ def _aggregate_strategy(strategy, db: Session) -> dict:
         "primary_concern": primary_concern,
         "next_recommended_stage": next_recommended_stage,
         "pending_review": pending_review,
+        "shadow_verdict": shadow_verdict,
+        "shadow_drift_score": shadow_drift_score,
+        "shadow_primary_concern": shadow_primary_concern,
+        "has_paper_run": has_paper_run,
+        "has_shadow_run": has_shadow_run,
     }
 
 

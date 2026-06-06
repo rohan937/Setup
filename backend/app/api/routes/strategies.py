@@ -4270,6 +4270,189 @@ def get_shadow_monitor(
 
 
 # ---------------------------------------------------------------------------
+# M88: Shadow Monitor refresh / report / run-drift endpoints
+# ---------------------------------------------------------------------------
+
+from app.schemas.shadow_monitor import (  # noqa: E402
+    ShadowMonitorResponse,
+    ShadowMonitorReportResponse,
+    ShadowRunRef,
+    ShadowDriftMetricOut,
+)
+from app.services.shadow_monitor import (  # noqa: E402
+    compare_backtest_to_paper,
+    ShadowMonitorData,
+    generate_shadow_report,
+)
+from fastapi.responses import PlainTextResponse  # noqa: E402
+
+
+def _build_shadow_monitor_response(data: ShadowMonitorData) -> ShadowMonitorResponse:
+    """Convert a ShadowMonitorData dataclass into a ShadowMonitorResponse schema."""
+    baseline_ref = None
+    if data.baseline_run_id:
+        baseline_ref = ShadowRunRef(
+            run_id=data.baseline_run_id,
+            run_name=data.baseline_run_name,
+            run_type=data.baseline_run_type,
+        )
+    comparison_ref = None
+    if data.comparison_run_id:
+        comparison_ref = ShadowRunRef(
+            run_id=data.comparison_run_id,
+            run_name=data.comparison_run_name,
+            run_type=data.comparison_run_type,
+        )
+    return ShadowMonitorResponse(
+        strategy_id=data.strategy_id,
+        strategy_name=data.strategy_name,
+        baseline_run=baseline_ref,
+        comparison_run=comparison_ref,
+        verdict=data.verdict,
+        drift_score=data.drift_score,
+        severity=data.severity,
+        primary_concern=data.primary_concern,
+        metrics=[
+            ShadowDriftMetricOut(
+                key=m.key,
+                label=m.label,
+                baseline_value=m.baseline_value,
+                comparison_value=m.comparison_value,
+                absolute_delta=m.absolute_delta,
+                percent_delta=m.percent_delta,
+                status=m.status,
+                severity=m.severity,
+                explanation=m.explanation,
+            )
+            for m in data.metrics
+        ],
+        top_concerns=data.top_concerns,
+        suggested_actions=data.suggested_actions,
+        blockers=data.blockers,
+        missing_metric_keys=data.missing_metric_keys,
+        missing_metric_coverage=data.missing_metric_coverage,
+        generated_at=data.generated_at,
+        disclaimer=data.disclaimer,
+    )
+
+
+@router.post(
+    "/strategies/{strategy_id}/shadow-monitor/refresh",
+    response_model=ShadowMonitorResponse,
+    tags=["strategies"],
+)
+def refresh_shadow_monitor(
+    strategy_id: uuid.UUID,
+    baseline_run_id: uuid.UUID | None = Query(default=None),
+    comparison_run_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> ShadowMonitorResponse:
+    """Trigger a fresh shadow monitor computation for a strategy.
+
+    Compares a baseline (backtest/research) run against a paper/live run to
+    assess drift. Optionally accepts specific run IDs; otherwise resolves the
+    latest appropriate runs automatically.
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    try:
+        data = compare_backtest_to_paper(
+            strategy_id,
+            db,
+            baseline_run_id=baseline_run_id,
+            comparison_run_id=comparison_run_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return _build_shadow_monitor_response(data)
+
+
+@router.get(
+    "/strategies/{strategy_id}/shadow-monitor/report",
+    tags=["strategies"],
+)
+def get_shadow_monitor_report(
+    strategy_id: uuid.UUID,
+    format: str = Query(default="json"),
+    db: Session = Depends(get_db),
+):
+    """Return the shadow monitor report for a strategy.
+
+    Query param ``format`` controls output:
+    - ``json`` (default): returns a structured JSON payload.
+    - ``markdown``: returns a plain-text Markdown report.
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    if format not in ("json", "markdown"):
+        raise HTTPException(status_code=400, detail="format must be 'json' or 'markdown'")
+
+    # Resolve strategy name (needed for the JSON response wrapper)
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    try:
+        content = generate_shadow_report(strategy_id, db, format=format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if format == "markdown":
+        return PlainTextResponse(content=content, media_type="text/markdown")
+
+    from datetime import datetime, timezone  # noqa: E402
+
+    return ShadowMonitorReportResponse(
+        strategy_id=strategy_id,
+        strategy_name=strategy.name,
+        format="json",
+        content=content,
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
+@router.get(
+    "/strategies/{strategy_id}/run-drift",
+    response_model=ShadowMonitorResponse,
+    tags=["strategies"],
+)
+def get_run_drift(
+    strategy_id: uuid.UUID,
+    baseline_run_id: uuid.UUID | None = Query(default=None),
+    comparison_run_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> ShadowMonitorResponse:
+    """Compare two specific runs for drift.
+
+    Both ``baseline_run_id`` and ``comparison_run_id`` are required.
+    Returns a full shadow drift assessment comparing the two runs.
+
+    Deterministic — no AI, no live market data, no trading advice.
+    Read-only — no AuditTimelineEvent created.
+    """
+    if baseline_run_id is None or comparison_run_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Both baseline_run_id and comparison_run_id are required.",
+        )
+
+    try:
+        data = compare_backtest_to_paper(
+            strategy_id,
+            db,
+            baseline_run_id=baseline_run_id,
+            comparison_run_id=comparison_run_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return _build_shadow_monitor_response(data)
+
+
+# ---------------------------------------------------------------------------
 # M51 — Promotion Gates
 # ---------------------------------------------------------------------------
 

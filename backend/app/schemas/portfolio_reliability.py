@@ -67,6 +67,11 @@ class PortfolioReliabilityStrategyRow(BaseModel):
     owner_name: str | None
     regression_failed_count: int
     pending_review: PortfolioReliabilityPendingReview | None = None
+    shadow_verdict: str | None = None
+    shadow_drift_score: float | None = None
+    shadow_primary_concern: str | None = None
+    has_paper_run: bool = False
+    has_shadow_run: bool = False
 
 
 class PortfolioReliabilitySummary(BaseModel):

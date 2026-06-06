@@ -101,6 +101,8 @@ import type {
   StrategyManagementSummary,
   StrategyReadinessResponse,
   StrategyShadowMonitorResponse,
+  ShadowMonitorResponse,
+  ShadowMonitorReportResponse,
   StrategyPromotionGateResponse,
   StrategyEvidenceGraphResponse,
   StrategyRegressionTest,
@@ -1344,6 +1346,43 @@ export async function getStrategyShadowMonitor(
   const query = qs.toString() ? `?${qs.toString()}` : "";
   return request<StrategyShadowMonitorResponse>(
     `/api/strategies/${strategyId}/shadow-monitor${query}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M88: Shadow Monitor Drift Engine
+// ---------------------------------------------------------------------------
+
+// M88: Shadow Monitor Refresh (POST)
+export async function refreshStrategyShadowMonitor(
+  strategyId: string,
+  params?: { baseline_run_id?: string; comparison_run_id?: string },
+): Promise<ShadowMonitorResponse> {
+  const qs = new URLSearchParams();
+  if (params?.baseline_run_id) qs.set("baseline_run_id", params.baseline_run_id);
+  if (params?.comparison_run_id) qs.set("comparison_run_id", params.comparison_run_id);
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return request<ShadowMonitorResponse>(
+    `/api/strategies/${strategyId}/shadow-monitor/refresh${query}`,
+    { method: "POST" },
+  );
+}
+
+// M88: Shadow Monitor Report
+export async function getStrategyShadowMonitorReport(
+  strategyId: string,
+  format: "json" | "markdown" = "json",
+): Promise<ShadowMonitorReportResponse | string> {
+  if (format === "markdown") {
+    const resp = await fetch(`/api/strategies/${strategyId}/shadow-monitor/report?format=markdown`, {
+      headers: { Accept: "text/markdown" },
+      credentials: "include",
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.text();
+  }
+  return request<ShadowMonitorReportResponse>(
+    `/api/strategies/${strategyId}/shadow-monitor/report?format=json`,
   );
 }
 

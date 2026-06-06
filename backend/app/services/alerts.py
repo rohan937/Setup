@@ -934,6 +934,35 @@ def _collect_lifecycle_candidates(
         except Exception:
             pass
 
+        # paper_backtest_drift (shadow monitor secondary check)
+        try:
+            from app.services.shadow_monitor import compare_backtest_to_paper, get_latest_live_like_run
+
+            live_run = get_latest_live_like_run(strategy.id, db)
+            if live_run is not None:
+                sm = compare_backtest_to_paper(strategy.id, db)
+                if sm.severity in ("high", "critical") and sm.verdict == "drifted":
+                    sev = "critical" if sm.severity == "critical" else "high"
+                    candidates.append(AlertCandidate(
+                        rule_type=str(AlertRuleType.paper_backtest_drift),
+                        severity=sev,
+                        title=f"Paper/backtest drift: {strategy.name}",
+                        description=(
+                            f"Shadow monitor detected {sm.verdict}-level drift for '{strategy.name}'. "
+                            f"Drift score: {sm.drift_score:.0f}/100. {sm.primary_concern or ''}"
+                        ),
+                        source_type="strategy",
+                        source_id=sid_str,
+                        strategy_id=sid_hex,
+                        metadata={
+                            "verdict": sm.verdict,
+                            "drift_score": sm.drift_score,
+                            "severity": sm.severity,
+                        },
+                    ))
+        except Exception:
+            pass
+
         # assumption_health_degraded
         try:
             from app.services.assumption_health import compute_assumption_health

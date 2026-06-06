@@ -67,6 +67,8 @@ import type {
   StrategyShadowMonitorResponse,
   ShadowProductionCheck,
   ShadowMetricComparison,
+  ShadowMonitorResponse,
+  ShadowDriftMetric as ShadowDriftMetricType,
   StrategyPromotionGateResponse,
   PromotionGateCheck,
   StrategyEvidenceGraphResponse,
@@ -125,6 +127,8 @@ import {
   generateAlerts,
   getStrategyReadiness,
   getStrategyShadowMonitor,
+  refreshStrategyShadowMonitor,
+  getStrategyShadowMonitorReport,
   getStrategyPromotionGates,
   getStrategyEvidenceGraph,
   createDefaultRegressionTests,
@@ -5145,6 +5149,220 @@ function ShadowMonitorPanel({
 }
 
 // ---------------------------------------------------------------------------
+// M88: Shadow Drift Monitor V2 Panel
+// ---------------------------------------------------------------------------
+
+function ShadowMonitorV2Panel({
+  monitor,
+  onRefresh,
+  onGoDeveloper,
+  onGenerateReport,
+  refreshing,
+  reportLoading,
+  error,
+}: {
+  monitor: ShadowMonitorResponse | null;
+  onRefresh: () => void;
+  onGoDeveloper: () => void;
+  onGenerateReport: () => void;
+  refreshing: boolean;
+  reportLoading: boolean;
+  error: string | null;
+}) {
+  const [metricsExpanded, setMetricsExpanded] = useState(false);
+
+  const verdictStyles: Record<string, string> = {
+    stable: "text-teal-400 bg-teal-900/20 border-teal-700/30",
+    watch: "text-amber-400 bg-amber-900/20 border-amber-700/30",
+    drifted: "text-red-400 bg-red-900/20 border-red-700/30",
+    insufficient_data: "text-text-muted bg-bg-700 border-border",
+  };
+
+  return (
+    <div className="rounded-card border border-border bg-bg-card p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="font-mono text-xs font-semibold text-text-primary uppercase tracking-wide">
+          Paper / Shadow Drift Monitor
+        </h3>
+        <div className="flex items-center gap-2">
+          <button
+            className="font-mono text-2xs px-2 py-1 rounded border border-border text-text-secondary hover:text-text-primary hover:border-border-hover disabled:opacity-50"
+            onClick={onRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+          {monitor && monitor.verdict !== "insufficient_data" && (
+            <button
+              className="font-mono text-2xs px-2 py-1 rounded border border-border text-text-secondary hover:text-text-primary hover:border-border-hover disabled:opacity-50"
+              onClick={onGenerateReport}
+              disabled={reportLoading}
+            >
+              {reportLoading ? "Generating..." : "Generate Report"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <p className="font-mono text-2xs text-red-400">{error}</p>
+      )}
+
+      {/* No data — empty state */}
+      {!monitor && !refreshing && (
+        <PanelEmptyState
+          title="No shadow monitor data"
+          description="Click Refresh to run the shadow drift analysis. Upload a paper run bundle first."
+          note="Use the Developer tab uploader, or ingest a bundle with the SDK using run_type=paper."
+          actions={[
+            { label: "Refresh", onClick: onRefresh, primary: true },
+            { label: "Go to Developer tab", onClick: onGoDeveloper },
+          ]}
+        />
+      )}
+
+      {monitor && (
+        <>
+          {/* Status strip */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div>
+              <p className="caption">Verdict</p>
+              <span className={
+                `font-mono text-xs font-semibold px-2 py-0.5 rounded border ${verdictStyles[monitor.verdict] || verdictStyles.insufficient_data}`
+              }>
+                {monitor.verdict.replace(/_/g, " ")}
+              </span>
+            </div>
+            {monitor.drift_score !== null && (
+              <div>
+                <p className="caption">Drift Score</p>
+                <p className="mono-num text-sm font-bold text-text-primary">{monitor.drift_score.toFixed(0)}/100</p>
+              </div>
+            )}
+            {monitor.baseline_run && (
+              <div>
+                <p className="caption">Baseline</p>
+                <p className="font-mono text-2xs text-text-secondary">
+                  [{monitor.baseline_run.run_type}] {monitor.baseline_run.run_name}
+                </p>
+              </div>
+            )}
+            {monitor.comparison_run && (
+              <div>
+                <p className="caption">Paper / Shadow</p>
+                <p className="font-mono text-2xs text-text-secondary">
+                  [{monitor.comparison_run.run_type}] {monitor.comparison_run.run_name}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* No paper run — helpful empty state */}
+          {monitor.verdict === "insufficient_data" && !monitor.comparison_run && (
+            <PanelEmptyState
+              title="No paper or shadow run uploaded yet"
+              description="Upload a paper run to compare research behavior against live-like behavior."
+              note="Use the Developer tab uploader, or ingest a bundle with the SDK using run_type=paper."
+              actions={[
+                { label: "Go to Developer tab", onClick: onGoDeveloper, primary: true },
+              ]}
+            />
+          )}
+
+          {/* Primary concern */}
+          {monitor.primary_concern && (
+            <p className="font-mono text-2xs text-amber-400 italic">{monitor.primary_concern}</p>
+          )}
+
+          {/* Metric comparison table */}
+          {monitor.metrics.length > 0 && (
+            <div>
+              <button
+                className="flex items-center gap-1.5 font-mono text-2xs text-text-secondary hover:text-text-primary"
+                onClick={() => setMetricsExpanded((v) => !v)}
+              >
+                <span>{metricsExpanded ? "▾" : "▸"}</span>
+                <span>Drift Metrics ({monitor.metrics.length})</span>
+              </button>
+              {metricsExpanded && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full font-mono text-2xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-border text-text-muted">
+                        <th className="text-left py-1 pr-3">Metric</th>
+                        <th className="text-right py-1 pr-3">Baseline</th>
+                        <th className="text-right py-1 pr-3">Paper</th>
+                        <th className="text-right py-1 pr-3">Δ%</th>
+                        <th className="text-center py-1 pr-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monitor.metrics.map((m: ShadowDriftMetricType) => (
+                        <tr key={m.key} className="border-b border-border/40">
+                          <td className="py-1 pr-3 text-text-primary">{m.label}</td>
+                          <td className="py-1 pr-3 text-right mono-num text-text-secondary">
+                            {m.baseline_value !== null ? m.baseline_value.toFixed(4) : "—"}
+                          </td>
+                          <td className="py-1 pr-3 text-right mono-num text-text-secondary">
+                            {m.comparison_value !== null ? m.comparison_value.toFixed(4) : "—"}
+                          </td>
+                          <td className="py-1 pr-3 text-right mono-num text-text-muted">
+                            {m.percent_delta !== null ? `${(m.percent_delta * 100).toFixed(1)}%` : "—"}
+                          </td>
+                          <td className="py-1 text-center">
+                            <span className={
+                              m.status === "fail" ? "text-red-400 font-semibold" :
+                              m.status === "watch" ? "text-amber-400" :
+                              m.status === "missing" ? "text-text-muted" :
+                              "text-teal-400"
+                            }>
+                              {m.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Top concerns */}
+          {monitor.top_concerns.length > 0 && (
+            <div>
+              <p className="caption mb-1">Top Concerns</p>
+              <ul className="space-y-0.5">
+                {monitor.top_concerns.map((c, i) => (
+                  <li key={i} className="font-mono text-2xs text-text-secondary">• {c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Suggested actions */}
+          {monitor.suggested_actions.length > 0 && (
+            <div>
+              <p className="caption mb-1">Suggested Actions</p>
+              <ul className="space-y-0.5">
+                {monitor.suggested_actions.map((a, i) => (
+                  <li key={i} className="font-mono text-2xs text-text-secondary">→ {a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Disclaimer */}
+          <p className="font-mono text-2xs text-text-muted italic">{monitor.disclaimer}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // M51: Promotion Gates Panel
 // ---------------------------------------------------------------------------
 
@@ -9302,6 +9520,12 @@ export default function StrategyDetail() {
   // M50: shadow monitor
   const [shadowMonitor, setShadowMonitor] = useState<StrategyShadowMonitorResponse | null>(null);
 
+  // M88: shadow monitor refresh and report
+  const [shadowMonitorV2, setShadowMonitorV2] = useState<ShadowMonitorResponse | null>(null);
+  const [shadowRefreshing, setShadowRefreshing] = useState(false);
+  const [shadowRefreshError, setShadowRefreshError] = useState<string | null>(null);
+  const [shadowReportLoading, setShadowReportLoading] = useState(false);
+
   // M51: promotion gates
   const [promotionGates, setPromotionGates] = useState<StrategyPromotionGateResponse | null>(null);
   // promotionTarget tracks the currently-selected target stage for the promotion gates panel
@@ -9334,6 +9558,39 @@ export default function StrategyDetail() {
   const [_selectedExperiment, _setSelectedExperiment] = useState<StrategyExperimentDetail | null>(null);
   const [_experimentAnalyses, _setExperimentAnalyses] = useState<StrategyExperimentAnalysis[]>([]);
   const [_robustness, _setRobustness] = useState<StrategyRobustnessResponse | null>(null);
+
+  async function handleRefreshShadowMonitor() {
+    if (!strategy) return;
+    setShadowRefreshing(true);
+    setShadowRefreshError(null);
+    try {
+      const result = await refreshStrategyShadowMonitor(strategy.id);
+      setShadowMonitorV2(result);
+    } catch (e: unknown) {
+      setShadowRefreshError(e instanceof Error ? e.message : "Refresh failed.");
+    } finally {
+      setShadowRefreshing(false);
+    }
+  }
+
+  async function handleGenerateShadowReport() {
+    if (!strategy) return;
+    setShadowReportLoading(true);
+    try {
+      const report = await getStrategyShadowMonitorReport(strategy.id, "json") as import("@/types").ShadowMonitorReportResponse;
+      const blob = new Blob([report.content], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `shadow-monitor-${strategy.slug}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      showPageFeedback(e instanceof Error ? e.message : "Report generation failed.", true);
+    } finally {
+      setShadowReportLoading(false);
+    }
+  }
 
   async function handleCompareConfig() {
     if (!id || !configDiffSnapshotA || !configDiffSnapshotB) return;
@@ -9969,6 +10226,26 @@ export default function StrategyDetail() {
         computing={computingReliability}
         computeError={scoreComputeError}
       />
+
+      {/* M88: Compact paper drift indicator */}
+      {shadowMonitorV2 && shadowMonitorV2.verdict !== "insufficient_data" && (
+        <div className="rounded border border-border bg-bg-700 px-3 py-2 flex items-center gap-3">
+          <p className="font-mono text-2xs text-text-muted">Paper Drift:</p>
+          <span className={
+            "font-mono text-xs font-semibold " + (
+              shadowMonitorV2.verdict === "drifted" ? "text-red-400" :
+              shadowMonitorV2.verdict === "watch" ? "text-amber-400" :
+              "text-teal-400"
+            )
+          }>
+            {shadowMonitorV2.verdict.replace(/_/g, " ")}
+            {shadowMonitorV2.drift_score !== null ? ` (${shadowMonitorV2.drift_score.toFixed(0)})` : ""}
+          </span>
+          {shadowMonitorV2.primary_concern && (
+            <p className="font-mono text-2xs text-text-muted">{shadowMonitorV2.primary_concern}</p>
+          )}
+        </div>
+      )}
         </>
       )}
 
@@ -10206,6 +10483,17 @@ export default function StrategyDetail() {
       {shadowMonitor && (
         <ShadowMonitorPanel monitor={shadowMonitor} onGoDeveloper={() => setActiveTab("developer")} />
       )}
+
+      {/* M88: Shadow Drift Monitor */}
+      <ShadowMonitorV2Panel
+        monitor={shadowMonitorV2}
+        onRefresh={handleRefreshShadowMonitor}
+        onGoDeveloper={() => setActiveTab("developer")}
+        onGenerateReport={handleGenerateShadowReport}
+        refreshing={shadowRefreshing}
+        reportLoading={shadowReportLoading}
+        error={shadowRefreshError}
+      />
 
       {/* M58: Run Replay Pack */}
       <RunReplayPanel strategyId={strategy.id} runs={strategy.runs} />

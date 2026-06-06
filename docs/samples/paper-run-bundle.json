@@ -1,0 +1,177 @@
+{
+  "_comment": "QuantFidelity M88 sample paper-run evidence bundle — 'US Equity Quality-Momentum Rotation' paper trading run. Used to demo shadow monitoring drift detection. Metrics are materially worse than the reference backtest (sharpe 0.65 vs 1.40, annual_return 0.068 vs 0.15, volatility 0.22 vs 0.14, max_drawdown -0.23 vs -0.12, turnover 0.95 vs 0.35, trade_count 890 vs 450) and are designed to trigger drift watch and fail conditions in the shadow monitor. Deterministic synthetic data — NOT real trading performance, NOT investment advice.",
+  "description": "Shadow monitor drift demo bundle. This paper run is intentionally degraded relative to the reference backtest to surface all major drift signals: volatility drift watch, drawdown fail, turnover drift watch/fail, and trade-count watch/fail. Upload via Developer -> Evidence Bundles against an existing strategy. Do NOT use with real capital.",
+  "strategy_version": {
+    "version_label": "v4 Paper Candidate",
+    "git_commit": "qmr4d39",
+    "branch_name": "main",
+    "code_path": "strategies/quality_momentum_rotation_v4.py",
+    "signal_name": "quality_momentum_score_v4",
+    "signal_description": "Composite rank of 12-month momentum, gross profitability, and a volatility filter, with liquidity and sector-cap constraints."
+  },
+  "config_snapshot": {
+    "strategy_version_label": "v4 Paper Candidate",
+    "label": "v4 Paper Candidate Config — Paper Run",
+    "source_type": "manual_json",
+    "config_json": {
+      "params": {
+        "rebalance_frequency": "monthly",
+        "rank_top_n": 12,
+        "momentum_lookback_months": 12,
+        "turnover_target": 2.0
+      },
+      "assumptions": {
+        "transaction_cost_bps": 7,
+        "slippage_bps": 4,
+        "fill_model": "next_bar_open",
+        "max_leverage": 1.0,
+        "max_position_weight": 0.08,
+        "liquidity_filter": "adv_1m_gt_30m",
+        "sector_cap": 0.30,
+        "turnover_target": 2.0
+      }
+    }
+  },
+  "universe_snapshot": {
+    "strategy_version_label": "v4 Paper Candidate",
+    "label": "v4 Paper Candidate Universe — Paper Run",
+    "symbols": [
+      "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "JPM", "XOM", "UNH", "COST",
+      "HD", "LLY", "AVGO", "MA", "V", "PG", "JNJ", "WMT", "ORCL", "ADBE"
+    ],
+    "metadata_json": {
+      "universe_type": "US_LARGE_CAP",
+      "rebalance_freq": "monthly",
+      "liquidity_filter": "adv_1m_gt_30m",
+      "sector_cap": "0.30",
+      "ranking_factors": ["12m_momentum", "gross_profitability", "volatility_filter", "liquidity_filter", "sector_cap"],
+      "paper_run_note": "Same universe definition as reference backtest. Signal rankings shifted due to live-market price divergence during paper period."
+    }
+  },
+  "signal_snapshot": {
+    "strategy_version_label": "v4 Paper Candidate",
+    "universe_snapshot_label": "v4 Paper Candidate Universe — Paper Run",
+    "label": "v4 Quality-Momentum Signal — Paper Run",
+    "signal_name": "quality_momentum_score_v4",
+    "signal_column": "signal",
+    "rows": [
+      {"symbol": "AAPL",  "timestamp": "2026-06-01", "signal": 0.98},
+      {"symbol": "MSFT",  "timestamp": "2026-06-01", "signal": 0.84},
+      {"symbol": "NVDA",  "timestamp": "2026-06-01", "signal": 0.71},
+      {"symbol": "AMZN",  "timestamp": "2026-06-01", "signal": 0.55},
+      {"symbol": "GOOGL", "timestamp": "2026-06-01", "signal": 0.38},
+      {"symbol": "META",  "timestamp": "2026-06-01", "signal": 0.22},
+      {"symbol": "JPM",   "timestamp": "2026-06-01", "signal": 0.08},
+      {"symbol": "XOM",   "timestamp": "2026-06-01", "signal": -0.09},
+      {"symbol": "UNH",   "timestamp": "2026-06-01", "signal": -0.24},
+      {"symbol": "COST",  "timestamp": "2026-06-01", "signal": -0.38},
+      {"symbol": "HD",    "timestamp": "2026-06-01", "signal": -0.51},
+      {"symbol": "LLY",   "timestamp": "2026-06-01", "signal": -0.63},
+      {"symbol": "AVGO",  "timestamp": "2026-06-01", "signal": -0.75},
+      {"symbol": "MA",    "timestamp": "2026-06-01", "signal": -0.87},
+      {"symbol": "V",     "timestamp": "2026-06-01", "signal": -0.99},
+      {"symbol": "PG",    "timestamp": "2026-06-01", "signal": -1.12},
+      {"symbol": "JNJ",   "timestamp": "2026-06-01", "signal": -1.24},
+      {"symbol": "WMT",   "timestamp": "2026-06-01", "signal": -1.36},
+      {"symbol": "ORCL",  "timestamp": "2026-06-01", "signal": -1.48},
+      {"symbol": "ADBE",  "timestamp": "2026-06-01", "signal": -1.61}
+    ],
+    "metadata_json": {
+      "factors": {
+        "momentum_lookback_months": 12,
+        "quality_metric": "gross_profitability",
+        "volatility_filter": "trailing_60d",
+        "liquidity_filter": "adv_1m_gt_30m",
+        "sector_cap": 0.30
+      },
+      "paper_run_note": "Signal scores compressed vs. backtest period — reduced cross-sectional dispersion observed in paper window."
+    }
+  },
+  "dataset": {
+    "name": "US Equity OHLCV — Quality-Momentum Rotation (Paper Period)",
+    "description": "Synthetic daily OHLCV for the quality-momentum large-cap universe during the paper trading window (2026-05-01 to 2026-06-06). Demo data, not real market data.",
+    "dataset_type": "equity_prices",
+    "source_type": "csv_upload"
+  },
+  "dataset_snapshot": {
+    "snapshot_label": "v4-paper",
+    "source_filename": "us_equity_ohlcv_v4_paper.csv",
+    "rows": [
+      {"symbol": "AAPL",  "timestamp": "2026-05-30", "open": 97.2,  "high": 99.8,  "low": 94.6,  "close": 95.1,  "volume": 26400000},
+      {"symbol": "MSFT",  "timestamp": "2026-05-30", "open": 104.3, "high": 107.1, "low": 101.5, "close": 102.8, "volume": 28100000},
+      {"symbol": "NVDA",  "timestamp": "2026-05-30", "open": 112.8, "high": 115.6, "low": 109.2, "close": 110.4, "volume": 31500000},
+      {"symbol": "AMZN",  "timestamp": "2026-05-30", "open": 119.5, "high": 122.4, "low": 116.7, "close": 117.9, "volume": 29800000},
+      {"symbol": "GOOGL", "timestamp": "2026-05-30", "open": 127.1, "high": 130.0, "low": 124.3, "close": 125.6, "volume": 33200000},
+      {"symbol": "META",  "timestamp": "2026-05-30", "open": 134.6, "high": 137.5, "low": 131.8, "close": 133.2, "volume": 34700000},
+      {"symbol": "JPM",   "timestamp": "2026-05-30", "open": 142.0, "high": 145.2, "low": 139.4, "close": 140.7, "volume": 36200000},
+      {"symbol": "XOM",   "timestamp": "2026-05-30", "open": 149.4, "high": 152.7, "low": 146.9, "close": 148.3, "volume": 37600000},
+      {"symbol": "UNH",   "timestamp": "2026-05-30", "open": 156.9, "high": 160.3, "low": 154.4, "close": 155.8, "volume": 39100000},
+      {"symbol": "COST",  "timestamp": "2026-05-30", "open": 164.3, "high": 167.8, "low": 161.8, "close": 163.3, "volume": 40600000},
+      {"symbol": "AAPL",  "timestamp": "2026-06-02", "open": 95.1,  "high": 97.4,  "low": 92.3,  "close": 93.7,  "volume": 27100000},
+      {"symbol": "MSFT",  "timestamp": "2026-06-02", "open": 102.8, "high": 105.0, "low": 100.1, "close": 101.4, "volume": 28900000},
+      {"symbol": "NVDA",  "timestamp": "2026-06-02", "open": 110.4, "high": 113.2, "low": 107.8, "close": 109.1, "volume": 32300000},
+      {"symbol": "AMZN",  "timestamp": "2026-06-02", "open": 117.9, "high": 120.7, "low": 115.3, "close": 116.6, "volume": 30600000},
+      {"symbol": "GOOGL", "timestamp": "2026-06-02", "open": 125.6, "high": 128.4, "low": 122.9, "close": 124.3, "volume": 34000000},
+      {"symbol": "META",  "timestamp": "2026-06-02", "open": 133.2, "high": 136.1, "low": 130.5, "close": 131.9, "volume": 35500000},
+      {"symbol": "JPM",   "timestamp": "2026-06-02", "open": 140.7, "high": 143.8, "low": 138.1, "close": 139.4, "volume": 37000000},
+      {"symbol": "XOM",   "timestamp": "2026-06-02", "open": 148.3, "high": 151.4, "low": 145.6, "close": 147.0, "volume": 38400000},
+      {"symbol": "UNH",   "timestamp": "2026-06-02", "open": 155.8, "high": 159.1, "low": 153.2, "close": 154.5, "volume": 39900000},
+      {"symbol": "COST",  "timestamp": "2026-06-02", "open": 163.3, "high": 166.6, "low": 160.6, "close": 161.9, "volume": 41400000},
+      {"symbol": "AAPL",  "timestamp": "2026-06-05", "open": 93.7,  "high": 96.1,  "low": 90.9,  "close": 92.4,  "volume": 27800000},
+      {"symbol": "MSFT",  "timestamp": "2026-06-05", "open": 101.4, "high": 103.7, "low": 98.8,  "close": 100.1, "volume": 29600000},
+      {"symbol": "NVDA",  "timestamp": "2026-06-05", "open": 109.1, "high": 111.9, "low": 106.5, "close": 107.9, "volume": 33000000},
+      {"symbol": "AMZN",  "timestamp": "2026-06-05", "open": 116.6, "high": 119.3, "low": 114.0, "close": 115.4, "volume": 31300000},
+      {"symbol": "GOOGL", "timestamp": "2026-06-05", "open": 124.3, "high": 127.0, "low": 121.7, "close": 123.1, "volume": 34700000}
+    ]
+  },
+  "strategy_run": {
+    "strategy_version_label": "v4 Paper Candidate",
+    "dataset_snapshot_label": "v4-paper",
+    "universe_snapshot_label": "v4 Paper Candidate Universe — Paper Run",
+    "signal_snapshot_label": "v4 Quality-Momentum Signal — Paper Run",
+    "run_name": "US Equity Quality-Momentum Rotation — Paper Run v4 (drift demo)",
+    "run_type": "paper",
+    "status": "completed",
+    "params_json": {
+      "rebalance_frequency": "monthly",
+      "rank_top_n": 12,
+      "momentum_lookback_months": 12,
+      "turnover_target": 2.0
+    },
+    "assumptions_json": {
+      "transaction_cost_bps": 7,
+      "slippage_bps": 4,
+      "fill_model": "next_bar_open",
+      "max_leverage": 1.0,
+      "max_position_weight": 0.08,
+      "liquidity_filter": "adv_1m_gt_30m",
+      "sector_cap": 0.30,
+      "turnover_target": 2.0
+    },
+    "metrics_json": {
+      "sharpe": 0.65,
+      "annual_return": 0.068,
+      "volatility": 0.22,
+      "max_drawdown": -0.23,
+      "turnover": 0.95,
+      "trade_count": 890,
+      "win_rate": 0.46,
+      "_drift_reference": {
+        "backtest_sharpe": 1.40,
+        "backtest_annual_return": 0.15,
+        "backtest_volatility": 0.14,
+        "backtest_max_drawdown": -0.12,
+        "backtest_turnover": 0.35,
+        "backtest_trade_count": 450,
+        "_note": "Reference backtest values included for shadow monitor comparison. Deltas exceed watch/fail thresholds on all six metrics."
+      }
+    },
+    "notes": "Paper run v4 — M88 drift demo. Sharpe degraded from 1.40 to 0.65 (-54%), annual return from 0.15 to 0.068 (-55%), volatility elevated from 0.14 to 0.22 (+57%), drawdown worsened from -0.12 to -0.23 (-92%), turnover jumped from 0.35 to 0.95 (+171%), trade count nearly doubled from 450 to 890. All six drift signals should fire in the shadow monitor. Synthetic data only — not real trading outcomes."
+  },
+  "actions": {
+    "run_backtest_audit": false,
+    "compute_reliability_score": true,
+    "generate_strategy_report": false,
+    "generate_alerts": true
+  }
+}
