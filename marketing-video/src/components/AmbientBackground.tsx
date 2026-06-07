@@ -15,59 +15,62 @@ interface Blob {
 }
 
 interface AmbientBackgroundProps {
-  // Shifts the dominant glow. "tension" leans into deeper blues.
+  // Shifts the dominant glow. "tension" leans into deeper, cooler tones.
   tint?: "default" | "tension";
+  // Subtle AI sweep + scanlines. On by default; tasteful and low-contrast.
+  sweep?: boolean;
 }
 
 const baseBlobs: Blob[] = [
   {
     color: COLORS.blue,
-    size: 900,
-    baseX: 12,
-    baseY: 18,
-    driftX: 40,
-    driftY: 30,
-    speed: 0.012,
+    size: 1000,
+    baseX: 14,
+    baseY: 20,
+    driftX: 50,
+    driftY: 38,
+    speed: 0.0085,
     phase: 0,
-    opacity: 0.18,
-  },
-  {
-    color: COLORS.purple,
-    size: 820,
-    baseX: 78,
-    baseY: 28,
-    driftX: 35,
-    driftY: 45,
-    speed: 0.009,
-    phase: 1.6,
     opacity: 0.16,
   },
   {
-    color: COLORS.cyan,
-    size: 760,
-    baseX: 60,
-    baseY: 82,
-    driftX: 50,
-    driftY: 35,
-    speed: 0.011,
-    phase: 3.1,
+    color: COLORS.purple,
+    size: 900,
+    baseX: 80,
+    baseY: 26,
+    driftX: 44,
+    driftY: 52,
+    speed: 0.0068,
+    phase: 1.6,
     opacity: 0.15,
   },
   {
-    color: COLORS.blue,
-    size: 640,
-    baseX: 28,
-    baseY: 78,
-    driftX: 30,
+    color: COLORS.cyan,
+    size: 820,
+    baseX: 62,
+    baseY: 84,
+    driftX: 58,
     driftY: 40,
-    speed: 0.008,
+    speed: 0.0079,
+    phase: 3.1,
+    opacity: 0.13,
+  },
+  {
+    color: COLORS.blue,
+    size: 680,
+    baseX: 26,
+    baseY: 80,
+    driftX: 36,
+    driftY: 46,
+    speed: 0.0061,
     phase: 4.4,
-    opacity: 0.12,
+    opacity: 0.1,
   },
 ];
 
 export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
   tint = "default",
+  sweep = true,
 }) => {
   const frame = useCurrentFrame();
 
@@ -76,12 +79,23 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
       ? baseBlobs.map((b, i) => ({
           ...b,
           color: i === 1 ? "#3B5BDB" : i === 2 ? COLORS.blue : b.color,
-          opacity: b.opacity + 0.05,
+          opacity: b.opacity + 0.04,
         }))
       : baseBlobs;
 
+  // Slow diagonal AI sweep across the frame.
+  const sweepX = ((Math.sin(frame * 0.006) + 1) / 2) * 60 - 30; // -30..30 %
+
   return (
     <AbsoluteFill style={{backgroundColor: COLORS.bg, overflow: "hidden"}}>
+      {/* Deep vignette to anchor the dark base. */}
+      <AbsoluteFill
+        style={{
+          background:
+            "radial-gradient(120% 100% at 50% 0%, rgba(79,140,255,0.05) 0%, rgba(11,16,32,0) 45%), radial-gradient(120% 120% at 50% 120%, rgba(11,16,32,0.6) 0%, rgba(11,16,32,0) 50%)",
+        }}
+      />
+
       {blobs.map((b, i) => {
         const dx = Math.sin(frame * b.speed + b.phase) * b.driftX;
         const dy = Math.cos(frame * b.speed * 0.85 + b.phase) * b.driftY;
@@ -97,21 +111,35 @@ export const AmbientBackground: React.FC<AmbientBackgroundProps> = ({
               marginLeft: -b.size / 2,
               marginTop: -b.size / 2,
               borderRadius: "50%",
-              background: `radial-gradient(circle at center, ${b.color} 0%, rgba(255,255,255,0) 70%)`,
+              background: `radial-gradient(circle at center, ${b.color} 0%, rgba(11,16,32,0) 70%)`,
               opacity: b.opacity,
-              filter: "blur(100px)",
+              filter: "blur(110px)",
               transform: `translate(${dx}px, ${dy}px)`,
             }}
           />
         );
       })}
-      {/* Soft top wash to keep things airy and premium. */}
-      <AbsoluteFill
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 35%)",
-        }}
-      />
+
+      {sweep ? (
+        <>
+          {/* Soft AI sweep — a very faint moving sheen. */}
+          <AbsoluteFill
+            style={{
+              background: `linear-gradient(115deg, rgba(255,255,255,0) 40%, rgba(139,92,246,0.05) 50%, rgba(255,255,255,0) 60%)`,
+              transform: `translateX(${sweepX}%)`,
+            }}
+          />
+          {/* Subtle scanlines for a quiet technical texture. */}
+          <AbsoluteFill
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(0deg, rgba(255,255,255,0.018) 0px, rgba(255,255,255,0.018) 1px, transparent 1px, transparent 3px)",
+              opacity: 0.5,
+              mixBlendMode: "overlay",
+            }}
+          />
+        </>
+      ) : null}
     </AbsoluteFill>
   );
 };

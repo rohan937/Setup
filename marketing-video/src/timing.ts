@@ -1,20 +1,24 @@
 // Centralized timing + script + palette.
 // Edit copy, durations, and colors here in ONE place.
+//
+// DARK premium AI-style product walkthrough (QuantFidelity M101-M108 aesthetic).
+// 9-scene, ~72s structure.
 
 export const FPS = 30;
-export const VIDEO_DURATION_SECONDS = 45;
+export const VIDEO_DURATION_SECONDS = 72;
 export const DURATION = FPS * VIDEO_DURATION_SECONDS;
 
 const sec = (s: number) => Math.round(s * FPS);
 
 export type SceneId =
   | "hook"
-  | "tension"
-  | "backtest"
-  | "reveal"
+  | "hidden"
+  | "commandCenter"
+  | "workspace"
   | "reality"
-  | "workflow"
-  | "screenshots"
+  | "evidence"
+  | "governance"
+  | "montage"
   | "final";
 
 export interface SceneDef {
@@ -23,36 +27,66 @@ export interface SceneDef {
   durationInFrames: number;
 }
 
+// 9 scenes, total 72s.
+//   hook           0  -> 5   (5s)
+//   hidden         5  -> 10  (5s)
+//   commandCenter  10 -> 18  (8s)
+//   workspace      18 -> 28  (10s)
+//   reality        28 -> 39  (11s)
+//   evidence       39 -> 49  (10s)
+//   governance     49 -> 60  (11s)
+//   montage        60 -> 66  (6s)
+//   final          66 -> 72  (6s)
 export const SCENES: SceneDef[] = [
-  {id: "hook", from: sec(0), durationInFrames: sec(4)},
-  {id: "tension", from: sec(4), durationInFrames: sec(4)},
-  {id: "backtest", from: sec(8), durationInFrames: sec(7)},
-  {id: "reveal", from: sec(15), durationInFrames: sec(5)},
-  {id: "reality", from: sec(20), durationInFrames: sec(8)},
-  {id: "workflow", from: sec(28), durationInFrames: sec(6)},
-  {id: "screenshots", from: sec(34), durationInFrames: sec(6)},
-  {id: "final", from: sec(40), durationInFrames: sec(5)},
+  {id: "hook", from: sec(0), durationInFrames: sec(5)},
+  {id: "hidden", from: sec(5), durationInFrames: sec(5)},
+  {id: "commandCenter", from: sec(10), durationInFrames: sec(8)},
+  {id: "workspace", from: sec(18), durationInFrames: sec(10)},
+  {id: "reality", from: sec(28), durationInFrames: sec(11)},
+  {id: "evidence", from: sec(39), durationInFrames: sec(10)},
+  {id: "governance", from: sec(49), durationInFrames: sec(11)},
+  {id: "montage", from: sec(60), durationInFrames: sec(6)},
+  {id: "final", from: sec(66), durationInFrames: sec(6)},
 ];
 
-// Color palette — light premium SaaS aesthetic.
+// ---------------------------------------------------------------------------
+// DARK color palette.
+// New semantic keys (bg / surface / elevated / border / text*) plus
+// back-compat aliases (cardBg / cardBorder) kept so legacy light-era
+// components still compile and render (dark-tinted) until phase 2 rewrites
+// the scenes.
+// ---------------------------------------------------------------------------
 export const COLORS = {
-  bg: "#F8FAFC",
-  textPrimary: "#0F172A",
-  textSecondary: "#475569",
+  // Surfaces
+  bg: "#0B1020",
+  surface: "#111827",
+  elevated: "#162033",
+  border: "rgba(255, 255, 255, 0.08)",
+
+  // Text
+  textPrimary: "#F8FAFC",
+  textSecondary: "#94A3B8",
+  textMuted: "#64748B",
+
+  // Brand accents
   blue: "#4F8CFF",
   purple: "#8B5CF6",
   cyan: "#06B6D4",
-  success: "#00B894",
-  warning: "#F59E0B",
-  danger: "#EF4444",
-  cardBg: "rgba(255, 255, 255, 0.78)",
-  cardBorder: "rgba(15, 23, 42, 0.06)",
+
+  // Semantic
+  success: "#00D492",
+  warning: "#FFB547",
+  danger: "#FF6B6B",
+
+  // Back-compat aliases (legacy components reference these).
+  cardBg: "#111827",
+  cardBorder: "rgba(255, 255, 255, 0.08)",
 } as const;
 
 export const FONT_STACK =
   '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
-export type MetricTone = "neutral" | "warning" | "danger" | "success";
+export type MetricTone = "neutral" | "primary" | "warning" | "danger" | "success";
 
 export interface ScriptMetric {
   label: string;
@@ -60,87 +94,190 @@ export interface ScriptMetric {
   tone: MetricTone;
 }
 
-export interface WorkflowStep {
+// ---------------------------------------------------------------------------
+// Lifecycle stages (single source of truth for the pipeline component).
+// ---------------------------------------------------------------------------
+export interface StageDef {
+  key: string;
   label: string;
-  caption: string;
-  color: string;
 }
 
-// All on-screen copy lives here.
+export const STAGES: StageDef[] = [
+  {key: "research", label: "Research"},
+  {key: "backtestReview", label: "Backtest Review"},
+  {key: "paperCandidate", label: "Paper Candidate"},
+  {key: "shadow", label: "Shadow"},
+  {key: "productionCandidate", label: "Production Candidate"},
+];
+
+// ---------------------------------------------------------------------------
+// 404-safe screenshot allow-list.
+// List ONLY filenames that actually exist in public/screenshots/.
+// When a name is present here, SafeScreenshotFrame renders the real <Img>;
+// otherwise it renders a polished dark mock (and never calls staticFile,
+// so there are no 404 logs / decode errors).
+//
+// To use real screenshots: drop the PNG into public/screenshots/ and add its
+// filename (e.g. "home.png") to this array.
+// ---------------------------------------------------------------------------
+export const AVAILABLE_SCREENSHOTS: string[] = [];
+
+// ---------------------------------------------------------------------------
+// All on-screen copy + mock UI data lives here.
+// ---------------------------------------------------------------------------
 export const SCRIPT = {
+  // Scene 1 — hook
   hook: {
-    text: "[ backtests look clean ]",
+    caption: "Your backtest says it's ready.",
+    sub: "The evidence usually says otherwise.",
+    // The clean-looking backtest card.
+    card: {
+      title: "SPY Trend Following v3",
+      assetClass: "US Equities",
+      metrics: [
+        {label: "Sharpe", value: "1.42", tone: "success"},
+        {label: "CAGR", value: "18.6%", tone: "success"},
+        {label: "Max Drawdown", value: "-9.1%", tone: "success"},
+        {label: "Win Rate", value: "61%", tone: "success"},
+      ] as ScriptMetric[],
+      badge: "Looks production-ready",
+    },
   },
-  tension: {
-    text: "[ until production disagrees ]",
-  },
-  backtest: {
-    title: "SPY Trend Backtest v1",
-    metrics: [
-      {label: "Sharpe", value: "1.42", tone: "success"},
-      {label: "Turnover", value: "1.8x", tone: "warning"},
-      {label: "Transaction costs", value: "0 bps", tone: "warning"},
-      {label: "Paper run", value: "Missing", tone: "danger"},
+
+  // Scene 2 — hidden problems
+  hidden: {
+    caption: "But the assumptions are doing all the work.",
+    sub: "QuantFidelity surfaces what reviews miss.",
+    warnings: [
+      {label: "Transaction costs", value: "0 bps assumed", tone: "danger"},
+      {label: "Turnover", value: "1.8x — frictionless", tone: "warning"},
+      {label: "Paper / shadow run", value: "Missing", tone: "danger"},
+      {label: "Evidence chain", value: "Incomplete", tone: "warning"},
     ] as ScriptMetric[],
-    badge: "Reality Check: Review",
-    caption:
-      "Looks promising. But the assumptions are doing too much work.",
   },
-  reveal: {
-    title: "QuantFidelity checks what research teams usually miss.",
-    subtitle: "Evidence. Assumptions. Drift. Governance.",
+
+  // Scene 3 — research command center
+  commandCenter: {
+    caption: "One command center for every strategy.",
+    sub: "Reliability, readiness, and risk — at a glance.",
+    summary: [
+      {label: "Strategies tracked", value: "42", tone: "primary"},
+      {label: "Avg reliability", value: "74.3", tone: "warning"},
+      {label: "Promotion-ready", value: "9", tone: "success"},
+      {label: "Blocked on gates", value: "11", tone: "danger"},
+    ] as ScriptMetric[],
+    strategies: [
+      {name: "SPY Trend Following v3", stage: "Backtest Review", score: 72},
+      {name: "Cross-Asset Carry", stage: "Paper Candidate", score: 81},
+      {name: "EM FX Momentum", stage: "Research", score: 58},
+      {name: "Vol Risk Premium", stage: "Shadow", score: 88},
+    ],
   },
+
+  // Scene 4 — strategy workspace
+  workspace: {
+    caption: "Open a strategy. The whole story is in one place.",
+    sub: "Reliability, reality, evidence — scored and reviewable.",
+    strategyName: "SPY Trend Following v3",
+    scoreCards: [
+      {label: "Reliability", value: "88.8", verdict: undefined, tone: "success"},
+      {label: "Readiness", value: undefined, verdict: "Review", tone: "warning"},
+      {label: "Backtest Reality", value: "72", verdict: undefined, tone: "warning"},
+      {label: "Evidence", value: undefined, verdict: "Verified", tone: "success"},
+    ],
+    tabs: ["Overview", "Evidence", "Reality", "Lineage", "Governance", "Reports"],
+    currentStageKey: "backtestReview",
+  },
+
+  // Scene 5 — backtest reality check
   reality: {
-    title: "Research Reality Check",
-    bullets: [
-      "Zero transaction costs with high turnover",
-      "Missing paper/shadow validation",
-      "Evidence chain incomplete",
-      "Promotion gates blocked",
+    caption: "Backtest Reality Check pressure-tests the assumptions.",
+    sub: "A believable backtest — or a flattering one?",
+    panel: {
+      score: 72,
+      max: 100,
+      verdict: "Review",
+      primaryConcern:
+        "High turnover combined with zero modeled transaction costs.",
+      checks: [
+        {label: "Out-of-sample window present", tone: "success"},
+        {label: "Drawdown profile plausible", tone: "success"},
+        {label: "Turnover priced with realistic costs", tone: "warning"},
+        {label: "Slippage / market impact modeled", tone: "warning"},
+        {label: "Paper / shadow confirmation", tone: "danger"},
+      ] as {label: string; tone: MetricTone}[],
+      tooltip: {
+        title: "Turnover 1.8x",
+        body: "At 0 bps, ~140 bps/yr of realistic cost is hidden. Sharpe likely overstated.",
+      },
+    },
+  },
+
+  // Scene 6 — evidence verification
+  evidence: {
+    caption: "Every result is anchored to verifiable evidence.",
+    sub: "Snapshots, configs, and a tamper-evident root hash.",
+    panel: {
+      score: 91,
+      max: 100,
+      status: "Verified",
+      rows: [
+        {label: "Dataset snapshot linked", tone: "success"},
+        {label: "Signal definition linked", tone: "success"},
+        {label: "Config snapshot linked", tone: "success"},
+        {label: "Universe snapshot linked", tone: "success"},
+        {label: "Root hash generated", tone: "success"},
+      ] as {label: string; tone: MetricTone}[],
+      warning: "Paper / shadow evidence not yet attached.",
+      rootHash: "0x9f3a…c7e1",
+    },
+  },
+
+  // Scene 7 — governance / promotion readiness
+  governance: {
+    caption: "Promotion is a governed decision — not a hunch.",
+    sub: "Gates, evidence, and an auto-generated risk narrative.",
+    panel: {
+      title: "Promotion Readiness",
+      target: "Paper Candidate",
+      gates: [
+        {label: "Reliability ≥ 70", tone: "success"},
+        {label: "Reality check passed", tone: "warning"},
+        {label: "Evidence chain verified", tone: "success"},
+        {label: "Cost assumptions justified", tone: "warning"},
+        {label: "Reviewer sign-off", tone: "danger"},
+      ] as {label: string; tone: MetricTone}[],
+      buttonLabel: "Generate Research Risk Narrative",
+      narrative:
+        "SPY Trend Following v3 shows strong reliability (88.8) and a verified evidence chain, but reality scoring (72) flags unrealistic cost assumptions at 1.8x turnover. Promotion to Paper Candidate is recommended only after transaction costs are modeled and a paper run is attached. Residual risk: live performance may underperform backtest Sharpe by an estimated 0.3–0.5.",
+    },
+  },
+
+  // Scene 8 — montage
+  montage: {
+    caption: "From raw research to a decision you can defend.",
+    labels: [
+      "Command Center",
+      "Strategy Workspace",
+      "Reality Check",
+      "Evidence Chain",
+      "Governance",
     ],
-    conclusion: "Not ready for promotion.",
-  },
-  workflow: {
-    steps: [
-      {
-        label: "Evidence",
-        caption: "linked research artifacts",
-        color: COLORS.blue,
-      },
-      {
-        label: "Reality",
-        caption: "believable backtests",
-        color: COLORS.cyan,
-      },
-      {
-        label: "Verification",
-        caption: "trusted evidence chain",
-        color: COLORS.purple,
-      },
-      {
-        label: "Governance",
-        caption: "review-ready decisions",
-        color: COLORS.warning,
-      },
-      {
-        label: "Promotion",
-        caption: "controlled lifecycle movement",
-        color: COLORS.success,
-      },
-    ] as WorkflowStep[],
-  },
-  screenshots: {
     shots: [
-      {src: "screenshots/home.png", label: "Research Command Center"},
-      {src: "screenshots/executive-demo.png", label: "Executive Demo"},
-      {src: "screenshots/strategy-overview.png", label: "Strategy Workspace"},
+      {name: "home.png", label: "Research Command Center"},
+      {name: "strategy-overview.png", label: "Strategy Workspace"},
+      {name: "reality-check.png", label: "Backtest Reality Check"},
+      {name: "evidence.png", label: "Evidence Verification"},
+      {name: "governance.png", label: "Promotion Readiness"},
     ],
-    caption: "From raw research evidence to promotion-ready decisions.",
   },
+
+  // Scene 9 — final / brand
   final: {
     title: "A reliability layer for quant research.",
-    subtitle: "Evidence. Backtests. Drift. Governance.",
+    subtitle: "Evidence. Reality. Verification. Governance.",
     brand: "QuantFidelity",
+    systemMap: ["Evidence", "Reality", "Verification", "Governance", "Promotion"],
     disclaimer: "Research governance summary. Not trading advice.",
   },
 } as const;

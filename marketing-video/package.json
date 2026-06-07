@@ -5,7 +5,7 @@
   "description": "Self-contained Remotion marketing video for QuantFidelity (separate from the main app).",
   "scripts": {
     "preview": "remotion studio src/index.ts",
-    "render": "remotion render src/index.ts QuantFidelityLaunchVideo out/quantfidelity-launch.mp4",
+    "render": "remotion render src/index.ts QuantFidelityLaunchVideo out/quantfidelity-ai-product-walkthrough.mp4",
     "still": "remotion still src/index.ts QuantFidelityLaunchVideo out/frame.png --frame=120",
     "typecheck": "tsc --noEmit",
     "upgrade": "remotion upgrade"
