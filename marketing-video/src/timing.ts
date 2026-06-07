@@ -120,8 +120,13 @@ export const STAGES: StageDef[] = [
 // To use real screenshots: drop the PNG into public/screenshots/ and add its
 // filename (e.g. "home.png") to this array.
 // ---------------------------------------------------------------------------
-export const AVAILABLE_SCREENSHOTS: string[] = [];
-
+export const AVAILABLE_SCREENSHOTS: string[] = [
+  "home.png",
+  "executive-demo.png",
+  "strategy-overview.png",
+  "reality-tab.png",
+  "governance-tab.png",
+];
 // ---------------------------------------------------------------------------
 // All on-screen copy + mock UI data lives here.
 // ---------------------------------------------------------------------------
@@ -265,10 +270,10 @@ export const SCRIPT = {
     ],
     shots: [
       {name: "home.png", label: "Research Command Center"},
+      {name: "executive-demo.png", label: "Executive Demo"},
       {name: "strategy-overview.png", label: "Strategy Workspace"},
-      {name: "reality-check.png", label: "Backtest Reality Check"},
-      {name: "evidence.png", label: "Evidence Verification"},
-      {name: "governance.png", label: "Promotion Readiness"},
+      {name: "reality-tab.png", label: "Backtest Reality Check"},
+      {name: "governance-tab.png", label: "Promotion Readiness"},
     ],
   },
 
