@@ -126,6 +126,8 @@ export default {
       keyframes: {
         "fade-in": { "0%": { opacity: "0" }, "100%": { opacity: "1" } },
         "slide-up": { "0%": { opacity: "0", transform: "translateY(8px)" }, "100%": { opacity: "1", transform: "translateY(0)" } },
+        // Guided-demo left assistant drawer slide-in (reduced-motion safe via global guard).
+        "slide-in-left": { "0%": { opacity: "0", transform: "translateX(-16px)" }, "100%": { opacity: "1", transform: "translateX(0)" } },
         "soft-pulse": { "0%,100%": { opacity: "1" }, "50%": { opacity: "0.55" } },
         "gradient-drift": { "0%": { transform: "translate3d(0,0,0) scale(1)" }, "50%": { transform: "translate3d(3%,-3%,0) scale(1.08)" }, "100%": { transform: "translate3d(0,0,0) scale(1)" } },
         "shimmer": { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
@@ -136,6 +138,7 @@ export default {
       animation: {
         "fade-in": "fade-in 0.3s ease-out both",
         "slide-up": "slide-up 0.35s ease-out both",
+        "slide-in-left": "slide-in-left 0.3s ease-out both",
         "soft-pulse": "soft-pulse 2.4s ease-in-out infinite",
         "gradient-drift": "gradient-drift 16s ease-in-out infinite",
         "shimmer": "shimmer 1.6s ease-in-out infinite",

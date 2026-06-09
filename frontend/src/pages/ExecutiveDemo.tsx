@@ -592,9 +592,22 @@ export default function ExecutiveDemo() {
             Your browser does not support the video tag.
           </video>
         </div>
-        <p className="font-mono text-2xs italic text-text-muted">
-          Research governance summary. Not trading advice.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="font-mono text-2xs italic text-text-muted">
+            Research governance summary. Not trading advice.
+          </p>
+          <button
+            type="button"
+            onClick={() => startWalkthrough(true)}
+            className="cta-glow inline-flex items-center gap-2 rounded-control border border-research/40 bg-research/10 px-3.5 py-2 text-sm text-research-300 hover:bg-research/20 hover:shadow-glow-research"
+          >
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-brand-500 to-research-500"
+            />
+            Start Guided Demo
+          </button>
+        </div>
       </section>
 
       {/* The live data sections render only when we have strategies. */}

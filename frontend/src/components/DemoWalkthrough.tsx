@@ -132,36 +132,40 @@ export default function DemoWalkthrough({
   })();
 
   return (
-    <>
-      {/* Dark translucent backdrop */}
-      <div
-        className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[1px]"
-        onClick={handleExit}
-        aria-hidden="true"
-      />
-      {/* Walkthrough panel */}
-      <div
-        className="fixed bottom-4 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)] rounded-card border border-border bg-bg-800 shadow-panel"
-        role="dialog"
-        aria-label="Guided demo walkthrough"
-        aria-modal="true"
-      >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <span className="caption">Guided demo</span>
-          <div className="flex items-center gap-2">
-            <span className="text-2xs text-text-muted">
-              Step {stepNumber} of {TOTAL}
-            </span>
-            <button
-              type="button"
-              onClick={handleExit}
-              aria-label="Close walkthrough"
-              className="rounded-control border border-border px-1.5 py-0.5 text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
-            >
-              ✕
-            </button>
-          </div>
+    /*
+     * Left-side AI walkthrough drawer — non-blocking, non-modal.
+     * Premium dark glass + blue/purple border glow, slides in from the left.
+     * No full-screen backdrop, so the main app stays visible & interactive.
+     * Reduced-motion safe via the global prefers-reduced-motion guard.
+     */
+    <div
+      className="fixed left-4 top-20 z-40 flex max-h-[calc(100vh-6rem)] w-[400px] max-w-[calc(100vw-2rem)] flex-col overflow-y-auto rounded-card border border-brand/30 bg-bg-800/90 shadow-[0_0_0_1px_rgba(79,140,255,0.30),0_0_36px_-6px_rgba(139,92,246,0.42)] backdrop-blur-md animate-slide-in-left"
+      role="dialog"
+      aria-label="Guided demo walkthrough"
+      aria-modal="false"
+    >
+      <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
+        <span className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-brand-500 to-research-500 shadow-glow-research"
+          />
+          <span className="caption">AI walkthrough</span>
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-2xs text-text-muted">
+            Step {stepNumber} of {TOTAL}
+          </span>
+          <button
+            type="button"
+            onClick={handleExit}
+            aria-label="Close walkthrough"
+            className="rounded-control border border-border px-1.5 py-0.5 text-2xs text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+          >
+            ✕
+          </button>
         </div>
+      </div>
 
         <div className="space-y-3 px-4 py-3">
           <div className="space-y-1">
@@ -260,6 +264,5 @@ export default function DemoWalkthrough({
           ))}
         </div>
       </div>
-    </>
   );
 }
