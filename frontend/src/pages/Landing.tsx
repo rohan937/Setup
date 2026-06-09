@@ -178,6 +178,35 @@ const IS = [
   "Promotion-readiness monitoring",
 ];
 
+const WHY_NOW = [
+  { title: "Faster research cycles", desc: "More strategies and experiments create more evidence to verify." },
+  { title: "More fragmented evidence", desc: "Data, assumptions, configs, and runs often live in separate places." },
+  { title: "Higher promotion risk", desc: "Weak research can move forward when blockers are not visible early." },
+];
+
+const RECORD_ITEMS = [
+  "Datasets",
+  "Signals",
+  "Assumptions",
+  "Configs",
+  "Universes",
+  "Backtest runs",
+  "Reality checks",
+  "Evidence verification",
+  "Review state",
+  "Promotion blockers",
+  "Risk narrative",
+];
+
+const WORKFLOW_STEPS = [
+  { title: "Register strategy", desc: "Create a strategy record with asset class, lifecycle stage, and research context." },
+  { title: "Attach evidence", desc: "Add datasets, signals, assumptions, configs, universes, and run metadata." },
+  { title: "Run reality check", desc: "Evaluate costs, fills, turnover, fragility, data quality, and drift." },
+  { title: "Verify evidence chain", desc: "Check whether the evidence is traceable, consistent, and reviewable." },
+  { title: "Review blockers", desc: "Surface missing evidence, open alerts, failed gates, and governance issues." },
+  { title: "Generate promotion packet", desc: "Produce a research-governance summary that explains readiness, risks, and next actions." },
+];
+
 const NAV: { id: string; label: string }[] = [
   { id: "product", label: "Product" },
   { id: "features", label: "Features" },
@@ -345,6 +374,8 @@ export default function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [activeFeature, setActiveFeature] = useState<Feature | null>(null);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [narrativeOpen, setNarrativeOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<string>("product");
   const [showTop, setShowTop] = useState(false);
 
@@ -667,6 +698,14 @@ export default function Landing() {
             >
               Explore Executive Demo
             </a>
+            <button
+              type="button"
+              onClick={() => setNarrativeOpen(true)}
+              aria-haspopup="dialog"
+              className="rounded-control border border-border-strong bg-bg-800 px-5 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-700 hover:text-text-primary"
+            >
+              View sample risk narrative
+            </button>
           </div>
         </div>
       </section>
@@ -688,6 +727,29 @@ export default function Landing() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── Why this matters now ────────────────────────────────────── */}
+      <section className="mx-auto max-w-6xl px-6 py-16">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="caption text-research-300">Why now</p>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight">Why this matters now</h2>
+          <p className="mt-4 text-base leading-relaxed text-text-secondary">
+            Quant research is getting faster, but reliability review is still scattered across
+            notebooks, dashboards, spreadsheets, Slack threads, and memory. As more teams move from
+            research to paper/shadow/live workflows, they need a reliable way to see what changed,
+            what evidence is missing, and what is ready for review.
+          </p>
+        </div>
+        <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {WHY_NOW.map((c) => (
+            <div key={c.title} className="card-hover-lift rounded-card border border-border bg-bg-700 p-6 shadow-card">
+              <div className="mb-3 h-1 w-10 rounded-full bg-gradient-to-r from-brand to-research" />
+              <h3 className="text-base font-semibold text-text-primary">{c.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-text-secondary">{c.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -749,6 +811,37 @@ export default function Landing() {
               <p className="mt-3 text-xs leading-relaxed text-text-secondary">{p.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── What a strategy record contains ─────────────────────────── */}
+      <section className="mx-auto max-w-6xl px-6 py-16">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="caption text-research-300">Strategy record</p>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight">What a strategy record contains</h2>
+          <p className="mt-4 text-base leading-relaxed text-text-secondary">
+            A QuantFidelity strategy record connects the evidence, checks, reviews, and decisions
+            around a strategy in one place.
+          </p>
+        </div>
+        <div className="mx-auto mt-10 max-w-4xl gradient-border gradient-border-primary rounded-card p-6 shadow-card sm:p-8">
+          <div className="mb-4 flex items-center gap-1.5 border-b border-border/70 pb-3">
+            <span className="h-2 w-2 rounded-full bg-gradient-to-r from-brand to-research" />
+            <span className="font-mono text-2xs uppercase tracking-eyebrow text-text-muted">
+              strategy_record
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+            {RECORD_ITEMS.map((item) => (
+              <div
+                key={item}
+                className="flex items-center gap-2 rounded-control border border-border bg-bg-900/60 px-3 py-2.5 transition-colors hover:border-brand/40"
+              >
+                <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-gradient-to-r from-brand to-research" aria-hidden="true" />
+                <span className="font-mono text-2xs text-text-secondary">{item}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -819,6 +912,16 @@ export default function Landing() {
               <span className="text-sm font-medium text-text-secondary">{u}</span>
             </div>
           ))}
+        </div>
+        <div className="mt-8 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setWorkflowOpen(true)}
+            aria-haspopup="dialog"
+            className="cta-glow rounded-control border border-border-strong bg-bg-800 px-5 py-2.5 text-sm font-medium text-text-primary transition-colors hover:bg-bg-700 hover:shadow-glow-primary"
+          >
+            See example workflow
+          </button>
         </div>
       </section>
 
@@ -1017,6 +1120,80 @@ export default function Landing() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* ── "Example workflow" modal ────────────────────────────────── */}
+      <Modal
+        open={workflowOpen}
+        onClose={() => setWorkflowOpen(false)}
+        labelledBy="workflow-modal-title"
+        widthClass="max-w-xl"
+      >
+        <p className="caption text-research-300">Walkthrough</p>
+        <h2 id="workflow-modal-title" className="mt-1 text-2xl font-bold tracking-tight">
+          Example workflow
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+          A concrete journey through QuantFidelity, from a new strategy record to a promotion packet.
+        </p>
+        <ol className="mt-6 space-y-4">
+          {WORKFLOW_STEPS.map((s, i) => (
+            <li key={s.title} className="flex gap-3">
+              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand to-research text-xs font-bold text-white">
+                {i + 1}
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">{s.title}</p>
+                <p className="mt-0.5 text-sm leading-relaxed text-text-secondary">{s.desc}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-6 border-t border-border/70 pt-4 font-mono text-2xs italic text-text-muted">
+          Illustrative workflow. QuantFidelity is research governance infrastructure, not trading advice.
+        </p>
+      </Modal>
+
+      {/* ── "Sample risk narrative" modal ───────────────────────────── */}
+      <Modal
+        open={narrativeOpen}
+        onClose={() => setNarrativeOpen(false)}
+        labelledBy="narrative-modal-title"
+        widthClass="max-w-xl"
+      >
+        <p className="caption text-research-300">Illustrative output</p>
+        <h2 id="narrative-modal-title" className="mt-1 text-2xl font-bold tracking-tight">
+          Sample risk narrative
+        </h2>
+        <blockquote className="mt-4 rounded-card border border-border bg-bg-900/60 p-4 text-sm italic leading-relaxed text-text-secondary">
+          “This strategy shows moderate research reliability. The backtest has promising headline
+          metrics, but promotion should remain blocked until weak data health, missing cost
+          assumptions, and unresolved review gates are addressed. The next action is to strengthen
+          evidence quality, rerun the reality check, and resubmit for governance review.”
+        </blockquote>
+        <div className="mt-5 space-y-4">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-eyebrow text-fidelity-high">Strengths</h3>
+            <p className="mt-1 text-sm leading-relaxed text-text-secondary">
+              Promising performance profile and clear strategy record.
+            </p>
+          </div>
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-eyebrow text-fidelity-low">Risks</h3>
+            <p className="mt-1 text-sm leading-relaxed text-text-secondary">
+              Weak data health, missing execution assumptions, unresolved governance blockers.
+            </p>
+          </div>
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-eyebrow text-research-300">Next action</h3>
+            <p className="mt-1 text-sm leading-relaxed text-text-secondary">
+              Improve evidence quality, rerun reality checks, and complete promotion review.
+            </p>
+          </div>
+        </div>
+        <p className="mt-6 border-t border-border/70 pt-4 font-mono text-2xs italic text-text-muted">
+          Illustrative example only. Not investment advice. Not a trading recommendation.
+        </p>
       </Modal>
     </div>
   );
