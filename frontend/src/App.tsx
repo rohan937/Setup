@@ -1,6 +1,8 @@
 import { Routes, Route } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import Home from "@/pages/Home";
+import Landing from "@/pages/Landing";
+import { isMarketingHost } from "@/lib/domain";
 import Dashboard from "@/pages/Dashboard";
 import Strategies from "@/pages/Strategies";
 import StrategyComparison from "@/pages/StrategyComparison";
@@ -44,11 +46,22 @@ import { AuthProvider } from "@/context/AuthContext";
 import RequirePermission from "@/components/RequirePermission";
 
 export default function App() {
+  // Domain-aware split: on the public marketing domain (quantfidelity.com /
+  // www) the root path renders the standalone Landing page. On every other
+  // host (app.quantfidelity.com, localhost, Vercel previews) the root path
+  // renders the existing app dashboard inside AppShell — unchanged behavior.
+  const marketing = isMarketingHost();
   return (
     <AuthProvider>
     <Routes>
+      {/* Public marketing landing — standalone, outside the app shell. */}
+      {marketing && <Route path="/" element={<Landing />} />}
+      <Route path="/landing" element={<Landing />} />
+
       <Route element={<AppShell />}>
-        <Route index element={<Home />} />
+        {!marketing && <Route index element={<Home />} />}
+        {/* Explicit app-home entry (same-origin fallback + /app deep links). */}
+        <Route path="app" element={<Home />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="command-center" element={<CommandCenter />} />
         <Route path="executive-demo" element={<ExecutiveDemo />} />
