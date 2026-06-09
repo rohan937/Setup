@@ -571,6 +571,32 @@ export default function ExecutiveDemo() {
         </Card>
       )}
 
+      {/* ------------------------------------------------------------ */}
+      {/* PRODUCT WALKTHROUGH VIDEO — always shown, near the top */}
+      {/* ------------------------------------------------------------ */}
+      <section className="animate-fade-in space-y-6">
+        <SectionHeading
+          eyebrow="Walkthrough"
+          title="QuantFidelity AI Product Walkthrough"
+          blurb="A 70-second walkthrough of how QuantFidelity moves from backtest evidence to research governance decisions."
+          accent="research"
+        />
+        <div className="gradient-border gradient-border-research overflow-hidden rounded-card bg-bg-700 p-2 shadow-card">
+          <video
+            controls
+            playsInline
+            preload="metadata"
+            className="block w-full rounded-[10px] bg-bg-900"
+            src="/videos/quantfidelity-ai-product-walkthrough.mp4"
+          >
+            Your browser does not support the video tag.
+          </video>
+        </div>
+        <p className="font-mono text-2xs italic text-text-muted">
+          Research governance summary. Not trading advice.
+        </p>
+      </section>
+
       {/* The live data sections render only when we have strategies. */}
       {!error && !isEmpty && (
         <>
