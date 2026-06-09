@@ -170,7 +170,7 @@ class TestDemoStrategyContent:
                 db.query(Strategy)
                 .filter(
                     Strategy.project_id == proj.id,
-                    Strategy.slug == "aapl-mean-reversion-demo",
+                    Strategy.slug == "aapl-mean-reversion-v1",
                 )
                 .first()
             )
@@ -192,7 +192,7 @@ class TestDemoStrategyContent:
                 db.query(Strategy)
                 .filter(
                     Strategy.project_id == proj.id,
-                    Strategy.slug == "fx-carry-demo",
+                    Strategy.slug == "global-futures-trend-model",
                 )
                 .first()
             )
@@ -212,7 +212,7 @@ class TestDemoStrategyContent:
                 db.query(Strategy)
                 .filter(
                     Strategy.project_id == proj.id,
-                    Strategy.slug == "crypto-momentum-demo",
+                    Strategy.slug == "crypto-momentum-intraday",
                 )
                 .first()
             )

@@ -49,9 +49,9 @@ DEMO_STRATEGIES = [
         "story": "healthy",
     },
     {
-        "name": "FX Carry Strategy Q1",
-        "slug": "fx-carry-strategy-q1",
-        "asset_class": "fx",
+        "name": "Global Futures Trend Model",
+        "slug": "global-futures-trend-model",
+        "asset_class": "future",
         "status": "active",
         "story": "review",
     },
@@ -123,30 +123,32 @@ _AAPL_SIGNALS = [
     {"symbol": "AMZN",  "timestamp": _date_str(2), "signal":  0.92},
 ]
 
-# FX: 5 symbols, 3 dates; note AUDUSD vol is None on one row (quality issue)
+# Global futures: liquid markets across equity index (ES, NQ), rates (ZN),
+# FX (6E), and commodities (CL). 5 instruments, 2 dates; 6E volume is None on
+# one row (intentional data-quality flag). (Var name kept for minimal churn.)
 _FX_OHLCV = [
-    {"symbol": "EURUSD", "timestamp": _date_str(-30), "open": 1.0824, "high": 1.0857, "low": 1.0805, "close": 1.0841, "volume": 52_000},
-    {"symbol": "GBPUSD", "timestamp": _date_str(-30), "open": 1.2694, "high": 1.2731, "low": 1.2672, "close": 1.2717, "volume": 41_000},
-    {"symbol": "USDJPY", "timestamp": _date_str(-30), "open": 157.43, "high": 158.12, "low": 157.21, "close": 157.88, "volume": 38_000},
-    {"symbol": "AUDUSD", "timestamp": _date_str(-30), "open": 0.6621, "high": 0.6648, "low": 0.6608, "close": 0.6638, "volume": None},  # intentional null
-    {"symbol": "USDCAD", "timestamp": _date_str(-30), "open": 1.3612, "high": 1.3645, "low": 1.3597, "close": 1.3628, "volume": 29_000},
-    {"symbol": "EURUSD", "timestamp": _date_str(-29), "open": 1.0841, "high": 1.0874, "low": 1.0823, "close": 1.0859, "volume": 49_000},
-    {"symbol": "GBPUSD", "timestamp": _date_str(-29), "open": 1.2717, "high": 1.2748, "low": 1.2698, "close": 1.2733, "volume": 38_500},
-    {"symbol": "USDJPY", "timestamp": _date_str(-29), "open": 157.88, "high": 158.45, "low": 157.61, "close": 158.21, "volume": 36_200},
-    {"symbol": "AUDUSD", "timestamp": _date_str(-29), "open": 0.6638, "high": 0.6662, "low": 0.6621, "close": 0.6651, "volume": 21_800},
-    {"symbol": "USDCAD", "timestamp": _date_str(-29), "open": 1.3628, "high": 1.3658, "low": 1.3612, "close": 1.3641, "volume": 27_300},
+    {"symbol": "ES", "timestamp": _date_str(-30), "open": 5432.50, "high": 5458.75, "low": 5421.00, "close": 5450.25, "volume": 1_180_000},
+    {"symbol": "NQ", "timestamp": _date_str(-30), "open": 19260.0, "high": 19345.0, "low": 19210.0, "close": 19318.0, "volume": 420_000},
+    {"symbol": "ZN", "timestamp": _date_str(-30), "open": 110.45, "high": 110.72, "low": 110.31, "close": 110.59, "volume": 1_650_000},
+    {"symbol": "6E", "timestamp": _date_str(-30), "open": 1.0824, "high": 1.0857, "low": 1.0805, "close": 1.0841, "volume": None},  # intentional null
+    {"symbol": "CL", "timestamp": _date_str(-30), "open": 78.20, "high": 78.95, "low": 77.80, "close": 78.64, "volume": 540_000},
+    {"symbol": "ES", "timestamp": _date_str(-29), "open": 5450.25, "high": 5479.00, "low": 5440.50, "close": 5468.75, "volume": 1_205_000},
+    {"symbol": "NQ", "timestamp": _date_str(-29), "open": 19318.0, "high": 19402.0, "low": 19280.0, "close": 19377.0, "volume": 408_000},
+    {"symbol": "ZN", "timestamp": _date_str(-29), "open": 110.59, "high": 110.81, "low": 110.42, "close": 110.68, "volume": 1_590_000},
+    {"symbol": "6E", "timestamp": _date_str(-29), "open": 1.0841, "high": 1.0874, "low": 1.0823, "close": 1.0859, "volume": 138_000},
+    {"symbol": "CL", "timestamp": _date_str(-29), "open": 78.64, "high": 79.30, "low": 78.10, "close": 79.05, "volume": 525_000},
 ]
 
-# FX signals: carry signal (interest-rate differential proxy); one missing
+# Global futures trend signal (time-series momentum); one missing value.
 _FX_SIGNALS = [
-    {"symbol": "EURUSD", "timestamp": _date_str(-30), "signal":  0.42},
-    {"symbol": "GBPUSD", "timestamp": _date_str(-30), "signal":  None},   # missing
-    {"symbol": "USDJPY", "timestamp": _date_str(-30), "signal": -1.15},
-    {"symbol": "AUDUSD", "timestamp": _date_str(-30), "signal":  0.78},
-    {"symbol": "USDCAD", "timestamp": _date_str(-30), "signal": -0.33},
-    {"symbol": "EURUSD", "timestamp": _date_str(-29), "signal":  0.48},
-    {"symbol": "GBPUSD", "timestamp": _date_str(-29), "signal":  0.61},
-    {"symbol": "USDJPY", "timestamp": _date_str(-29), "signal": -1.08},
+    {"symbol": "ES", "timestamp": _date_str(-30), "signal":  0.62},
+    {"symbol": "NQ", "timestamp": _date_str(-30), "signal":  None},   # missing
+    {"symbol": "ZN", "timestamp": _date_str(-30), "signal": -0.48},
+    {"symbol": "6E", "timestamp": _date_str(-30), "signal":  0.21},
+    {"symbol": "CL", "timestamp": _date_str(-30), "signal":  0.77},
+    {"symbol": "ES", "timestamp": _date_str(-29), "signal":  0.58},
+    {"symbol": "NQ", "timestamp": _date_str(-29), "signal":  0.34},
+    {"symbol": "ZN", "timestamp": _date_str(-29), "signal": -0.41},
 ]
 
 # Crypto: sparse rows, suspicious price spike to trigger quality flag
@@ -535,91 +537,114 @@ def _seed_aapl(db, strategy, org, project, include_audits, include_reports):
 
 
 def _seed_fx(db, strategy, org, project, include_audits, include_reports):
+    # Seeds the "Global Futures Trend Model" strategy: a diversified futures
+    # trend-following research strategy in a Backtest-Review state — solid
+    # backtest evidence (v1-v3) but missing paper/shadow validation.
+    # (Function/var names kept as `_fx` to minimize internal churn.)
     arts = []
 
     v1, _ = _make_version(db, strategy.id, "v1.0", None, "main",
-                          "strategies/fx_carry.py", "interest_rate_differential_carry")
+                          "strategies/global_futures_trend.py", "time_series_momentum_signal")
     arts.append("version:v1.0")
 
-    cfg = _make_config(db, strategy.id, v1.id, "FX Carry Strategy Q1 Config", {
+    cfg = _make_config(db, strategy.id, v1.id, "Global Futures Trend Model Config", {
         "params": {
-            "rebalance_frequency": "weekly",
-            "carry_lookback_days": 90,
+            "rebalance_frequency": "daily",
+            "trend_lookback_days": 100,
+            "vol_target": 0.15,
         },
         "assumptions": {
-            "transaction_cost_bps": 8,
-            "slippage_bps": 3,
+            "transaction_cost_bps": 6,
+            "slippage_bps": 2,
             "fill_model": "next_bar_open",
             "max_leverage": 2.0,
             "max_position_weight": 0.20,
-            "liquidity_filter": "major_pairs_only",
+            "liquidity_filter": "liquid_futures_only",
         },
     })
     if cfg: arts.append("config:v1.0")
 
     uni = _make_universe(db, strategy.id, v1.id,
-                         "FX Carry G10 Universe",
-                         ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD"],
-                         {"universe_type": "G10_FX"})
-    if uni: arts.append("universe:fx_g10")
+                         "Global Futures Trend Universe",
+                         ["ES", "NQ", "ZN", "6E", "CL"],
+                         {"universe_type": "GLOBAL_FUTURES",
+                          "description": "Liquid global futures across equity index, rates, FX, and commodities."})
+    if uni: arts.append("universe:global_futures")
 
-    # Signal is stale (30 days old) — triggers evidence freshness alert
     sig = _make_signal(db, strategy.id, v1.id, uni.id if uni else None,
-                       f"FX Carry Signal {_date_str(-30)} (Stale)",
-                       "interest_rate_differential_carry", _FX_SIGNALS)
-    if sig: arts.append("signal:fx_carry_stale")
+                       f"Global Futures Trend Signal {_date_str(-29)}",
+                       "time_series_momentum_signal", _FX_SIGNALS)
+    if sig: arts.append("signal:global_futures_trend")
 
-    dsnap = _make_dataset_snapshot(db, project.id, "FX Rates Daily",
-                                   "FX daily close rates; AUDUSD has one missing volume.",
+    dsnap = _make_dataset_snapshot(db, project.id, "Global Futures Daily OHLCV",
+                                   "Daily futures OHLCV across equity index, rates, FX, and commodities; 6E missing one volume.",
                                    _FX_OHLCV)
-    if dsnap: arts.append("dataset_snapshot:fx_ohlcv")
+    if dsnap: arts.append("dataset_snapshot:global_futures_ohlcv")
 
-    # Backtest run (v1 — review)
+    # Backtest run (v1 — review band; fully evidenced)
     r_bt1 = _make_run(
         db, strategy.id, v1.id,
         dsnap.id if dsnap else None, uni.id if uni else None, sig.id if sig else None,
-        "FX Carry Strategy — Backtest v1",
+        "Global Futures Trend Backtest v1",
         RunType.backtest,
-        {"rebalance_frequency": "weekly", "carry_lookback_days": 90},
-        {"transaction_cost_bps": 8, "slippage_bps": 3, "fill_model": "next_bar_open",
+        {"rebalance_frequency": "daily", "trend_lookback_days": 100, "vol_target": 0.15},
+        {"transaction_cost_bps": 6, "slippage_bps": 2, "fill_model": "next_bar_open",
          "max_leverage": 2.0, "max_position_weight": 0.20},
-        {"sharpe": 0.91, "annual_return": 0.094, "volatility": 0.103,
-         "max_drawdown": -0.161, "turnover": 2.84, "trade_count": 104, "win_rate": 0.51},
-        "FX carry backtest; leverage 2x amplifies drawdown risk. Signal evidence aging.",
+        {"sharpe": 0.84, "annual_return": 0.112, "volatility": 0.133,
+         "max_drawdown": -0.187, "turnover": 3.40, "trade_count": 286, "win_rate": 0.47},
+        "Trend-following backtest across liquid global futures. No paper/shadow run attached yet.",
         _dt(-28),
     )
     arts.append("run:backtest_v1")
     _make_audit(db, r_bt1, include_audits)
 
-    # Second backtest with worse metrics (evidence of deterioration)
+    # Second backtest — shorter lookback, mild deterioration (partial evidence)
     r_bt2 = _make_run(
         db, strategy.id, v1.id, None, uni.id if uni else None, None,
-        "FX Carry Strategy — Backtest v2 (Re-eval)",
+        "Global Futures Trend Backtest v2",
         RunType.backtest,
-        {"rebalance_frequency": "weekly", "carry_lookback_days": 60},
-        {"transaction_cost_bps": 8, "slippage_bps": 3, "fill_model": "next_bar_open",
+        {"rebalance_frequency": "daily", "trend_lookback_days": 60, "vol_target": 0.15},
+        {"transaction_cost_bps": 6, "slippage_bps": 2, "fill_model": "next_bar_open",
          "max_leverage": 2.0},
-        {"sharpe": 0.73, "annual_return": 0.072, "volatility": 0.099,
-         "max_drawdown": -0.178, "turnover": 3.12, "trade_count": 118, "win_rate": 0.49},
-        "Re-evaluation with shorter lookback shows deterioration; no signal evidence linked.",
+        {"sharpe": 0.71, "annual_return": 0.094, "volatility": 0.131,
+         "max_drawdown": -0.205, "turnover": 3.85, "trade_count": 312, "win_rate": 0.45},
+        "Shorter lookback shows deterioration; signal evidence not linked on this run.",
         _dt(-10),
     )
     arts.append("run:backtest_v2")
     _make_audit(db, r_bt2, include_audits)
 
+    # Third backtest — vol-targeted, re-evidenced (best of the three)
+    r_bt3 = _make_run(
+        db, strategy.id, v1.id,
+        dsnap.id if dsnap else None, uni.id if uni else None, sig.id if sig else None,
+        "Global Futures Trend Backtest v3",
+        RunType.backtest,
+        {"rebalance_frequency": "daily", "trend_lookback_days": 100, "vol_target": 0.12},
+        {"transaction_cost_bps": 6, "slippage_bps": 2, "fill_model": "next_bar_open",
+         "max_leverage": 2.0, "max_position_weight": 0.18},
+        {"sharpe": 0.79, "annual_return": 0.103, "volatility": 0.129,
+         "max_drawdown": -0.176, "turnover": 3.10, "trade_count": 268, "win_rate": 0.48},
+        "Vol-targeted re-run with realistic costs. Still no paper/shadow validation.",
+        _dt(-4),
+    )
+    arts.append("run:backtest_v3")
+    _make_audit(db, r_bt3, include_audits)
+
     _make_reliability_score(db, strategy.id)
     arts.append("reliability_score")
 
-    # Review case: evidence freshness issue
+    # Primary blocker: missing paper/shadow validation before promotion.
     _make_review_case(
         db, strategy.id,
-        "FX Carry Evidence Freshness Review",
-        "fx_carry_evidence_freshness_review",
-        "medium", "evidence_quality",
-        "Signal snapshot is 30+ days stale. Carry signal should be refreshed "
-        "before progression to paper trading. Dataset also missing AUDUSD volume on one date.",
+        "Missing Paper/Shadow Validation",
+        "missing_paper_shadow_validation",
+        "high", "evidence_quality",
+        "Backtest evidence (v1-v3) is in place, but no paper or shadow run is attached. "
+        "Promotion to Paper Candidate requires paper/shadow validation evidence. "
+        "Add a paper/shadow run and review high-severity data-health alerts before progression.",
     )
-    arts.append("review_case:fx_freshness")
+    arts.append("review_case:missing_paper_shadow")
 
     return arts
 
@@ -855,6 +880,18 @@ def seed_demo_data(
                 generate_alerts(db, demo_org.id.hex)
             except Exception as exc:
                 warnings.append(f"Alert generation skipped: {str(exc)[:100]}")
+
+            # Reliability scores were first computed inside each seeder, before
+            # alerts existed, so the stored score ignored the alert penalty.
+            # Recompute now so the displayed "latest" reliability reflects the
+            # open alerts (keeps review-state strategies honestly in-band).
+            try:
+                from app.models.strategy import Strategy as _Strategy
+                for _strat in db.query(_Strategy).all():
+                    _make_reliability_score(db, _strat.id)
+                db.flush()
+            except Exception as exc:
+                warnings.append(f"Reliability refresh skipped: {str(exc)[:100]}")
 
         # Seed event
         db.add(AuditTimelineEvent(

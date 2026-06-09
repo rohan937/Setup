@@ -4,7 +4,7 @@ Verifies:
   - clean_realistic_demo endpoint returns 200 and creates exactly 3 strategies
   - Artifacts exist: runs, snapshots, audits, reliability scores, alerts, review cases
   - AAPL is healthy/well-instrumented state
-  - FX Carry is review/stale state
+  - Global Futures Trend Model is review state (missing paper/shadow validation)
   - Crypto is weak/under-instrumented state
   - Dashboard summary shows reasonable (not thousands) of records
   - Seed is idempotent: running extend twice does not duplicate strategies
@@ -250,23 +250,23 @@ class TestDemoStrategyStates:
         ).first()
         assert score is not None
 
-    def test_fx_has_stale_signal_label(self, seed_db):
+    def test_futures_has_trend_signal_label(self, seed_db):
         _seed_clean(seed_db)
         from app.models.signal_snapshot import SignalSnapshot
-        s = self._get_strategy(seed_db, "fx-carry-strategy-q1")
+        s = self._get_strategy(seed_db, "global-futures-trend-model")
         sig = seed_db.query(SignalSnapshot).filter(SignalSnapshot.strategy_id == s.id).first()
         assert sig is not None
-        assert "stale" in sig.label.lower() or "carry" in sig.label.lower()
+        assert "trend" in sig.label.lower() or "futures" in sig.label.lower()
 
-    def test_fx_has_review_case(self, seed_db):
+    def test_futures_has_review_case(self, seed_db):
         _seed_clean(seed_db)
         from app.models.review_case import ResearchReviewCase
-        s = self._get_strategy(seed_db, "fx-carry-strategy-q1")
+        s = self._get_strategy(seed_db, "global-futures-trend-model")
         rc = seed_db.query(ResearchReviewCase).filter(
             ResearchReviewCase.strategy_id == s.id.hex
         ).first()
         assert rc is not None
-        assert "freshness" in rc.title.lower() or "evidence" in rc.title.lower()
+        assert "paper" in rc.title.lower() or "shadow" in rc.title.lower()
 
     def test_crypto_has_one_run(self, seed_db):
         _seed_clean(seed_db)

@@ -8,12 +8,16 @@ import type { Strategy } from "@/types";
 
 export const WALKTHROUGH_LS_KEY = "qf_demo_walkthrough_v2";
 
-/** Names of the clean-realistic-demo strategies, used to resolve "Go there" links. */
+/**
+ * Names of the clean-realistic-demo strategies, used to resolve "Go there" links.
+ * (Object keys are kept stable for internal references; the `fxCarry` key now
+ * maps to the futures trend strategy that replaced the old FX carry demo.)
+ */
 export const DEMO_STRATEGY_NAMES = {
   aapl: "AAPL Mean Reversion v1",
-  fxCarry: "FX Carry Strategy Q1",
+  fxCarry: "Global Futures Trend Model",
   crypto: "Crypto Momentum Intraday",
-  mayaKoPep: "KO/PEP Pairs Trade (Maya Test)",
+  mayaKoPep: "KO/PEP Pairs Trade",
 } as const;
 
 /** How a step's "Go there" button should navigate. */

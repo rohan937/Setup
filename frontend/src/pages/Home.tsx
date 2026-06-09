@@ -126,9 +126,8 @@ function actionRoute(a: CommandCenterTopAction): string {
 
 const DEMO_ROLES: { key: keyof typeof DEMO_STRATEGY_NAMES; role: string; meaning: string }[] = [
   { key: "aapl", role: "Healthy", meaning: "well-instrumented; high coverage and trust" },
-  { key: "fxCarry", role: "Review", meaning: "decent research but stale / incomplete evidence" },
+  { key: "fxCarry", role: "Review", meaning: "solid backtests, but missing paper/shadow validation" },
   { key: "crypto", role: "Blocked", meaning: "attractive headline metrics, weak assumptions" },
-  { key: "mayaKoPep", role: "Improving", meaning: "better than v1, but not promotion-clean yet" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -388,6 +387,52 @@ export default function Home() {
 
       {/* Command-center load failure: isolate to a banner, keep page usable. */}
       {error && !loading && <SectionError message={error} />}
+
+      {/* Demo Mode — seed/reset quick actions, surfaced near the top so a
+          first-time visitor immediately sees how to run or reset the demo. */}
+      <section className="animate-fade-in">
+        <div className="gradient-border gradient-border-primary card-hover-lift rounded-card p-5 shadow-card hover:shadow-glow-primary-lg">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-2 w-2 rounded-full bg-gradient-to-r from-brand to-research"
+                  aria-hidden="true"
+                />
+                <p className="card-title">Demo Mode</p>
+              </div>
+              <p className="text-sm text-text-secondary">
+                Seed or reset the sample research workspace.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => startWalkthrough(true)}
+                className="cta-glow rounded-control bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+              >
+                Run Demo
+              </button>
+              {canDemoReset && (
+                <Link
+                  to="/admin/demo-controls"
+                  className="rounded-control border border-border bg-bg-800 px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                >
+                  Run Demo Reset
+                </Link>
+              )}
+              {canDemoReset && (
+                <Link
+                  to="/admin/demo-controls"
+                  className="rounded-control border border-border bg-bg-800 px-4 py-2 text-sm text-text-secondary hover:bg-bg-600 hover:text-text-primary"
+                >
+                  Open Demo Controls
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* 2. Research health summary — metric cards */}
       <section className="animate-slide-up space-y-4">

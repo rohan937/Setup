@@ -270,8 +270,8 @@ export default function DemoControls() {
             <p className="mt-1 text-xs text-gray-400">Healthy · well-instrumented · Sharpe ~1.4</p>
           </div>
           <div className="rounded border border-amber-800/40 bg-amber-900/10 p-3">
-            <p className="font-mono text-xs font-semibold text-amber-400">FX Carry Strategy Q1</p>
-            <p className="mt-1 text-xs text-gray-400">Review · stale signal · Sharpe ~0.9</p>
+            <p className="font-mono text-xs font-semibold text-amber-400">Global Futures Trend Model</p>
+            <p className="mt-1 text-xs text-gray-400">Review · missing paper/shadow · reliability ~70</p>
           </div>
           <div className="rounded border border-red-800/40 bg-red-900/10 p-3">
             <p className="font-mono text-xs font-semibold text-red-400">Crypto Momentum Intraday</p>
