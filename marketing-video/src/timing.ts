@@ -18,7 +18,7 @@ export type SceneId =
   | "reality"
   | "evidence"
   | "governance"
-  | "montage"
+  | "system"
   | "final";
 
 export interface SceneDef {
@@ -35,7 +35,7 @@ export interface SceneDef {
 //   reality        28 -> 39  (11s)
 //   evidence       39 -> 49  (10s)
 //   governance     49 -> 60  (11s)
-//   montage        60 -> 66  (6s)
+//   system         60 -> 66  (6s)  ← Research Governance System (no screenshots)
 //   final          66 -> 72  (6s)
 export const SCENES: SceneDef[] = [
   {id: "hook", from: sec(0), durationInFrames: sec(5)},
@@ -45,7 +45,7 @@ export const SCENES: SceneDef[] = [
   {id: "reality", from: sec(28), durationInFrames: sec(11)},
   {id: "evidence", from: sec(39), durationInFrames: sec(10)},
   {id: "governance", from: sec(49), durationInFrames: sec(11)},
-  {id: "montage", from: sec(60), durationInFrames: sec(6)},
+  {id: "system", from: sec(60), durationInFrames: sec(6)},
   {id: "final", from: sec(66), durationInFrames: sec(6)},
 ];
 
@@ -258,22 +258,20 @@ export const SCRIPT = {
     },
   },
 
-  // Scene 8 — montage
-  montage: {
+  // Scene 8 — Research Governance System (screenshot-free system diagram)
+  system: {
     caption: "From raw research to a decision you can defend.",
-    labels: [
-      "Command Center",
-      "Strategy Workspace",
-      "Reality Check",
-      "Evidence Chain",
-      "Governance",
-    ],
-    shots: [
-      {name: "home.png", label: "Research Command Center"},
-      {name: "executive-demo.png", label: "Executive Demo"},
-      {name: "strategy-overview.png", label: "Strategy Workspace"},
-      {name: "reality-tab.png", label: "Backtest Reality Check"},
-      {name: "governance-tab.png", label: "Promotion Readiness"},
+    kicker: "Research Governance System",
+    // The governed workflow, end to end.
+    pipeline: ["Evidence", "Reality", "Verification", "Governance", "Promotion"],
+    // The six QuantFidelity modules that light up beneath the pipeline.
+    modules: [
+      "Reliability Score",
+      "Backtest Reality",
+      "Evidence Verification",
+      "Shadow Drift",
+      "Risk Narrative",
+      "Promotion Packet",
     ],
   },
 

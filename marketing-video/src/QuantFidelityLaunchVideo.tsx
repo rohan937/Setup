@@ -9,7 +9,7 @@ import {WorkspaceScene} from "./scenes/WorkspaceScene";
 import {RealityScene} from "./scenes/RealityScene";
 import {EvidenceScene} from "./scenes/EvidenceScene";
 import {GovernanceScene} from "./scenes/GovernanceScene";
-import {MontageScene} from "./scenes/MontageScene";
+import {SystemScene} from "./scenes/SystemScene";
 import {FinalScene} from "./scenes/FinalScene";
 
 // The DARK 9-scene AI product walkthrough. Each scene is mounted in its own
@@ -24,7 +24,7 @@ const SCENE_COMPONENTS: Record<SceneId, React.FC> = {
   reality: RealityScene,
   evidence: EvidenceScene,
   governance: GovernanceScene,
-  montage: MontageScene,
+  system: SystemScene,
   final: FinalScene,
 };
 
