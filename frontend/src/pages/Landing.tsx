@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { appHref } from "@/lib/domain";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +25,9 @@ interface Feature {
   title: string;
   blurb: string;
   icon: JSX.Element;
+  checks: string;
+  why: string;
+  example: string;
 }
 
 const FEATURES: Feature[] = [
@@ -39,6 +42,9 @@ const FEATURES: Feature[] = [
         <rect x="14" y="14" width="7" height="7" rx="1.5" />
       </svg>
     ),
+    checks: "Portfolio-level strategy health, open alerts, pending reviews, lifecycle counts, and high-priority actions.",
+    why: "A research lead should be able to see where attention is needed without opening every strategy manually.",
+    example: "A strategy is blocked in backtest review while high-severity evidence alerts remain unresolved.",
   },
   {
     title: "Strategy Workspace",
@@ -50,6 +56,9 @@ const FEATURES: Feature[] = [
         <path d="M4 17l8 4 8-4" />
       </svg>
     ),
+    checks: "Strategy lifecycle, evidence, runs, reality checks, governance state, reports, and developer inputs.",
+    why: "A strategy needs one source of truth across research, validation, review, and promotion.",
+    example: "A strategy has strong headline metrics but unresolved promotion blockers and weak evidence health.",
   },
   {
     title: "Evidence Verification",
@@ -60,6 +69,9 @@ const FEATURES: Feature[] = [
         <path d="M9 12l2 2 4-4" />
       </svg>
     ),
+    checks: "Datasets, signals, assumptions, configs, universes, links, hashes, and evidence-chain consistency.",
+    why: "Research decisions become fragile when the underlying evidence cannot be traced or verified.",
+    example: "A backtest references stale or low-health data while the signal evidence looks clean.",
   },
   {
     title: "Backtest Reality Check",
@@ -71,6 +83,9 @@ const FEATURES: Feature[] = [
         <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
       </svg>
     ),
+    checks: "Costs, fills, turnover, fragility, data quality, drift, and suspicious assumptions.",
+    why: "A backtest can look profitable in a chart but fail once execution and data assumptions become realistic.",
+    example: "High Sharpe with low data health and missing cost assumptions gets flagged before promotion.",
   },
   {
     title: "Promotion Readiness",
@@ -82,6 +97,9 @@ const FEATURES: Feature[] = [
         <circle cx="12" cy="11" r="1.6" />
       </svg>
     ),
+    checks: "Review status, lifecycle stage, promotion gates, blockers, alerts, and required evidence.",
+    why: "Moving a strategy forward should be based on traceable readiness, not intuition.",
+    example: "A strategy cannot move to paper candidate because required gates are incomplete.",
   },
   {
     title: "Risk Narrative",
@@ -92,6 +110,9 @@ const FEATURES: Feature[] = [
         <path d="M8 9h7M8 13h7M8 17h4" />
       </svg>
     ),
+    checks: "Reliability score, evidence quality, blockers, backtest reality, verification status, and next actions.",
+    why: "Teams need a concise explanation of why a strategy is strong, fragile, blocked, or ready.",
+    example: "A generated narrative explains that the strategy has decent performance but unresolved data-health and governance risks.",
   },
 ];
 
@@ -157,8 +178,15 @@ const IS = [
   "Promotion-readiness monitoring",
 ];
 
-// Stylized, illustrative product-surface mock cards (no screenshots → no broken
-// image refs; mirrors the in-app demo, not a performance claim).
+const NAV: { id: string; label: string }[] = [
+  { id: "product", label: "Product" },
+  { id: "features", label: "Features" },
+  { id: "demo", label: "Demo" },
+  { id: "how-it-works", label: "How it works" },
+  { id: "use-cases", label: "Use cases" },
+  { id: "founder", label: "Founder" },
+];
+
 function MockChip({ label, tone }: { label: string; tone: "primary" | "success" | "warning" | "danger" | "muted" }) {
   const tones: Record<string, string> = {
     primary: "border-brand/40 bg-brand/10 text-accent-200",
@@ -167,9 +195,7 @@ function MockChip({ label, tone }: { label: string; tone: "primary" | "success" 
     danger: "border-fidelity-low/40 bg-fidelity-low/10 text-fidelity-low",
     muted: "border-border bg-bg-800 text-text-muted",
   };
-  return (
-    <span className={`rounded-chip border px-2 py-0.5 font-mono text-2xs ${tones[tone]}`}>{label}</span>
-  );
+  return <span className={`rounded-chip border px-2 py-0.5 font-mono text-2xs ${tones[tone]}`}>{label}</span>;
 }
 
 interface Surface {
@@ -255,40 +281,239 @@ const SURFACES: Surface[] = [
   },
 ];
 
+// ── Reusable dark-glass modal ───────────────────────────────────────────────
+interface ModalProps {
+  open: boolean;
+  onClose: () => void;
+  labelledBy: string;
+  widthClass?: string;
+  children: ReactNode;
+}
+
+function Modal({ open, onClose, labelledBy, widthClass = "max-w-lg", children }: ModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const prevActive = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      prevActive?.focus?.();
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div
+        className="animate-fade-in absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        className={`animate-slide-up gradient-border gradient-border-research relative z-10 max-h-[85vh] w-full overflow-y-auto rounded-card p-6 shadow-card shadow-glow-research outline-none sm:p-7 ${widthClass}`}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-control border border-border text-text-secondary transition-colors hover:bg-bg-600 hover:text-text-primary"
+        >
+          ✕
+        </button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function Landing() {
-  const scrollToDemo = useCallback(() => {
-    const el = document.getElementById("demo");
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [activeFeature, setActiveFeature] = useState<Feature | null>(null);
+  const [activeSection, setActiveSection] = useState<string>("product");
+  const [showTop, setShowTop] = useState(false);
+
+  const scrollToId = useCallback((id: string) => {
+    setMobileOpen(false);
+    const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const watchDemoFromModal = useCallback(() => {
+    setAboutOpen(false);
+    setActiveFeature(null);
+    // Defer so the modal unmounts (body scroll unlocks) before scrolling.
+    window.setTimeout(() => {
+      const el = document.getElementById("demo");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }, []);
+
+  // Active-section highlight for the navbar (subtle underline/glow).
+  useEffect(() => {
+    const els = NAV.map((n) => document.getElementById(n.id)).filter(Boolean) as HTMLElement[];
+    if (els.length === 0) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) setActiveSection(e.target.id);
+        });
+      },
+      { rootMargin: "-45% 0px -50% 0px", threshold: 0 },
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+
+  // Back-to-top visibility.
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 700);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   return (
     <div className="min-h-screen bg-bg-900 font-sans text-text-primary">
-      {/* ── Slim header ─────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-bg-900/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2.5">
+      {/* ── Sticky navbar ───────────────────────────────────────────── */}
+      <header className="sticky top-0 z-50 border-b border-border/70 bg-bg-900/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3.5">
+          <button
+            type="button"
+            onClick={() => scrollToId("product")}
+            className="flex items-center gap-2.5"
+            aria-label="QuantFidelity — back to top"
+          >
             <span className="h-3 w-3 rounded-[5px] bg-gradient-to-br from-brand to-research shadow-glow-primary" />
             <span className="text-sm font-bold tracking-tight">QuantFidelity</span>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
+          </button>
+
+          {/* Desktop nav */}
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Section navigation">
+            {NAV.map((n) => {
+              const active = activeSection === n.id;
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => scrollToId(n.id)}
+                  className={`relative rounded-control px-3 py-1.5 text-sm transition-colors ${
+                    active ? "text-text-primary" : "text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  {n.label}
+                  <span
+                    className={`absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-gradient-to-r from-brand to-research transition-opacity ${
+                      active ? "opacity-100 shadow-glow-primary" : "opacity-0"
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Desktop right actions */}
+          <div className="hidden items-center gap-2 md:flex">
+            <button
+              type="button"
+              onClick={() => setAboutOpen(true)}
+              className="rounded-control border border-border-strong px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-bg-700 hover:text-text-primary"
+            >
+              What is this?
+            </button>
             <a
               href={appHref("/login")}
-              className="hidden text-text-secondary transition-colors hover:text-text-primary sm:inline"
+              className="px-2.5 py-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
             >
               Sign In
             </a>
             <a
               href={appHref("")}
-              className="cta-glow rounded-control bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+              className="cta-glow rounded-control bg-brand px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand-600"
             >
               Open App
             </a>
           </div>
+
+          {/* Mobile toggle */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-expanded={mobileOpen}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            className="flex h-9 w-9 items-center justify-center rounded-control border border-border-strong text-text-secondary hover:text-text-primary md:hidden"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" {...stroke}>
+              {mobileOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+            </svg>
+          </button>
         </div>
+
+        {/* Mobile drawer */}
+        {mobileOpen && (
+          <div className="animate-fade-in border-t border-border/70 bg-bg-900/95 backdrop-blur-md md:hidden">
+            <nav className="mx-auto flex max-w-6xl flex-col gap-1 px-6 py-4" aria-label="Section navigation">
+              {NAV.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => scrollToId(n.id)}
+                  className={`rounded-control px-3 py-2 text-left text-sm transition-colors ${
+                    activeSection === n.id
+                      ? "bg-bg-700 text-text-primary"
+                      : "text-text-secondary hover:bg-bg-800 hover:text-text-primary"
+                  }`}
+                >
+                  {n.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(false);
+                  setAboutOpen(true);
+                }}
+                className="rounded-control px-3 py-2 text-left text-sm text-text-secondary hover:bg-bg-800 hover:text-text-primary"
+              >
+                What is QuantFidelity?
+              </button>
+              <div className="mt-2 flex items-center gap-2">
+                <a
+                  href={appHref("/login")}
+                  className="flex-1 rounded-control border border-border-strong px-3 py-2 text-center text-sm text-text-secondary hover:text-text-primary"
+                >
+                  Sign In
+                </a>
+                <a
+                  href={appHref("")}
+                  className="flex-1 rounded-control bg-brand px-3 py-2 text-center text-sm font-semibold text-white hover:bg-brand-600"
+                >
+                  Open App
+                </a>
+              </div>
+            </nav>
+          </div>
+        )}
       </header>
 
-      {/* ── 1. Hero ─────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden">
+      {/* ── 1. Hero (product / overview) ────────────────────────────── */}
+      <section id="product" className="relative scroll-mt-24 overflow-hidden">
         <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
           <div className="animate-hero-drift absolute -top-24 left-0 right-0 h-[28rem] bg-grad-hero opacity-70 blur-2xl" />
           <div className="animate-hero-drift absolute -top-32 left-1/4 h-80 w-80 rounded-full bg-brand/15 blur-3xl" />
@@ -302,7 +527,7 @@ export default function Landing() {
           />
         </div>
 
-        <div className="mx-auto max-w-5xl px-6 pb-16 pt-24 text-center sm:pt-32">
+        <div className="mx-auto max-w-5xl px-6 pb-16 pt-20 text-center sm:pt-28">
           <div className="animate-fade-in">
             <span className="caption inline-block rounded-chip border border-border-strong bg-bg-800/70 px-3 py-1 text-research-300">
               Research reliability infrastructure
@@ -331,7 +556,7 @@ export default function Landing() {
             </a>
             <button
               type="button"
-              onClick={scrollToDemo}
+              onClick={() => scrollToId("demo")}
               className="rounded-control border border-border-strong bg-bg-800 px-6 py-3 text-base font-medium text-text-secondary transition-colors hover:bg-bg-700 hover:text-text-primary"
             >
               Watch Demo
@@ -343,6 +568,13 @@ export default function Landing() {
               Sign In
             </a>
           </div>
+          <button
+            type="button"
+            onClick={() => setAboutOpen(true)}
+            className="mt-6 text-sm text-text-muted underline-offset-4 transition-colors hover:text-research-300 hover:underline"
+          >
+            New here? What is QuantFidelity?
+          </button>
         </div>
       </section>
 
@@ -374,25 +606,31 @@ export default function Landing() {
       </section>
 
       {/* ── 3. Feature cards ────────────────────────────────────────── */}
-      <section className="mx-auto max-w-6xl px-6 py-16">
+      <section id="features" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-16">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f) => (
-            <div
+            <button
               key={f.title}
-              className="card-hover-lift gradient-border gradient-border-primary group rounded-card p-6 shadow-card transition-shadow hover:shadow-glow-primary-lg"
+              type="button"
+              onClick={() => setActiveFeature(f)}
+              aria-haspopup="dialog"
+              className="card-hover-lift gradient-border gradient-border-primary group rounded-card p-6 text-left shadow-card transition-shadow hover:shadow-glow-primary-lg"
             >
               <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[10px] border border-border-strong bg-bg-800 text-brand shadow-glow-primary transition-colors group-hover:text-research-300">
                 <span className="h-6 w-6">{f.icon}</span>
               </div>
               <h3 className="text-lg font-semibold text-text-primary">{f.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-text-secondary">{f.blurb}</p>
-            </div>
+              <span className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-research-300 transition-transform group-hover:translate-x-0.5">
+                View details <span aria-hidden="true">→</span>
+              </span>
+            </button>
           ))}
         </div>
       </section>
 
       {/* ── 4. Demo video ───────────────────────────────────────────── */}
-      <section id="demo" className="relative scroll-mt-20 overflow-hidden py-16">
+      <section id="demo" className="relative scroll-mt-24 overflow-hidden py-16">
         <div
           className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-96 w-[42rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-research/10 blur-3xl"
           aria-hidden="true"
@@ -460,7 +698,6 @@ export default function Landing() {
           <h2 className="mt-2 text-3xl font-bold tracking-tight">From scattered evidence to defensible decisions</h2>
         </div>
         <div className="mt-10 grid grid-cols-1 gap-5 lg:grid-cols-2">
-          {/* Before */}
           <div className="rounded-card border border-fidelity-low/30 bg-fidelity-low/[0.04] p-7 shadow-card">
             <div className="mb-4 flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-fidelity-low/80" aria-hidden="true" />
@@ -475,7 +712,6 @@ export default function Landing() {
               ))}
             </ul>
           </div>
-          {/* After */}
           <div className="gradient-border gradient-border-success rounded-card p-7 shadow-card shadow-glow-success">
             <div className="mb-4 flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-fidelity-high shadow-glow-success" aria-hidden="true" />
@@ -494,7 +730,7 @@ export default function Landing() {
       </section>
 
       {/* ── 7. How it works pipeline ────────────────────────────────── */}
-      <section className="mx-auto max-w-6xl px-6 py-16">
+      <section id="how-it-works" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-16">
         <div className="text-center">
           <p className="caption text-research-300">How it works</p>
           <h2 className="mt-2 text-3xl font-bold tracking-tight">
@@ -528,7 +764,6 @@ export default function Landing() {
               key={s.label}
               className="card-hover-lift gradient-border gradient-border-research overflow-hidden rounded-card shadow-card hover:shadow-glow-research"
             >
-              {/* window chrome */}
               <div className="flex items-center gap-1.5 border-b border-border/70 bg-bg-800/80 px-4 py-2.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-fidelity-low/60" />
                 <span className="h-2.5 w-2.5 rounded-full bg-fidelity-medium/60" />
@@ -567,7 +802,7 @@ export default function Landing() {
       </section>
 
       {/* ── 10. Example workflows / use cases ───────────────────────── */}
-      <section className="mx-auto max-w-6xl px-6 py-16">
+      <section id="use-cases" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-16">
         <div className="text-center">
           <p className="caption text-research-300">Example workflows</p>
           <h2 className="mt-2 text-3xl font-bold tracking-tight">What teams do with QuantFidelity</h2>
@@ -620,7 +855,7 @@ export default function Landing() {
       </section>
 
       {/* ── 12. Founder / About ─────────────────────────────────────── */}
-      <section className="mx-auto max-w-3xl px-6 py-16">
+      <section id="founder" className="mx-auto max-w-3xl scroll-mt-24 px-6 py-16">
         <div className="gradient-border gradient-border-research rounded-card p-8 text-center shadow-card sm:p-10">
           <p className="caption text-research-300">Built by</p>
           <h2 className="mt-2 text-2xl font-bold tracking-tight">Rohan Shah</h2>
@@ -654,7 +889,7 @@ export default function Landing() {
             </a>
             <button
               type="button"
-              onClick={scrollToDemo}
+              onClick={() => scrollToId("demo")}
               className="rounded-control border border-border-strong bg-bg-800 px-6 py-3 text-base font-medium text-text-secondary transition-colors hover:bg-bg-700 hover:text-text-primary"
             >
               Watch Demo
@@ -681,6 +916,108 @@ export default function Landing() {
           </p>
         </div>
       </footer>
+
+      {/* ── Back-to-top ─────────────────────────────────────────────── */}
+      {showTop && (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          aria-label="Back to top"
+          className="animate-fade-in cta-glow fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-bg-800/90 text-text-secondary backdrop-blur-md hover:text-text-primary hover:shadow-glow-primary"
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" {...stroke}>
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      )}
+
+      {/* ── "What is QuantFidelity?" modal ──────────────────────────── */}
+      <Modal open={aboutOpen} onClose={() => setAboutOpen(false)} labelledBy="about-modal-title">
+        <p className="caption text-research-300">Overview</p>
+        <h2 id="about-modal-title" className="mt-1 text-2xl font-bold tracking-tight">
+          What is QuantFidelity?
+        </h2>
+        <p className="mt-4 text-sm leading-relaxed text-text-secondary">
+          QuantFidelity is research reliability infrastructure for quant strategies. It helps teams
+          evaluate evidence quality, backtest realism, verification chains, governance blockers, and
+          promotion readiness before a strategy moves forward.
+        </p>
+        <div className="mt-4 rounded-card border border-border bg-bg-900/60 p-4">
+          <p className="text-sm leading-relaxed text-text-secondary">
+            <span className="font-semibold text-text-primary">Important: </span>
+            It does not generate trading signals, give investment advice, or execute trades. It helps
+            make research decisions more auditable and defensible.
+          </p>
+        </div>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={watchDemoFromModal}
+            className="cta-glow rounded-control bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+          >
+            Watch Demo
+          </button>
+          <a
+            href={appHref("")}
+            className="rounded-control border border-border-strong bg-bg-800 px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-700 hover:text-text-primary"
+          >
+            Open App
+          </a>
+        </div>
+      </Modal>
+
+      {/* ── Feature detail modal ────────────────────────────────────── */}
+      <Modal
+        open={activeFeature !== null}
+        onClose={() => setActiveFeature(null)}
+        labelledBy="feature-modal-title"
+        widthClass="max-w-xl"
+      >
+        {activeFeature && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[10px] border border-border-strong bg-bg-800 text-brand shadow-glow-primary">
+                <span className="h-6 w-6">{activeFeature.icon}</span>
+              </div>
+              <div>
+                <p className="caption text-research-300">Feature</p>
+                <h2 id="feature-modal-title" className="text-xl font-bold tracking-tight">
+                  {activeFeature.title}
+                </h2>
+              </div>
+            </div>
+            <div className="mt-6 space-y-5">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-eyebrow text-research-300">What it checks</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">{activeFeature.checks}</p>
+              </div>
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-eyebrow text-research-300">Why it matters</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">{activeFeature.why}</p>
+              </div>
+              <div className="rounded-card border border-border bg-bg-900/60 p-4">
+                <h3 className="text-xs font-bold uppercase tracking-eyebrow text-fidelity-medium">Example issue</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">{activeFeature.example}</p>
+              </div>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a
+                href={appHref("")}
+                className="cta-glow rounded-control bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+              >
+                Open App
+              </a>
+              <button
+                type="button"
+                onClick={watchDemoFromModal}
+                className="rounded-control border border-border-strong bg-bg-800 px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-700 hover:text-text-primary"
+              >
+                Watch Demo
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
